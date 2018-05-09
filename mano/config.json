@@ -1,0 +1,23 @@
+{
+    "locale": "en_US.UTF-8",
+    "time_format": "%Y-%m-%dT%H:%M:%S",
+    "data_streams": [
+        "accelerometer",
+        "bluetooth",
+        "calls",
+        "gps",
+        "identifiers",
+        "app_log",
+        "power_state",
+        "survey_answers",
+        "survey_timings",
+        "texts",
+        "audio_recordings",
+        "wifi",
+        "magnetometer",
+        "gyro",
+        "devicemotion",
+        "proximity",
+        "reachability"
+    ]
+}

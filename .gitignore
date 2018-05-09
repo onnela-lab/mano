@@ -1,0 +1,7 @@
+*keyring*
+*.mp4
+*.csv
+*.lock
+*.pyc
+*.swp
+.DS_Store
