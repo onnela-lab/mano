@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 def main():
     parser = ap.ArgumentParser('beiwe downloader script')
     parser.add_argument('--output-base', default='.')
-    parser.add_argument('--backfill-start', default='2015-10-01T00:00:00')
+    parser.add_argument('--backfill-start', default='2018-01-01T00:00:00')
     parser.add_argument('--keyring-section', default='beiwe.onnela')
     args = parser.parse_args()
 

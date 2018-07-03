@@ -1,0 +1,26 @@
+interactions:
+- request:
+    body: !!python/unicode 'access_key=ACCESS_KEY&secret_key=SECRET_KEY'
+    headers:
+      Accept: ['*/*']
+      Accept-Encoding: ['gzip, deflate']
+      Connection: [keep-alive]
+      Content-Length: ['155']
+      Content-Type: [application/x-www-form-urlencoded]
+      User-Agent: [python-requests/2.19.1]
+    method: POST
+    uri: https://studies.beiwe.org/get-studies/v1
+  response:
+    body: {string: !!python/unicode '{"12abcdef34567g8hi90123ab": "Project A", "92abcdef34567g8hi90123ac":
+        "Project B"}'}
+    headers:
+      cache-control: ['max-age=0, no-cache']
+      connection: [keep-alive]
+      content-length: ['4671']
+      content-type: [text/html; charset=utf-8]
+      date: ['Tue, 03 Jul 2018 14:26:56 GMT']
+      server: [Apache/2.4.27 (Amazon) mod_wsgi/3.5 Python/2.7.12]
+      vary: ['X-Forwarded-Proto,Accept-Encoding']
+      x-mod-pagespeed: [1.13.35.2-0]
+    status: {code: 200, message: OK}
+version: 1
