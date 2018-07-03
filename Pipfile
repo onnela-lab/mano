@@ -10,6 +10,5 @@ requests = {extras = ["security"]}
 lxml = "*"
 encrypt = {git = "https://github.com/harvard-nrg/encrypt.git", editable = true}
 "e1839a8" = {path = ".", editable = true}
-httpretty = "*"
 vcrpy = "*"
 pytest = "*"
