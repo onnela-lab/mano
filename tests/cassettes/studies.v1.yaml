@@ -11,7 +11,7 @@ interactions:
     method: POST
     uri: https://studies.beiwe.org/get-studies/v1
   response:
-    body: {string: !!python/unicode '{"12abcdef34567g8hi90123ab": "Project A", "92abcdef34567g8hi90123ac":
+    body: {string: !!python/unicode '{"123lrVdb0g6tf3PeJr5ZtZC8": "Project A", "123U93wwgS18aLDIwdYXTXsr":
         "Project B"}'}
     headers:
       cache-control: ['max-age=0, no-cache']
