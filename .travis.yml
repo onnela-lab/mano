@@ -6,7 +6,7 @@ python:
   - "3.6"
 install:
   - pip install pipenv --upgrade
-  - pipenv install
+  - pipenv install --skip-lock
 script:
   - pipenv run py.test tests/tests.py
 
