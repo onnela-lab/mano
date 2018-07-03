@@ -6,6 +6,8 @@ import pytest
 DIR = os.path.dirname(__file__)
 CASSETTES = os.path.join(DIR, 'cassettes')
 
+NRG_KEYRING_PASS = 'foobar'
+
 Keyring = {
     'URL': 'https://studies.beiwe.org',
     'USERNAME': 'foobar',
@@ -17,7 +19,7 @@ Keyring = {
 def test_keyring():
     _environ = dict(os.environ)
     try:
-        os.environ['NRG_KEYRING_PASS'] = 'foobar'
+        os.environ['NRG_KEYRING_PASS'] = NRG_KEYRING_PASS
         f = os.path.join(DIR, 'keyring.enc')
         ans = mano.keyring('beiwe.onnela', keyring_file=f)
         assert ans == Keyring
@@ -37,8 +39,15 @@ def test_keyring_wrong_password():
         os.environ.update(_environ)
 
 def test_keyring_missing_file():
-    with pytest.raises(IOError):
-        _ = mano.keyring('beiwe.onnela', keyring_file='no-such-file.enc')
+    _environ = dict(os.environ)
+    try:
+        os.environ['NRG_KEYRING_PASS'] = NRG_KEYRING_PASS
+        f = os.path.join(DIR, 'no-such-file.enc')
+        with pytest.raises(IOError):
+            _ = mano.keyring('beiwe.onnela', keyring_file=f)
+    finally:
+        os.environ.clear()
+        os.environ.update(_environ)
 
 def test_keyring_from_env():
     _environ = dict(os.environ)
