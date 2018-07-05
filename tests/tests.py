@@ -1,6 +1,7 @@
 import os
 import vcr
 import mano
+import mano.sync
 import pytest
 
 DIR = os.path.dirname(__file__)
@@ -197,18 +198,18 @@ def test_studyname_not_found():
             _ = mano.studyname(Keyring, 'x')
 
 def test_device_settings():
-    # At the moment, Beiwe has an export_study_settings_file API endpoint, but 
-    # it's only accessible to users with site administration privilege.
-    # 
-    # The function being tested here is implemented by programmatically logging 
-    # into the Beiwe frontend (which any user can do) and scraping the app 
-    # settings page. It's very brittle and I'm not choosing not to mock this all 
-    # out.
+    # The device_settings function is implemented by programmatically logging
+    # into the Beiwe frontend (which any user can do) and scraping the Study
+    # app settings page. This type of function is brittle and I'm choosing not
+    # to spend any time dealing with it.
     #
-    # It's worth noting that this function also needs the user to pass in a 
-    # Study ID that is not the usual Study ID that other endpoints use. This 
-    # was not always the case. This alternative Study ID is not returned by 
-    # get-studies/v1 or any other endpoint that I'm aware of.
+    # It's worth noting that this function also needs the user to pass in a
+    # Study ID that is different from the usual Study ID expected by other API
+    # endpoints. This was not always the case and this alternate Study ID is
+    # not returned by get-studies/v1 or anywhere else that I can think of.
+    #
+    # At the moment, Beiwe does have an export_study_settings_file API endpoint,
+    # but it's only accessible to users with site administration privileges.
     '''
     cassette = os.path.join(CASSETTES, 'device_settings.yaml')
     filter_params = [
@@ -230,4 +231,62 @@ def test_device_settings():
         assert ans == device_settings
     '''
     pass
+
+def test_download():
+    '''
+    The data used in this test (cassette) are real, but they were captured on a
+    test phone from a test deployment of beiwe-backend.
+    '''
+    cassette = os.path.join(CASSETTES, 'download.v1.yaml')
+    filter_params = [
+        ('access_key', Keyring['ACCESS_KEY']),
+        ('secret_key', Keyring['SECRET_KEY']),
+        ('study_id', 'STUDY_ID'),
+        ('user_ids', 'USER_ID')
+    ]
+    with vcr.use_cassette(cassette,
+                          filter_post_data_parameters=filter_params) as cass:
+        zf = mano.sync.download(Keyring,
+                                study_id='STUDY_ID',
+                                user_ids=['USER_ID'],
+                                data_streams=['identifiers', 'gps'],
+                                time_start='2018-06-15T00:00:00',
+                                time_end='2018-06-17T00:00:00')
+        ans = set()
+        for zinfo in zf.infolist():
+            ans.add((zinfo.filename, zinfo.CRC))
+        assert ans == test_download.index
+test_download.index = set([
+    ('6y6s1w4g/identifiers/2018-06-15 16_00_00.csv', 4113954587),
+    ('6y6s1w4g/gps/2018-06-15 22_00_00.csv', 3073924694),
+    ('6y6s1w4g/gps/2018-06-15 17_00_00.csv', 4177290012),
+    ('6y6s1w4g/gps/2018-06-15 20_00_00.csv', 3999192708),
+    ('6y6s1w4g/gps/2018-06-15 18_00_00.csv', 4038997044),
+    ('6y6s1w4g/gps/2018-06-15 21_00_00.csv', 2945081574),
+    ('6y6s1w4g/gps/2018-06-15 19_00_00.csv', 4035326526),
+    ('6y6s1w4g/gps/2018-06-15 16_00_00.csv', 427497446),
+    ('6y6s1w4g/gps/2018-06-16 04_00_00.csv', 2574140219),
+    ('6y6s1w4g/gps/2018-06-16 01_00_00.csv', 503869630),
+    ('6y6s1w4g/gps/2018-06-16 03_00_00.csv', 1817118505),
+    ('6y6s1w4g/gps/2018-06-16 00_00_00.csv', 963879171),
+    ('6y6s1w4g/gps/2018-06-15 23_00_00.csv', 2924619047),
+    ('6y6s1w4g/gps/2018-06-16 02_00_00.csv', 2868941135),
+    ('6y6s1w4g/gps/2018-06-16 07_00_00.csv', 2619751600),
+    ('6y6s1w4g/gps/2018-06-16 12_00_00.csv', 3738822868),
+    ('6y6s1w4g/gps/2018-06-16 10_00_00.csv', 2382158563),
+    ('6y6s1w4g/gps/2018-06-16 08_00_00.csv', 3580985466),
+    ('6y6s1w4g/gps/2018-06-16 09_00_00.csv', 771315427),
+    ('6y6s1w4g/gps/2018-06-16 11_00_00.csv', 1386915032),
+    ('6y6s1w4g/gps/2018-06-16 14_00_00.csv', 641388715),
+    ('6y6s1w4g/gps/2018-06-16 15_00_00.csv', 3728053865),
+    ('6y6s1w4g/gps/2018-06-16 16_00_00.csv', 1258485774),
+    ('6y6s1w4g/gps/2018-06-16 18_00_00.csv', 1597315532),
+    ('6y6s1w4g/gps/2018-06-16 13_00_00.csv', 2905130265),
+    ('6y6s1w4g/gps/2018-06-16 19_00_00.csv', 565983226),
+    ('6y6s1w4g/gps/2018-06-16 17_00_00.csv', 2142570097),
+    ('6y6s1w4g/gps/2018-06-16 06_00_00.csv', 3417900549),
+    ('6y6s1w4g/gps/2018-06-16 20_00_00.csv', 1834664030),
+    ('6y6s1w4g/gps/2018-06-16 05_00_00.csv', 3970320035),
+    ('registry', 942145567)
+])
 
