@@ -121,7 +121,7 @@
         },
         "encrypt": {
             "git": "https://github.com/harvard-nrg/encrypt.git",
-            "ref": "7ddf876e7cec1ed662f5bedf27b28c8f61ffa1a7"
+            "ref": "45929e1b887b0eb1c3a6d1ad171d3f0ab8f5cf75"
         },
         "enum34": {
             "hashes": [
