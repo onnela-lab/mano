@@ -1,14 +1,12 @@
 [[source]]
-url = "https://pypi.org/simple"
+url = "https://pypi.python.org/simple"
 verify_ssl = true
 name = "pypi"
-
-[dev-packages]
 
 [packages]
 requests = {extras = ["security"]}
 lxml = "*"
-encrypt = {git = "https://github.com/harvard-nrg/encrypt.git", editable = true}
-"e1839a8" = {path = ".", editable = true}
 vcrpy = "*"
 pytest = "*"
+encrypt = {git = "https://github.com/harvard-nrg/encrypt.git"}
+mano = {path = ".", editable = true}
