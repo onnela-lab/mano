@@ -28,32 +28,17 @@ version of OpenSSL
 ([download link](http://conda.pydata.org/miniconda.html)).
 
 ## Installation
-The simplest way to install `mano` is with the excellent `pipenv` ✨🍰✨ 
-package manager
+The easiest way to install `mano` is with `pip`
 
 ```bash
-$ pip install --user pipenv
-$ git clone https://github.com/harvard-nrg/mano.git
-$ cd mano
-$ pipenv install
-  🐍   ▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉ 22/22 — 00:00:05
-```
-
-You can also install using plain old `pip`, but you still need `pipenv` 
-to convert the included `Pipfile` into a traditional `requirements.txt`
-
-```bash
-$ pip install --user pipenv
-$ git clone https://github.com/harvard-nrg/mano.git
-$ cd mano
-$ pipenv lock -r > requirements.txt
-$ pip install -r requirements.txt
+pip install mano
 ```
 
 ## Initial setup
 To interact with Beiwe and download files you will need your Beiwe Research 
-Platform `url`, `username`, `password`, `access key`, and `secret key` in a 
-JSON file. Don't worry, we're going to eventually encrypt this file
+Platform `url`, `username`, `password`, `access key`, and `secret key`. You 
+can save these to environment variables (see below) or to a JSON file. Don't 
+worry, we're going to eventually encrypt this file
 
 ```json
 {
@@ -95,7 +80,7 @@ for generating) to a special `SECRETS` section
 
 I'm guessing that you don't want this file sitting around in plain text, so for 
 now this entire JSON blob **must** be passphrase protected using the `crypt.py` 
-utility from the `encrypt` library which should be automatically installed along 
+utility from the `cryptease` library which should be automatically installed along 
 with the `mano` package
 
 ```bash

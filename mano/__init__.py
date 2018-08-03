@@ -9,10 +9,10 @@ import logging
 import zipfile
 import requests
 import getpass as gp
-import encrypt as enc
 import datetime as dt
 import tempfile as tf
 import lxml.html as html
+import cryptease as crypt
 import pkg_resources as res
 
 logger = logging.getLogger(__name__)
@@ -108,9 +108,9 @@ def keyring(deployment, keyring_file='~/.nrg-keyring.enc', passphrase=None):
             passphrase = gp.getpass('enter keyring passphrase: ')
     keyring_file = os.path.expanduser(keyring_file)
     with open(keyring_file, 'rb') as fo:
-        key = enc.key_from_file(fo, passphrase)
+        key = crypt.key_from_file(fo, passphrase)
         content = b''
-        for chunk in enc.decrypt(fo, key):
+        for chunk in crypt.decrypt(fo, key):
             content += chunk
     try:
         js = json.loads(content)

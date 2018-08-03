@@ -8,5 +8,5 @@ requests = {extras = ["security"]}
 lxml = "*"
 vcrpy = "*"
 pytest = "*"
-encrypt = {git = "https://github.com/harvard-nrg/encrypt.git"}
+cryptease = "*" 
 mano = {path = ".", editable = true}

@@ -22,7 +22,7 @@ before_install: |
   fi
 install:
   - pip install pipenv --upgrade
-  - pipenv install
+  - pipenv install --dev --skip-lock
 script:
   - pipenv run py.test tests/tests.py
 

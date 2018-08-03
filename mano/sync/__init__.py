@@ -14,7 +14,7 @@ import itertools
 import getpass as gp
 import tempfile as tf
 import datetime as dt
-import encrypt as enc
+import cryptease as crypt
 
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
@@ -252,8 +252,8 @@ def save(Keyring, archive, user_id, output_dir, lock=None, passphrase=None):
             # read archive member content and encrypt it if necessary
             content = archive.open(member)
             if encrypt:
-                key = enc.kdf(passphrase)
-                enc.encrypt(content, key, filename=target_abs)
+                key = crypt.kdf(passphrase)
+                crypt.encrypt(content, key, filename=target_abs)
             else:
                 # write content to persistent storage
                 _atomic_write(target_abs, content.read())
