@@ -71,7 +71,7 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
             logger.debug('waiting for next backfill interval')
             time.sleep(BACKFILL_INTERVAL_SLEEP)
         else:
-            _atomic_write(backfill_file, 'COMPLETE')
+            _atomic_write(backfill_file, 'COMPLETE'.encode(encoding))
             logger.info('backfill is complete')
 
 def download(Keyring, study_id, user_ids, data_streams=None,
