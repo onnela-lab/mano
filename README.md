@@ -86,6 +86,9 @@ with the `mano` package
 $ crypt.py --encrypt ~/.nrg-keyring.json --output-file ~/.nrg-keyring.enc
 ```
 
+I'll leave it up to the reader to decide where to produce the encrypted version 
+of this file, but I would highly recommend discarding the unencrypted version.
+
 ## API for keyring access
 Before making any API calls, you need to read in your keyring file. The first 
 parameter should be the name of the keyring section as shown above
