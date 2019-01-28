@@ -14,6 +14,7 @@ import itertools
 import getpass as gp
 import tempfile as tf
 import datetime as dt
+import dateutil.parser
 import cryptease as crypt
 
 BACKFILL_WINDOW = 5
@@ -109,7 +110,7 @@ def download(Keyring, study_id, user_ids, data_streams=None,
     url = Keyring['URL']
     # process start_time
     if time_start:
-        time_start = dt.datetime.strptime(time_start, mano.TIME_FORMAT)
+        time_start = dateutil.parser.parse(time_start)
     else:
         epoch = time.gmtime(0)
         time_start = dt.datetime(epoch.tm_year, 
@@ -117,7 +118,7 @@ def download(Keyring, study_id, user_ids, data_streams=None,
                                  epoch.tm_mday)
     # process end_time
     if time_end:
-        time_end = dt.datetime.strptime(time_end, mano.TIME_FORMAT)
+        time_end = dateutil.parser.parse(time_end)
     else:
         time_end = dt.datetime.today()
     # sanity check start and end times
@@ -181,7 +182,7 @@ def _window(timestamp, window):
     Generate a backfill window (start, stop, and resume)
     '''
     # parse the input timestamp into a datetime object
-    win_start = dt.datetime.strptime(timestamp, mano.TIME_FORMAT)
+    win_start = dateutil.parser.parse(timestamp)
     # by default, the download window will *stop* at `win_start` + `window`, 
     # and the next *resume* point will be the same...
     win_stop = win_start + dt.timedelta(days=window)

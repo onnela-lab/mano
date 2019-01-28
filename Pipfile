@@ -9,4 +9,5 @@ lxml = "*"
 vcrpy = "*"
 pytest = "*"
 cryptease = "*" 
+python-dateutil = "*"
 mano = {path = ".", editable = true}
