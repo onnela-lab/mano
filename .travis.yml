@@ -7,7 +7,7 @@ matrix:
       python: 3.6
     - os: osx
       language: generic
-      env: PYTHON=2.7
+      env: PYTHON=2.7.10
     - os: osx
       language: generic
       env: PYTHON=3.6.6
