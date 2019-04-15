@@ -154,7 +154,10 @@ def expand_study_id(Keyring, segment):
     for study_name,study_id in studies(Keyring):
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
-    if len(ids) == 1:
+    if not ids:
+        logger.warn('no study was found for study id segment {0}'.format(segment))
+        return None
+    elif len(ids) == 1:
         return ids[0]
     elif len(ids) > 1:
         raise AmbiguousStudyIDError('study id is not unique enough {0}'.format(segment))
