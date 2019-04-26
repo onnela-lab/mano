@@ -37,7 +37,7 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
     # backfill continuously until this function finally returns
     while True:
         # read backfill state from file
-        backfill_file = os.path.join(output_dir, '.backfill')
+        backfill_file = os.path.join(output_dir, user_id, '.backfill')
         logger.debug('reading backfill file %s', backfill_file)
         with open(backfill_file, 'a+') as fo:
             fo.seek(0)
@@ -260,7 +260,7 @@ def save(Keyring, archive, user_id, output_dir, lock=None, passphrase=None):
                 _atomic_write(target_abs, content.read())
             num_saved += 1
         # update local registry file to avoid re-downloading these files
-        local_registry_file = os.path.join(output_dir, '.registry')
+        local_registry_file = os.path.join(output_dir, user_id, '.registry')
         local_registry = dict()
         if os.path.exists(local_registry_file):
             with open(local_registry_file, 'r') as fo:
