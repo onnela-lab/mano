@@ -27,11 +27,13 @@ logger = logging.getLogger(__name__)
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_DATE,
-             lock=None, passphrase=None):
+             data_streams=None, lock=None, passphrase=None):
     '''
     Backfill a user (participant)
     '''
     encoding = locale.getpreferredencoding()
+    if not data_streams:
+        data_streams = mano.DATA_STREAMS
     if not os.path.exists(output_dir):
         _makedirs(output_dir, umask=0o077)
     # backfill continuously until this function finally returns
@@ -59,7 +61,7 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
         archive = download(Keyring,
                            study_id,
                            [user_id],
-                           mano.DATA_STREAMS,
+                           data_streams,
                            progress=3*1024,
                            time_start=start,
                            time_end=stop)
@@ -137,7 +139,7 @@ def download(Keyring, study_id, user_ids, data_streams=None,
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
-    logger.debug('payload >\n%s', json.dumps(_masked_payload(payload), indent=2))
+    #logger.debug('payload >\n%s', json.dumps(_masked_payload(payload), indent=2))
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None
