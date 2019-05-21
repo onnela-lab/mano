@@ -40,7 +40,7 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
     while True:
         # read backfill state from file
         backfill_file = os.path.join(output_dir, user_id, '.backfill')
-        logger.debug('reading backfill file %s', backfill_file)
+        logger.info('reading backfill file %s', backfill_file)
         with open(backfill_file, 'a+') as fo:
             fo.seek(0)
             timestamp = fo.read().strip()
