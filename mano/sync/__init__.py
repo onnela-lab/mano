@@ -58,13 +58,15 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
         start,stop,resume = _window(timestamp, BACKFILL_WINDOW)
         logger.info('processing window is [%s, %s]', start, stop)
         # download window of data
-        archive = download(Keyring,
-                           study_id,
-                           [user_id],
-                           data_streams,
-                           progress=3*1024,
-                           time_start=start,
-                           time_end=stop)
+        archive = download(
+            Keyring,
+            study_id,
+            [user_id],
+            data_streams,
+            progress=3*1024,
+            time_start=start,
+            time_end=stop
+        )
         # save data
         num_saved = save(Keyring, archive, user_id, output_dir, lock, passphrase)
         logger.info('saved %s files', num_saved)
@@ -139,7 +141,7 @@ def download(Keyring, study_id, user_ids, data_streams=None,
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
-    #logger.debug('payload >\n%s', json.dumps(_masked_payload(payload), indent=2))
+    logger.debug('payload >\n%s', json.dumps(_masked_payload(payload), indent=2))
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None
@@ -170,6 +172,8 @@ def download(Keyring, study_id, user_ids, data_streams=None,
                                    suffix='.zip', delete=False) as fo:
                 content.seek(0)
                 fo.write(content.read())
+                fo.flush()
+                os.fsync(fo.fileno())
         raise DownloadError('bad zip file written to {0}'.format(fo.name))
     return zf
 
@@ -292,7 +296,7 @@ def _makedirs(path, umask=None, exist_ok=True):
     if umask != None:
         os.umask(umask)
 
-def _masked_payload(p, keys=['secret_key', 'access_key']):
+def _masked_payload(p, keys=['registry', 'secret_key', 'access_key']):
     '''
     Copy and mask a request payload to safely print to console
 
