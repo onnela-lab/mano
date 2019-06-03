@@ -141,7 +141,6 @@ def download(Keyring, study_id, user_ids, data_streams=None,
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
-    logger.debug('payload >\n%s', json.dumps(_masked_payload(payload), indent=2))
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None
