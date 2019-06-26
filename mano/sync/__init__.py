@@ -259,7 +259,12 @@ def save(Keyring, archive, user_id, output_dir, lock=None, passphrase=None):
             content = archive.open(member)
             if encrypt:
                 key = crypt.kdf(passphrase)
-                crypt.encrypt(content, key, filename=target_abs)
+                crypt.encrypt(
+                    content,
+                    key,
+                    filename=target_abs,
+                    permissions=0o0644
+                )
             else:
                 # write content to persistent storage
                 _atomic_write(target_abs, content.read())
