@@ -39,7 +39,10 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
     # backfill continuously until this function finally returns
     while True:
         # read backfill state from file
-        backfill_file = os.path.join(output_dir, user_id, '.backfill')
+        user_dir = os.path.join(output_dir, user_id)
+        if not os.path.exists(user_dir):
+            _makedirs(user_dir)
+        backfill_file = os.path.join(user_dir, '.backfill')
         logger.info('reading backfill file %s', backfill_file)
         with open(backfill_file, 'a+') as fo:
             fo.seek(0)
@@ -141,6 +144,12 @@ def download(Keyring, study_id, user_ids, data_streams=None,
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
+    logger.debug('payload contains')
+    logger.debug('study_id={0}'.format(study_id))
+    logger.debug('user_ids={0}'.format(user_ids))
+    logger.debug('data_streams={0}'.format(data_streams))
+    logger.debug('time_start={0}'.format(time_start.strftime(mano.TIME_FORMAT)))
+    logger.debug('time_end={0}'.format(time_end.strftime(mano.TIME_FORMAT)))
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None

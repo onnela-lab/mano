@@ -8,11 +8,11 @@ import argparse as ap
 
 logger = logging.getLogger('downloader')
 logging.basicConfig(level=logging.INFO)
-
+logging.getLogger('mano').setLevel(logging.DEBUG)
 def main():
     parser = ap.ArgumentParser('beiwe downloader script')
     parser.add_argument('--output-base', default='.')
-    parser.add_argument('--backfill-start', default='2018-01-01T00:00:00')
+    parser.add_argument('--backfill-start', default='2022-02-15T00:00:00')
     parser.add_argument('--keyring-section', default='beiwe.onnela')
     args = parser.parse_args()
 
@@ -22,7 +22,7 @@ def main():
         study_name,study_id = study
         for user_id in mano.users(Keyring, study_id):
             logger.info('downloading study=%s, user=%s', study_name, user_id)
-            output_folder = os.path.join(args.output_base, study_name, user_id)
+            output_folder = os.path.join(args.output_base, study_name)
             msync.backfill(Keyring, study_id, user_id, output_folder, start_date=args.backfill_start)
 
 if __name__ == '__main__':
