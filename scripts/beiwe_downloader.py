@@ -8,7 +8,7 @@ import argparse as ap
 
 logger = logging.getLogger('downloader')
 logging.basicConfig(level=logging.INFO)
-logging.getLogger('mano').setLevel(logging.DEBUG)
+
 def main():
     parser = ap.ArgumentParser('beiwe downloader script')
     parser.add_argument('--output-base', default='.')
