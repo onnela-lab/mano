@@ -18,6 +18,7 @@ import dateutil.parser
 import cryptease as crypt
 
 BACKFILL_WINDOW = 5
+BACKFILL_WINDOW_SMALL_DATA = 30
 BACKFILL_INTERVAL_SLEEP = 3
 BACKFILL_START_DATE = '2015-10-01T00:00:00'
 LOCK_EXT = '.lock'
@@ -26,8 +27,81 @@ logger = logging.getLogger(__name__)
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
+def backfill_study(
+    Keyring, study_id, output_dir, user_ids = None, 
+    start_date=BACKFILL_START_DATE, data_streams=None, lock=None, 
+    passphrase=None, backfill_window = BACKFILL_WINDOW
+):
+    '''Backfill data for all users in a study
+    
+    This function allows you to backfill for multiple users at a time. If no
+    user IDs are selected, the function attempts to download data for all users
+    on the server. If you use the defaults for start_date and backfill_window,
+    this function will run very slow. You can fix this by using a start_date
+    closer to what you think the minimum day for data is, and by increasing the
+    value of backfill_window. In addition, the function will run a lot faster
+    if you download only the data streams you need. 
+    
+    :param Keyring: Keyring dictionary
+    :type Keyring: dict
+    :param study_id: Study ID
+    :type study_id: str
+    :param output_dir: Directory to write raw data to
+    :type output_dir: str
+    :param user_ids: Subject IDs
+    :type user_ids: list
+    :param start_date: Earliest day to check for data on the server; YYYY-MM-DD
+    :type start_date: str
+    :param data_streams: Data streams to download
+    :type data_streams: list
+    :param lock: Data streams to lock, if desired
+    :type lock: list
+    :param passphrase: Passphrase to use to lock any locked data streams
+    :type passphrase: str
+    :param backfill_window: Number of days to attempt to download at once
+    :type backfill_window: int
+    :returns: Writes raw data to output_dir
+    :rtype: None'''
+    if user_ids is None:
+        logger.info('Obtaining list of users...')
+        num_tries = 0
+        # Put this inside a for loop to catch any errors due to internet connection
+        while num_tries < 5:
+            try:
+                user_ids = [u for u in mano.users(Keyring, study_id)]
+                num_tries = 6
+            except KeyboardInterrupt:
+                logger.info("Someone closed the program")
+                sys.exit()
+            except requests.exceptions.ChunkedEncodingError:
+                logger.warning(f'Network failed in obtaining list of users"'
+                               f'", try {num_tries}')
+            num_tries = num_tries + 1
+    if user_ids is None: #the function never successfully ran.
+        logger.error("Unable to obtain user IDs from server")
+        return
+    for user_id in user_ids:
+        download_success = False
+        num_tries = 0
+        while not download_success:
+            try:
+                backfill(Keyring, study_id, user_id, output_dir, start_date, 
+                data_streams, lock, passphrase, backfill_window)
+                download_success = True
+            except requests.exceptions.ChunkedEncodingError:
+                logger.warning(f'Network failed in download of {user_id}, try {num_tries}')
+            except KeyboardInterrupt:
+                logger.info("Someone closed the program")
+                sys.exit()
+            num_tries = num_tries + 1
+            if num_tries > 5:
+                download_success = True
+                logger.warning("Too many failures; skipping user %s", user_id)
+    
+
 def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_DATE,
-             data_streams=None, lock=None, passphrase=None):
+             data_streams=None, lock=None, passphrase=None, 
+             backfill_window = BACKFILL_WINDOW):
     '''
     Backfill a user (participant)
     '''
@@ -58,7 +132,7 @@ def backfill(Keyring, study_id, user_id, output_dir, start_date=BACKFILL_START_D
             timestamp = start_date
             logger.debug('no backfill timestamp found, using: %s', timestamp)
         # get download window and next resume point
-        start,stop,resume = _window(timestamp, BACKFILL_WINDOW)
+        start,stop,resume = _window(timestamp, backfill_window)
         logger.info('processing window is [%s, %s]', start, stop)
         # download window of data
         archive = download(
