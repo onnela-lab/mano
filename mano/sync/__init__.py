@@ -18,7 +18,6 @@ import dateutil.parser
 import cryptease as crypt
 
 BACKFILL_WINDOW = 5
-BACKFILL_WINDOW_SMALL_DATA = 30
 BACKFILL_INTERVAL_SLEEP = 3
 BACKFILL_START_DATE = '2015-10-01T00:00:00'
 LOCK_EXT = '.lock'
