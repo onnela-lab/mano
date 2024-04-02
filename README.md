@@ -113,7 +113,7 @@ functions defined within the `mano` module
 for study in mano.studies(Keyring):
     print(study)
 
-_,study_id = study # get the last printed study id
+_, study_id = study # get the last printed study id
 
 for user_id in mano.users(Keyring, study_id):
     print(user_id)
@@ -197,4 +197,3 @@ msync.backfill(Keyring, study_id, user_id, output_folder, start_date=start_date,
 
 Note that if you don't pass anything for the `lock` argument, you will not need 
 `passphrase` either.
-

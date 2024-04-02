@@ -210,7 +210,7 @@ def test_device_settings():
     #
     # At the moment, Beiwe does have an export_study_settings_file API endpoint,
     # but it's only accessible to users with site administration privileges.
-    '''
+    """
     cassette = os.path.join(CASSETTES, 'device_settings.yaml')
     filter_params = [
         ('access_key', Keyring['ACCESS_KEY']),
@@ -229,14 +229,14 @@ def test_device_settings():
         for setting in mano.device_settings(Keyring, '123'):
             ans.add(setting)
         assert ans == device_settings
-    '''
+    """
     pass
 
 def test_download():
-    '''
+    """
     The data used in this test (cassette) are real, but they were captured on a
     test phone from a test deployment of beiwe-backend.
-    '''
+    """
     cassette = os.path.join(CASSETTES, 'download.v1.yaml')
     filter_params = [
         ('access_key', Keyring['ACCESS_KEY']),
@@ -289,4 +289,3 @@ test_download.index = set([
     ('6y6s1w4g/gps/2018-06-16 05_00_00.csv', 3970320035),
     ('registry', 942145567)
 ])
-
