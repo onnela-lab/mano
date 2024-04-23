@@ -1,8 +1,11 @@
 import os
+
+import pytest
 import vcr
+
 import mano
 import mano.sync
-import pytest
+
 
 DIR = os.path.dirname(__file__)
 CASSETTES = os.path.join(DIR, 'cassettes')
@@ -17,6 +20,7 @@ Keyring = {
     'SECRET_KEY': 'SECRET_KEY'
 }
 
+
 def test_keyring():
     _environ = dict(os.environ)
     try:
@@ -27,6 +31,7 @@ def test_keyring():
     finally:
         os.environ.clear()
         os.environ.update(_environ)
+
 
 def test_keyring_wrong_password():
     _environ = dict(os.environ)
@@ -39,6 +44,7 @@ def test_keyring_wrong_password():
         os.environ.clear()
         os.environ.update(_environ)
 
+
 def test_keyring_missing_file():
     _environ = dict(os.environ)
     try:
@@ -49,6 +55,7 @@ def test_keyring_missing_file():
     finally:
         os.environ.clear()
         os.environ.update(_environ)
+
 
 def test_keyring_from_env():
     _environ = dict(os.environ)
@@ -64,6 +71,7 @@ def test_keyring_from_env():
         os.environ.clear()
         os.environ.update(_environ)
 
+
 def test_keyring_from_env_missing():
     _environ = dict(os.environ)  
     try:
@@ -77,6 +85,7 @@ def test_keyring_from_env_missing():
         os.environ.clear()
         os.environ.update(_environ)
 
+
 def test_studies():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
     filter_params = [
@@ -89,10 +98,11 @@ def test_studies():
     ])
     ans = set()
     with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         for study in mano.studies(Keyring):
             ans.add(study)
     assert ans == studies
+
 
 def test_users():
     cassette = os.path.join(CASSETTES, 'users.v1.yaml')
@@ -104,10 +114,11 @@ def test_users():
     users = set(["tgsidhm", "lholbc5", "yxzxtwr"])
     ans = set()
     with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         for user in mano.users(Keyring, 'STUDY_ID'):
             ans.add(user)
     assert ans == users
+
 
 def test_expand_study_id():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -117,10 +128,11 @@ def test_expand_study_id():
         ('study_id', 'STUDY_ID')
     ]
     with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         study = ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8')
         ans = mano.expand_study_id(Keyring, '123lrVdb0g6tf3PeJr5ZtZC8')
         assert ans == study
+
 
 def test_expand_study_id_conflict():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -130,9 +142,10 @@ def test_expand_study_id_conflict():
         ('study_id', 'STUDY_ID')
     ]
     with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         with pytest.raises(mano.AmbiguousStudyIDError):       
             _ = mano.expand_study_id(Keyring, '123')
+
 
 def test_expand_study_id_nomatch():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -142,9 +155,10 @@ def test_expand_study_id_nomatch():
         ('study_id', 'STUDY_ID')
     ]
     with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         ans = mano.expand_study_id(Keyring, '321')
-        assert ans == None
+        assert ans is None
+
 
 def test_studyid():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -155,9 +169,10 @@ def test_studyid():
     ]
     studyid = '123lrVdb0g6tf3PeJr5ZtZC8'
     with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         ans = mano.studyid(Keyring, 'Project A')
         assert ans == studyid
+
 
 def test_studyid_not_found():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -167,9 +182,10 @@ def test_studyid_not_found():
         ('study_id', 'STUDY_ID')
     ]
     with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         with pytest.raises(mano.StudyIDError):
             _ = mano.studyid(Keyring, 'Project X')
+
 
 def test_studyname():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -180,9 +196,10 @@ def test_studyname():
     ]
     studyname = 'Project A'
     with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         ans = mano.studyname(Keyring, '123lrVdb0g6tf3PeJr5ZtZC8')
         assert ans == studyname
+
 
 def test_studyname_not_found():
     cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
@@ -191,11 +208,12 @@ def test_studyname_not_found():
         ('secret_key', Keyring['SECRET_KEY']),
         ('study_id', 'STUDY_ID')
     ]
-    studyname = 'Project X'
+    # studyname = 'Project X'
     with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         with pytest.raises(mano.StudyNameError):
             _ = mano.studyname(Keyring, 'x')
+
 
 def test_device_settings():
     # The device_settings function is implemented by programmatically logging
@@ -224,13 +242,13 @@ def test_device_settings():
         ('accelerometer_on_duration_seconds', '10')
     ])
     with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params) as cass:
+                          filter_post_data_parameters=filter_params):
         ans = set()
         for setting in mano.device_settings(Keyring, '123'):
             ans.add(setting)
         assert ans == device_settings
     """
-    pass
+
 
 def test_download():
     """
@@ -244,8 +262,13 @@ def test_download():
         ('study_id', 'STUDY_ID'),
         ('user_ids', 'USER_ID')
     ]
-    with vcr.use_cassette(cassette,
-                          filter_post_data_parameters=filter_params) as cass:
+    
+    # urllib3 2.0.0+ causes the downloaded file to be 97,409 bytes instead of 443,610 bytes, and
+    # ZipFile throws a BadZipFile exception. (Unable to find a valid end of central directory
+    # structure). I don't even know how to begin debugging this, so I have to pin urllib3 to an
+    # older version.
+    
+    with vcr.use_cassette(cassette, filter_post_data_parameters=filter_params):
         zf = mano.sync.download(Keyring,
                                 study_id='STUDY_ID',
                                 user_ids=['USER_ID'],
@@ -256,6 +279,8 @@ def test_download():
         for zinfo in zf.infolist():
             ans.add((zinfo.filename, zinfo.CRC))
         assert ans == test_download.index
+
+
 test_download.index = set([
     ('6y6s1w4g/identifiers/2018-06-15 16_00_00.csv', 4113954587),
     ('6y6s1w4g/gps/2018-06-15 22_00_00.csv', 3073924694),

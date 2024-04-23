@@ -73,7 +73,7 @@ def backfill(
         
         # return immediately if backfill state file contains string COMPLETE
         if timestamp == 'COMPLETE':
-            logger.debug(f'no backfill is necessary')
+            logger.debug('no backfill is necessary')
             return
         
         # if there is no backfill state, default to start_date
@@ -143,6 +143,7 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
         time_end: datetime = dateutil.parser.parse(time_end)
     else:
         time_end: datetime = datetime.today()
+    
     # sanity check start and end times
     if time_start > time_end:
         raise DownloadError(f'start time {time_start} is after end time {time_end}')
@@ -180,13 +181,16 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
         sys.stdout.write('reading response data: ')
         sys.stdout.flush()
     meter = 0
-    chunk_size = 1024
+    
+    chunk_size = 1024 * 64
     content = io.BytesIO()  # temporary storage for response content, required to use ZipFile
+    
+    # chunk_size may not be respected, at least in more recent versions of requests.
     for chunk in resp.iter_content(chunk_size=chunk_size):
         if progress and meter >= progress:
             sys.stdout.write(next(spinner))
             sys.stdout.flush()
-            sys.stdout.write('\b')
+            # sys.stdout.write('\b')  # this code was here already, but it seems... clearly wrong?
             meter = 0
         content.write(chunk)
         meter += chunk_size
@@ -269,7 +273,8 @@ def save(Keyring: Dict[str, str], archive: zipfile.ZipFile, user_id: str, output
                 continue
             
             # debugging get information about the current archive member
-            info = archive.getinfo(member)
+            # info = archive.getinfo(member)
+            
             # parse the data type determine if it should be encrypted
             encrypt = _parse_datatype(member, user_id) in lock
             logger.debug(f'processing archive member: {member} (lock={encrypt})')
@@ -317,7 +322,7 @@ def _makedirs(path: str, umask: int = None, exist_ok: bool = True):
     """
     Create directories recursively with a temporary umask
     """
-    if umask != None:
+    if umask is None:
         umask = os.umask(umask)
     try:
         os.makedirs(path)
@@ -326,7 +331,7 @@ def _makedirs(path: str, umask: int = None, exist_ok: bool = True):
             pass
         else:
             raise e
-    if umask != None:
+    if umask is None:
         os.umask(umask)
 
 

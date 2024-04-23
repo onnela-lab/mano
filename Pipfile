@@ -4,12 +4,27 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
-vcrpy = "*"
+vcrpy = "*" #"4.4.0"
 pytest = "*"
+pipenv = "*"
+ipython = "*"
 
 [packages]
 requests = {extras = ["security"]}
-lxml = "*"
 cryptease = "*" 
 python-dateutil = "*"
 mano = {path = ".", editable = true}
+
+# urllib3 2.0.0+ causes the download files test to fail in an obscure way. The first download
+# changes from 443,610 bytes to 97,409 bytes, and ZipFile throws a BadZipFile exception.
+# pinning to the last 1.x version for now? absolutely no ida why this is happening or how to fix it.
+urllib3 = "1.26.18"
+
+# lxml causes this insane import error on mac os if the version is not pinned.
+# mano/__init__.py:11: in <module>
+#     import lxml.html as html
+# ../../.pyenv/versions/3.8.18/envs/mano/lib/python3.8/site-packages/lxml/html/__init__.py:49: in <module>
+#     from .. import etree
+# ImportError: dlopen(blahblahblah/site-packages/lxml/etree.cpython-38-darwin.so, 0x0002): symbol not found in flat namespace '_exsltDateXpathCtxtRegister'
+# pinning to 4.9.4
+lxml = "==4.9.4"
