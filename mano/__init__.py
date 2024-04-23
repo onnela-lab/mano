@@ -67,7 +67,7 @@ def interval(x: str) -> int:
     return ((now + offset) - now).total_seconds()
 
 
-def studies(Keyring: Dict[str, str]) -> Generator(Tuple[str, str], None, None):
+def studies(Keyring: Dict[str, str]) -> Generator[Tuple[str, str], None, None]:
     """
     Request a list of studies
     """
@@ -154,7 +154,7 @@ def expand_study_id(Keyring: Dict[str, str], segment: str) -> Optional[Tuple[str
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
     if not ids:
-        logger.warn(f'no study was found for study id segment {segment}')
+        logger.warning(f'no study was found for study id segment {segment}')
         return None
     elif len(ids) == 1:
         return ids[0]
