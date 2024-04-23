@@ -39,14 +39,14 @@ class WriteError(Exception): pass
 
 
 def backfill(
-        Keyring: Dict[str],
+        Keyring: Dict[str, str],
         study_id: str,
         user_id: str,
         output_dir: str,
         start_date: str = BACKFILL_START_DATE,
         data_streams: List[str] = None,
         lock: List = None,
-        passphrase: str = None
+        passphrase: str = None,
     ):
     """
     Backfill a user (participant)
@@ -133,10 +133,11 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
     
     # process start_time
     if time_start:
-        time_start: datetime dateutil.parser.parse(time_start)
+        time_start: datetime = dateutil.parser.parse(time_start)
     else:
         epoch = time.gmtime(0)
         time_start: datetime = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
+    
     # process end_time
     if time_end:
         time_end: datetime = dateutil.parser.parse(time_end)
@@ -158,6 +159,7 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
+    
     # logs
     logger.debug('payload contains')
     logger.debug(f'study_id={study_id}')
@@ -165,7 +167,7 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
     logger.debug(f'data_streams={data_streams}')
     logger.debug(f'time_start={time_start.strftime(mano.TIME_FORMAT)}')
     logger.debug(f'time_end={time_end.strftime(mano.TIME_FORMAT)}')
-
+    
     # submit download request    
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
