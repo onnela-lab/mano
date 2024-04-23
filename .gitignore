@@ -4,5 +4,6 @@
 *.lock
 *.pyc
 *.swp
-.DS_Store
+*.DS_Store
 .pytest_cache
+.python-version
