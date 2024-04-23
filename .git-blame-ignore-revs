@@ -1,0 +1,5 @@
+# Run this command (once) to always ignore formatting commits in `git blame`
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# moved the mano.py and sync.py files from oddly structured __init__.py files
+383f0652f80970ba44dfc356031b1bb49da777d4
