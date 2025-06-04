@@ -7,3 +7,5 @@
 *.DS_Store
 .pytest_cache
 .python-version
+
+mano.egg-info/
