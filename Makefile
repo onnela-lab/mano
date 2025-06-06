@@ -1,10 +1,9 @@
 init:
-	pip install pipenv --upgrade
-	pipenv install --dev --skip-lock
+	pip install --upgrade pip
+	pip install .[dev]
 test:
-	pipenv run py.test tests/test.py
+	pytest tests/tests.py
 publish:
-	pip install 'twine>=1.5.0'
-	python setup.py sdist bdist_wheel --universal
+	python -m build
 	twine upload dist/*
 	rm -fr build dist .egg mano.egg-info
