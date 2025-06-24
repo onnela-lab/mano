@@ -1,6 +1,0 @@
-__title__ = 'mano'
-__description__ = 'Python API for Beiwe Research Platform'
-__url__ = 'https://www.neuroinfo.org'
-__version__ = '0.5.3'
-__author__ = 'Onnela Lab'
-__author_email__ = 'biblicabeebli@gmail.com'

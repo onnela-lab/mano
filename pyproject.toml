@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mano"
+version = "0.5.3"
+description = "Python API for Beiwe Research Platform"
+authors = [
+    {name = "Onnela Lab", email = "onnela.lab@gmail.com"}
+]
+maintainers = [
+    {name = "Onnela Lab", email = "onnela.lab@gmail.com"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.11"
+dependencies = [
+    "cryptease",
+    "lxml",
+    "python-dateutil",
+    "requests",
+    # Pinning to the last 1.x version for now. The root cause of this issue is currently unknown. Further investigation is required.
+    # Higher versions (2.0.0+) cause file download inconsistencies in tests, leading to `BadZipFile` exceptions.
+    "urllib3==1.26.20"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://onnela-lab.github.io/mano"
+Issues = "https://github.com/onnela-lab/mano/issues"
+Source = "https://github.com/onnela-lab/mano"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "twine",
+    "vcrpy"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mano*"]
