@@ -1,6 +1,6 @@
 Mano
 ====
-[![Build Status](https://app.travis-ci.com/harvard-nrg/mano.svg?branch=main)](https://app.travis-ci.com/harvard-nrg/mano)
+[![CI](https://github.com/onnela-lab/mano/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/onnela-lab/mano/actions/workflows/ci.yml)
 
 Mano is a simple Python library that lets you write applications that interact 
 with the [Beiwe Research Platform](https://www.hsph.harvard.edu/onnela-lab/beiwe-research-platform/). 
