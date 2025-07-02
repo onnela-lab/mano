@@ -2,13 +2,14 @@
 *.mp4
 *.csv
 *.lock
-*.pyc
 *.swp
 *.DS_Store
+
+__pycache__/
 .pytest_cache
 .python-version
 .venv/
-.vscode/
-
 build/
 mano.egg-info/
+
+.vscode/
