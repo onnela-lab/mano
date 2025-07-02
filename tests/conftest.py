@@ -38,7 +38,7 @@ def mock_zip_data():
         zip_file.writestr('6y6s1w4g/identifiers/2018-06-15 16_00_00.csv',
                           identifier_content)
 
-        # Add all GPS files from the original test_download.index
+        # Add GPS files based on the original cassette data
         gps_files = [
             '2018-06-15 16_00_00.csv', '2018-06-15 17_00_00.csv',
             '2018-06-15 18_00_00.csv', '2018-06-15 19_00_00.csv',
