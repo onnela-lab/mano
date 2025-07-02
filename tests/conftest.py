@@ -8,10 +8,22 @@ import pytest
 
 
 @pytest.fixture
+def keyring():
+    """Fixture providing test credentials for Beiwe API authentication."""
+    return {
+        'URL': 'https://studies.beiwe.org',
+        'USERNAME': 'foobar',
+        'PASSWORD': 'bizbat',
+        'ACCESS_KEY': 'ACCESS_KEY',
+        'SECRET_KEY': 'SECRET_KEY'
+    }
+
+
+@pytest.fixture
 def mock_zip_data():
     """Create a mock zip file response for download testing"""
     zip_buffer = io.BytesIO()
-    
+
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         # Add identifier file
         identifier_content = (
@@ -25,7 +37,7 @@ def mock_zip_data():
         )
         zip_file.writestr('6y6s1w4g/identifiers/2018-06-15 16_00_00.csv',
                           identifier_content)
-        
+
         # Add all GPS files from the original test_download.index
         gps_files = [
             '2018-06-15 16_00_00.csv', '2018-06-15 17_00_00.csv',
@@ -44,17 +56,17 @@ def mock_zip_data():
             '2018-06-16 18_00_00.csv', '2018-06-16 19_00_00.csv',
             '2018-06-16 20_00_00.csv'
         ]
-        
+
         gps_content = (
             "timestamp,UTC time,latitude,longitude,altitude,"
             "accuracy\n"
             "1529100313864,2018-06-15T22:05:13.864,42.3805588,"
             "-71.1149213,0.0,19.521\n"
         )
-        
+
         for gps_file in gps_files:
             zip_file.writestr(f'6y6s1w4g/gps/{gps_file}', gps_content)
-        
+
         # Add registry file with more realistic content
         registry_content = (
             '{"CHUNKED_DATA/fiaKUCTtfqH5oQ4tz8V6LWiF/6y6s1w4g/'
@@ -62,6 +74,6 @@ def mock_zip_data():
             '==\\n", "version": "1.0"}'
         )
         zip_file.writestr('registry', registry_content)
-    
+
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
