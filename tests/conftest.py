@@ -5,6 +5,7 @@ import io
 import zipfile
 
 import pytest
+import responses
 
 
 @pytest.fixture
@@ -77,3 +78,17 @@ def mock_zip_data():
 
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
+
+
+@pytest.fixture
+def mock_download_api(mock_zip_data):
+    """Fixture that sets up the mock API endpoint for download testing."""
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=mock_zip_data,
+            status=200,
+            content_type='application/zip'
+        )
+        yield rsps

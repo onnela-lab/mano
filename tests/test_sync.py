@@ -3,23 +3,11 @@ Tests for mano.sync module download functionality.
 """
 import zipfile
 
-import responses
-
 import mano.sync
 
 
-@responses.activate
-def test_download_returns_zipfile(mock_zip_data, keyring):
+def test_download_returns_zipfile(mock_download_api, keyring):
     """Test that download function returns a ZipFile object."""
-    # Mock the API endpoint
-    responses.add(
-        responses.POST,
-        'https://studies.beiwe.org/get-data/v1',
-        body=mock_zip_data,
-        status=200,
-        content_type='application/zip'
-    )
-
     # Call the download function
     zf = mano.sync.download(keyring,
                             study_id='STUDY_ID',
@@ -32,18 +20,8 @@ def test_download_returns_zipfile(mock_zip_data, keyring):
     assert isinstance(zf, zipfile.ZipFile)
 
 
-@responses.activate
-def test_download_file_count(mock_zip_data, keyring):
+def test_download_file_count(mock_download_api, keyring):
     """Test that download returns the expected number of files."""
-    # Mock the API endpoint
-    responses.add(
-        responses.POST,
-        'https://studies.beiwe.org/get-data/v1',
-        body=mock_zip_data,
-        status=200,
-        content_type='application/zip'
-    )
-
     # Call the download function
     zf = mano.sync.download(keyring,
                             study_id='STUDY_ID',
@@ -60,18 +38,8 @@ def test_download_file_count(mock_zip_data, keyring):
     assert len(file_names) == 31
 
 
-@responses.activate
-def test_download_contains_expected_files(mock_zip_data, keyring):
+def test_download_contains_expected_files(mock_download_api, keyring):
     """Test that download contains expected identifier and registry files."""
-    # Mock the API endpoint
-    responses.add(
-        responses.POST,
-        'https://studies.beiwe.org/get-data/v1',
-        body=mock_zip_data,
-        status=200,
-        content_type='application/zip'
-    )
-
     # Call the download function
     zf = mano.sync.download(keyring,
                             study_id='STUDY_ID',
@@ -93,18 +61,8 @@ def test_download_contains_expected_files(mock_zip_data, keyring):
         assert expected_file in file_names
 
 
-@responses.activate
-def test_download_gps_files(mock_zip_data, keyring):
+def test_download_gps_files(mock_download_api, keyring):
     """Test that download contains the expected GPS files."""
-    # Mock the API endpoint
-    responses.add(
-        responses.POST,
-        'https://studies.beiwe.org/get-data/v1',
-        body=mock_zip_data,
-        status=200,
-        content_type='application/zip'
-    )
-
     # Call the download function
     zf = mano.sync.download(keyring,
                             study_id='STUDY_ID',
@@ -125,18 +83,8 @@ def test_download_gps_files(mock_zip_data, keyring):
     assert any('2018-06-16' in f for f in gps_files)
 
 
-@responses.activate
-def test_download_api_request(mock_zip_data, keyring):
+def test_download_api_request(mock_download_api, keyring):
     """Test that download makes the correct API request."""
-    # Mock the API endpoint
-    responses.add(
-        responses.POST,
-        'https://studies.beiwe.org/get-data/v1',
-        body=mock_zip_data,
-        status=200,
-        content_type='application/zip'
-    )
-
     # Call the download function
     mano.sync.download(keyring,
                        study_id='STUDY_ID',
@@ -146,8 +94,8 @@ def test_download_api_request(mock_zip_data, keyring):
                        time_end='2018-06-17T00:00:00')
 
     # Verify the API was called correctly
-    assert len(responses.calls) == 1
-    request = responses.calls[0].request
+    assert len(mock_download_api.calls) == 1
+    request = mock_download_api.calls[0].request
 
     # Check that the request contains expected parameters
     assert 'access_key=ACCESS_KEY' in request.body
