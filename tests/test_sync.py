@@ -98,8 +98,7 @@ def test_download_api_request(mock_download_api, keyring):
     request = mock_download_api.calls[0].request
 
     # Check that the request contains expected parameters
-    body = request.body.decode('utf-8')
-    assert 'access_key=ACCESS_KEY' in body
-    assert 'secret_key=SECRET_KEY' in body
-    assert 'study_id=STUDY_ID' in body
-    assert 'user_ids=USER_ID' in body
+    assert 'access_key=ACCESS_KEY' in request.body
+    assert 'secret_key=SECRET_KEY' in request.body
+    assert 'study_id=STUDY_ID' in request.body
+    assert 'user_ids=USER_ID' in request.body
