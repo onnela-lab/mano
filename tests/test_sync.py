@@ -66,9 +66,7 @@ def test_download_contains_expected_files_with_correct_crcs(
     }
 
     # Verify that the CRC values match exactly
-    assert filtered_actual_files == expected_files_from_original, \
-        f"CRC mismatch. Expected: {expected_files_from_original}, " \
-        f"Got: {filtered_actual_files}"
+    assert filtered_actual_files == expected_files_from_original
 
 
 def test_download_gps_files(mock_download_api, keyring):
