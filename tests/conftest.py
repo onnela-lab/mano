@@ -22,7 +22,7 @@ def keyring():
 @pytest.fixture
 def mock_zip_data():
     """Create a mock zip file response using the original ZIP file.
-    
+
     This fixture uses the extracted download.v1.zip to provide test data with
     the exact same content and CRC values as the original download,
     eliminating the need for VCR.py dependencies.
@@ -31,7 +31,7 @@ def mock_zip_data():
     original_zip_file = os.path.join(
         os.path.dirname(__file__), 'data', 'download.v1.zip'
     )
-    
+
     with open(original_zip_file, 'rb') as f:
         return f.read()
 
@@ -53,7 +53,7 @@ def mock_download_api(mock_zip_data):
 @pytest.fixture
 def expected_download_files():
     """Expected files and CRC values from the original download.
-    
+
     These values represent what we expect the download function to return
     based on the original API response captured in the cassette.
     """

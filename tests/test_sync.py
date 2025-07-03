@@ -30,8 +30,9 @@ def test_download_file_count(mock_download_api, keyring):
                             time_start='2018-06-15T00:00:00',
                             time_end='2018-06-17T00:00:00')
 
-    # Get the list of files in the zip
-    file_names = [zinfo.filename for zinfo in zf.infolist()]
+    # Get the list of files in the zip (excluding directory entries)
+    file_names = [zinfo.filename for zinfo in zf.infolist()
+                  if not zinfo.filename.endswith('/')]
 
     # Verify we have the expected total number of files
     # (29 GPS + 1 identifier + 1 registry = 31)
@@ -80,8 +81,9 @@ def test_download_gps_files(mock_download_api, keyring):
                             time_start='2018-06-15T00:00:00',
                             time_end='2018-06-17T00:00:00')
 
-    # Get the list of files in the zip
-    file_names = [zinfo.filename for zinfo in zf.infolist()]
+    # Get the list of files in the zip (excluding directory entries)
+    file_names = [zinfo.filename for zinfo in zf.infolist()
+                  if not zinfo.filename.endswith('/')]
 
     # Verify GPS files are present - should have 29 GPS files
     gps_files = [f for f in file_names if 'gps' in f]
