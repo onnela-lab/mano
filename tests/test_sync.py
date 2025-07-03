@@ -54,19 +54,14 @@ def test_download_contains_expected_files_with_correct_crcs(
     # Get the actual files and their CRC values from the zip
     actual_files = {(zinfo.filename, zinfo.CRC) for zinfo in zf.infolist()}
 
-    # Expected files and CRC values from the original download
-    # These values are defined in conftest.py based on the original
-    # API response
-    expected_files_from_original = expected_download_files
-
-    # Filter actual files to only include the ones we expect
+    # Filter actual files to only include expected ones (excludes directories)
     filtered_actual_files = {
         (filename, crc) for filename, crc in actual_files
-        if filename in {f for f, _ in expected_files_from_original}
+        if filename in {f for f, _ in expected_download_files}
     }
 
     # Verify that the CRC values match exactly
-    assert filtered_actual_files == expected_files_from_original
+    assert filtered_actual_files == expected_download_files
 
 
 def test_download_gps_files(mock_download_api, keyring):
