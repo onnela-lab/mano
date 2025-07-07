@@ -3,6 +3,10 @@ Tests for mano.sync module download functionality.
 """
 import zipfile
 
+import pytest
+import requests
+import responses
+
 import mano.sync
 
 
@@ -106,3 +110,114 @@ def test_download_api_request(mock_download_api, keyring):
     assert 'secret_key=SECRET_KEY' in request.body
     assert 'study_id=STUDY_ID' in request.body
     assert 'user_ids=USER_ID' in request.body
+
+
+def test_download_network_error_during_streaming(keyring):
+    """Test that download handles network errors during response streaming."""
+    with responses.RequestsMock() as rsps:
+        # responses library can directly mock connection errors
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=requests.exceptions.ConnectionError("Network connection lost")
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError,
+                           match="Network connection lost"):
+            mano.sync.download(keyring,
+                               study_id='STUDY_ID',
+                               user_ids=['USER_ID'],
+                               data_streams=['identifiers', 'gps'],
+                               time_start='2018-06-15T00:00:00',
+                               time_end='2018-06-17T00:00:00')
+
+
+def test_download_timeout_error(keyring):
+    """Test that download handles timeout errors."""
+    with responses.RequestsMock() as rsps:
+        # responses can directly mock timeout exceptions
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=requests.exceptions.Timeout("Request timed out")
+        )
+
+        with pytest.raises(requests.exceptions.Timeout,
+                           match="Request timed out"):
+            mano.sync.download(
+                keyring,
+                study_id='STUDY_ID',
+                user_ids=['USER_ID'],
+                data_streams=['identifiers', 'gps'],
+                time_start='2018-06-15T00:00:00',
+                time_end='2018-06-17T00:00:00'
+            )
+
+
+def test_download_partial_content_then_error(keyring):
+    """Test download with ChunkedEncodingError."""
+    with responses.RequestsMock() as rsps:
+        # responses can mock ChunkedEncodingError directly
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=requests.exceptions.ChunkedEncodingError(
+                "Connection broken: Invalid chunk encoding"
+            )
+        )
+
+        with pytest.raises(requests.exceptions.ChunkedEncodingError,
+                           match="Connection broken"):
+            mano.sync.download(
+                keyring,
+                study_id='STUDY_ID',
+                user_ids=['USER_ID'],
+                data_streams=['identifiers', 'gps'],
+                time_start='2018-06-15T00:00:00',
+                time_end='2018-06-17T00:00:00'
+            )
+
+
+def test_download_http_error(keyring):
+    """Test download with HTTP error responses."""
+    with responses.RequestsMock() as rsps:
+        # Test 500 Internal Server Error
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            status=500,
+            body="Internal Server Error"
+        )
+
+        with pytest.raises(mano.sync.APIError,
+                           match="response not ok \\(500\\)"):
+            mano.sync.download(
+                keyring,
+                study_id='STUDY_ID',
+                user_ids=['USER_ID'],
+                data_streams=['identifiers', 'gps'],
+                time_start='2018-06-15T00:00:00',
+                time_end='2018-06-17T00:00:00'
+            )
+
+
+def test_download_connection_error(keyring):
+    """Test download with various connection errors."""
+    with responses.RequestsMock() as rsps:
+        # Test different types of connection errors
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=requests.exceptions.ConnectionError("Connection refused")
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError,
+                           match="Connection refused"):
+            mano.sync.download(
+                keyring,
+                study_id='STUDY_ID',
+                user_ids=['USER_ID'],
+                data_streams=['identifiers', 'gps'],
+                time_start='2018-06-15T00:00:00',
+                time_end='2018-06-17T00:00:00'
+            )
