@@ -19,10 +19,7 @@ dependencies = [
     "cryptease",
     "lxml",
     "python-dateutil",
-    "requests",
-    # Pinning to the last 1.x version for now. The root cause of this issue is currently unknown. Further investigation is required.
-    # Higher versions (2.0.0+) cause file download inconsistencies in tests, leading to `BadZipFile` exceptions.
-    "urllib3==1.26.20"
+    "requests"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -46,6 +43,7 @@ Source = "https://github.com/onnela-lab/mano"
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "responses",
     "twine",
     "vcrpy"
 ]
