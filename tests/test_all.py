@@ -93,9 +93,8 @@ def test_studies(keyring, mock_studies_response):
         ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8'),
         ('Project B', '123U93wwgS18aLDIwdYXTXsr')
     ])
-
     responses.post(
-        'https://studies.beiwe.org/get-studies/v1',
+        keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
         status=200,
         content_type='text/html; charset=utf-8'
@@ -123,18 +122,17 @@ def test_users():
     assert ans == users
 
 
-def test_expand_study_id():
-    cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY']),
-        ('study_id', 'STUDY_ID')
-    ]
-    with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params):
-        study = ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8')
-        ans = mano.expand_study_id(Keyring, '123lrVdb0g6tf3PeJr5ZtZC8')
-        assert ans == study
+@responses.activate
+def test_expand_study_id(keyring, mock_studies_response):
+    responses.post(
+        keyring['URL'] + '/get-studies/v1',
+        body=mock_studies_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    expected_study = ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8')
+    study = mano.expand_study_id(keyring, '123lrVdb0g6tf3PeJr5ZtZC8')
+    assert study == expected_study
 
 
 def test_expand_study_id_conflict():
