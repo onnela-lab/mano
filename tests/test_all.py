@@ -159,18 +159,17 @@ def test_expand_study_id_nomatch(keyring, mock_studies_response):
     assert study is None
 
 
-def test_studyid():
-    cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY']),
-        ('study_id', 'STUDY_ID')
-    ]
-    studyid = '123lrVdb0g6tf3PeJr5ZtZC8'
-    with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params):
-        ans = mano.studyid(Keyring, 'Project A')
-        assert ans == studyid
+@responses.activate
+def test_studyid(keyring, mock_studies_response):
+    responses.post(
+        keyring['URL'] + '/get-studies/v1',
+        body=mock_studies_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    expected_studyid = '123lrVdb0g6tf3PeJr5ZtZC8'
+    study_id = mano.studyid(keyring, 'Project A')
+    assert study_id == expected_studyid
 
 
 def test_studyid_not_found():
