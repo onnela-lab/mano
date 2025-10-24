@@ -90,3 +90,10 @@ def expected_download_files():
         ('6y6s1w4g/gps/2018-06-16 05_00_00.csv', 3970320035),
         ('registry', 942145567)
     }
+
+
+@pytest.fixture
+def mock_studies_response():
+    """Mock API response for get-studies/v1 from studies.v1.yaml cassette"""
+    return ('{"123lrVdb0g6tf3PeJr5ZtZC8": "Project A", '
+            '"123U93wwgS18aLDIwdYXTXsr": "Project B"}')

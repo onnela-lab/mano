@@ -1,6 +1,7 @@
 import os
 
 import pytest
+import responses
 import vcr
 
 import mano
@@ -86,22 +87,25 @@ def test_keyring_from_env_missing():
         os.environ.update(_environ)
 
 
-def test_studies():
-    cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY'])
-    ]
-    studies = set([
+def test_studies(keyring, mock_studies_response):
+    expected_studies = set([
         ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8'),
         ('Project B', '123U93wwgS18aLDIwdYXTXsr')
     ])
-    ans = set()
-    with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params):
-        for study in mano.studies(Keyring):
-            ans.add(study)
-    assert ans == studies
+
+    studies = set()
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-studies/v1',
+            body=mock_studies_response,
+            status=200,
+            content_type='text/html; charset=utf-8'
+        )
+        for study in mano.studies(keyring):
+            studies.add(study)
+
+    assert studies == expected_studies
 
 
 def test_users():
