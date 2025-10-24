@@ -87,23 +87,22 @@ def test_keyring_from_env_missing():
         os.environ.update(_environ)
 
 
+@responses.activate
 def test_studies(keyring, mock_studies_response):
     expected_studies = set([
         ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8'),
         ('Project B', '123U93wwgS18aLDIwdYXTXsr')
     ])
 
+    responses.post(
+        'https://studies.beiwe.org/get-studies/v1',
+        body=mock_studies_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
     studies = set()
-    with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.POST,
-            'https://studies.beiwe.org/get-studies/v1',
-            body=mock_studies_response,
-            status=200,
-            content_type='text/html; charset=utf-8'
-        )
-        for study in mano.studies(keyring):
-            studies.add(study)
+    for study in mano.studies(keyring):
+        studies.add(study)
 
     assert studies == expected_studies
 
