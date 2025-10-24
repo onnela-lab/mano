@@ -2,7 +2,6 @@ import os
 
 import pytest
 import responses
-import vcr
 
 import mano
 import mano.sync
@@ -106,20 +105,19 @@ def test_studies(keyring, mock_studies_response):
     assert studies == expected_studies
 
 
-def test_users():
-    cassette = os.path.join(CASSETTES, 'users.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY']),
-        ('study_id', 'STUDY_ID')
-    ]
-    users = set(["tgsidhm", "lholbc5", "yxzxtwr"])
-    ans = set()
-    with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params):
-        for user in mano.users(Keyring, 'STUDY_ID'):
-            ans.add(user)
-    assert ans == users
+@responses.activate
+def test_users(keyring, mock_users_response):
+    expected_users = set(["tgsidhm", "lholbc5", "yxzxtwr"])
+    responses.post(
+        keyring['URL'] + '/get-users/v1',
+        body=mock_users_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    users = set()
+    for user in mano.users(keyring, 'STUDY_ID'):
+        users.add(user)
+    assert users == expected_users
 
 
 @responses.activate
