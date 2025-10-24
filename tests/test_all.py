@@ -197,18 +197,16 @@ def test_studyname(keyring, mock_studies_response):
     assert study_name == expected_study_name
 
 
-def test_studyname_not_found():
-    cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY']),
-        ('study_id', 'STUDY_ID')
-    ]
-    # studyname = 'Project X'
-    with vcr.use_cassette(cassette, decode_compressed_response=True,
-                          filter_post_data_parameters=filter_params):
-        with pytest.raises(mano.StudyNameError):
-            _ = mano.studyname(Keyring, 'x')
+@responses.activate
+def test_studyname_not_found(keyring, mock_studies_response):
+    responses.post(
+        keyring['URL'] + '/get-studies/v1',
+        body=mock_studies_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    with pytest.raises(mano.StudyNameError):
+        _ = mano.studyname(keyring, 'x')
 
 
 def test_device_settings():
