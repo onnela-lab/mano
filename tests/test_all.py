@@ -147,17 +147,16 @@ def test_expand_study_id_conflict(keyring, mock_studies_response):
         _ = mano.expand_study_id(keyring, '123')
 
 
-def test_expand_study_id_nomatch():
-    cassette = os.path.join(CASSETTES, 'studies.v1.yaml')
-    filter_params = [
-        ('access_key', Keyring['ACCESS_KEY']),
-        ('secret_key', Keyring['SECRET_KEY']),
-        ('study_id', 'STUDY_ID')
-    ]
-    with vcr.use_cassette(cassette, decode_compressed_response=True, 
-                          filter_post_data_parameters=filter_params):
-        ans = mano.expand_study_id(Keyring, '321')
-        assert ans is None
+@responses.activate
+def test_expand_study_id_nomatch(keyring, mock_studies_response):
+    responses.post(
+        keyring['URL'] + '/get-studies/v1',
+        body=mock_studies_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    study = mano.expand_study_id(keyring, '321')
+    assert study is None
 
 
 def test_studyid():
