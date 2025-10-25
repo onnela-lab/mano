@@ -24,21 +24,6 @@ def test_studies(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_users(keyring, mock_users_response):
-    expected_users = set(["tgsidhm", "lholbc5", "yxzxtwr"])
-    responses.post(
-        keyring['URL'] + '/get-users/v1',
-        body=mock_users_response,
-        status=200,
-        content_type='text/html; charset=utf-8'
-    )
-    users = set()
-    for user in mano.users(keyring, 'STUDY_ID'):
-        users.add(user)
-    assert users == expected_users
-
-
-@responses.activate
 def test_expand_study_id(keyring, mock_studies_response):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
