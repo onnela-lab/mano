@@ -6,10 +6,10 @@ import mano
 
 @responses.activate
 def test_studies(keyring, mock_studies_response):
-    expected_studies = set([
+    expected_studies = {
         ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8'),
         ('Project B', '123U93wwgS18aLDIwdYXTXsr')
-    ])
+    }
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
