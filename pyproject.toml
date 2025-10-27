@@ -44,8 +44,7 @@ Source = "https://github.com/onnela-lab/mano"
 dev = [
     "pytest",
     "responses",
-    "twine",
-    "vcrpy"
+    "twine"
 ]
 
 [tool.setuptools.packages.find]
