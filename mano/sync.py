@@ -31,11 +31,24 @@ logger = logging.getLogger(__name__)
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 # error types
-class APIError(Exception): pass
-class DownloadError(Exception): pass
-class ParseError(Exception): pass
-class SaveError(Exception): pass
-class WriteError(Exception): pass
+class APIError(Exception):
+    pass
+
+
+class DownloadError(Exception):
+    pass
+
+
+class ParseError(Exception):
+    pass
+
+
+class SaveError(Exception):
+    pass
+
+
+class WriteError(Exception):
+    pass
 
 
 def backfill(

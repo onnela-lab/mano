@@ -28,15 +28,40 @@ LOCALE = str(Config['locale'])
 locale.setlocale(locale.LC_ALL, LOCALE)
 
 
-class AmbiguousStudyIDError(Exception): pass
-class APIError(Exception): pass
-class KeyringError(Exception): pass
-class IntervalError(Exception): pass
-class LoginError(Exception): pass
-class ScrapeError(Exception): pass
-class StudyIDError(Exception): pass
-class StudyNameError(Exception): pass
-class StudySettingsError(Exception): pass
+class AmbiguousStudyIDError(Exception):
+    pass
+
+
+class APIError(Exception):
+    pass
+
+
+class KeyringError(Exception):
+    pass
+
+
+class IntervalError(Exception):
+    pass
+
+
+class LoginError(Exception):
+    pass
+
+
+class ScrapeError(Exception):
+    pass
+
+
+class StudyIDError(Exception):
+    pass
+
+
+class StudyNameError(Exception):
+    pass
+
+
+class StudySettingsError(Exception):
+    pass
 
 
 def interval(x: str) -> int:
