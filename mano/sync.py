@@ -257,7 +257,7 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
 
 
 def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output_dir: str,
-         lock: list=None, passphrase=None):
+         lock: list[str] | None = None, passphrase: str | None = None):
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
         1. Save the file
