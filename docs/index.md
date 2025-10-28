@@ -77,7 +77,7 @@ running an older version of the backend software may still require it.)_
 ```
 
 > [!Tip]
-> That you can also use the environment variables `BEIWE_URL`, `BEIWE_USERNAME`,
+> You can also use the environment variables `BEIWE_URL`, `BEIWE_USERNAME`,
 > `BEIWE_PASSWORD`, `BEIWE_ACCESS_KEY`, and `BEIWE_SECRET_KEY` to store these settings. If you do,
 > load your keyring using `mano.keyring(None)`. You won't be able to use an environment variable for
 > storing study-specific secrets (next).
