@@ -89,7 +89,7 @@ def interval(x: str) -> int:
     elif units == "s":
         offset = timedelta(seconds=value)
 
-    return ((now + offset) - now).total_seconds()
+    return int(((now + offset) - now).total_seconds())
 
 
 def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
