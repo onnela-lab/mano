@@ -319,7 +319,7 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output
         local_registry_file = os.path.join(output_dir, user_id, '.registry')
         local_registry = dict()
         if os.path.exists(local_registry_file):
-            with open(local_registry_file, 'r') as fo:
+            with open(local_registry_file) as fo:
                 local_registry = json.load(fo)
 
         local_registry.update(registry)
