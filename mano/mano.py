@@ -6,6 +6,7 @@ import locale
 import logging
 import os
 import re
+from typing import Any
 
 import cryptease as crypt
 import lxml.html as html
@@ -230,7 +231,7 @@ def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[s
     tree = html.fromstring(resp.content)
     # run xpath expression to get study list
     expr = "//div[@class='form-group']/div/input[@class='form-control']"
-    elements = tree.xpath(expr)
+    elements: Any = tree.xpath(expr)
     if not elements:
         raise ScrapeError(f'zero anchor elements returned from expression: {expr}')
     # yield each setting name and value
