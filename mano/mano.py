@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Dict, Generator, Optional, Tuple
+from typing import Generator, Optional
 
 import cryptease as crypt
 import lxml.html as html

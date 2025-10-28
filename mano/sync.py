@@ -11,7 +11,7 @@ import tempfile as tf
 import time
 import zipfile
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 import cryptease as crypt
 import dateutil.parser
