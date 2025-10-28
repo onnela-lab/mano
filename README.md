@@ -131,12 +131,12 @@ Keyring = mano.keyring('beiwe.onnela')
 ```
 
 Mano still requires that you provide the decryption key for your keyring file. By default it will
-prompt you to type it in directly, but there are two mechanisms for providing it programatically.
+prompt you to type it in directly, but there are two mechanisms for providing it programmatically.
 - Setting an environment variable `NRG_KEYRING_PASS` in environment where Mano is running.
 - As the second argument to the `mano.keyring` function in your code.
   - We recommend against placing the decryption key as text in your code, or in any file that gets
   committed to a source control system like Git. This mechanism is provided so that you can
-  programatically source it from another location.
+  programmatically source it from another location.
   - It's tough to know where to store a credential securely. If you are on your own computer we
   recommend using the full drive encryption capability of your operating system to secure it.
 
