@@ -123,8 +123,11 @@ def backfill(
 
 
 def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
-             data_streams: list[str] = None, time_start: str = None, time_end: str = None,
-             registry: dict = None, progress: int = 0) -> zipfile.ZipFile:
+             data_streams: list[str] | None = None,
+             time_start: str | None = None,
+             time_end: str | None = None,
+             registry: dict[str, str] | None = None,
+             progress: int = 0) -> zipfile.ZipFile:
     """
     Request data archive from Beiwe API
 
