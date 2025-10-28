@@ -257,9 +257,7 @@ def users(Keyring: Dict[str, str], study_id: str) -> Generator[str, None, None]:
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
-    response = json.loads(resp.content)
-    for participant_id in response:
-        yield participant_id
+    yield from json.loads(resp.content)
 
 
 def studyid(Keyring: Dict[str, str], name: str) -> str:
