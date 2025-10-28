@@ -56,10 +56,10 @@ def backfill(
         user_id: str,
         output_dir: str,
         start_date: str = BACKFILL_START_DATE,
-        data_streams: list[str] = None,
-        lock: list = None,
-        passphrase: str = None,
-    ):
+        data_streams: list[str] | None = None,
+        lock: list[str] | None = None,
+        passphrase: str | None = None,
+    ) -> None:
     """
     Backfill a user (participant)
     """
