@@ -11,7 +11,6 @@ import tempfile as tf
 import time
 import zipfile
 from datetime import datetime, timedelta
-from typing import Union
 
 import cryptease as crypt
 import dateutil.parser
@@ -226,7 +225,7 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
     return zf
 
 
-def _window(timestamp: str, window: Union[int, float]) -> tuple[str, str, str]:
+def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
     """
     Generate a backfill window (start, stop, and resume)
     """
