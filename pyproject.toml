@@ -54,3 +54,7 @@ include = ["mano*"]
 
 [tool.setuptools.package-data]
 "mano" = ["config.json"]
+
+[tool.ruff]
+# Configuration is in ruff.toml - this section is for GitHub Actions version detection
+required-version = ">=0.14.0"
