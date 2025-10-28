@@ -26,5 +26,7 @@ jobs:
         uses: astral-sh/ruff-action@v3
         with:
           version: "latest"
+      - name: Run static type checking
+        run: mypy -p mano
       - name: Run tests
         run: pytest
