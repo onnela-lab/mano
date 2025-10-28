@@ -190,7 +190,7 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         return None
 
 
-def login(Keyring: dict[str, str]) -> dict:
+def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     """
     Programmatic login to the Beiwe website (returns cookies)
 
