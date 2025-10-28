@@ -182,7 +182,7 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
     logger.debug(f'time_start={time_start.strftime(mano.TIME_FORMAT)}')
     logger.debug(f'time_end={time_end.strftime(mano.TIME_FORMAT)}')
 
-    # submit download request    
+    # submit download request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None
@@ -350,7 +350,7 @@ def _makedirs(path: str, umask: int = None, exist_ok: bool = True):
 
 def _atomic_write(filename: str, content: bytes, overwrite=True, permissions=0o0644):
     """
-    Write a file by first saving the content to a temporary file first, then 
+    Write a file by first saving the content to a temporary file first, then
     renaming the file. Overwrites silently by default o_o
     """
     filename = os.path.expanduser(filename)
