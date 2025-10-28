@@ -27,7 +27,7 @@ source_parsers = {
 
 project = u'mano'
 copyright = u'2018, Neuroinformatics Research Group'
-author = u'Neuroinformatics Research Group'
+author = u'Onnela Lab, Neuroinformatics Research Group'
 
 # The short X.Y version
 version = u''
