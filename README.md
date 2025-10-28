@@ -2,12 +2,7 @@
 
 <div align="center">
 
-# Mano  <span align="right"> <img width="16%" height="16%" src="https://github.com/onnela-lab/beiwe-backend/blob/main/beiwe-logo-color.png?raw=true" alt="Beiwe Logo"  style="float:right;" /> </span>
-
-</div>
-
-<div align="center">
-
+# Mano 
 [![CI](https://github.com/onnela-lab/mano/actions/workflows/ci.yml/badge.svg)](https://github.com/onnela-lab/mano/actions/workflows/ci.yml)
 
 </div>
@@ -81,14 +76,13 @@ running an older version of the backend software may still require it.)_
 }
 ```
 
-> [!Note]
+> [!Tip]
 > That you can also use the environment variables `BEIWE_URL`, `BEIWE_USERNAME`,
 > `BEIWE_PASSWORD`, `BEIWE_ACCESS_KEY`, and `BEIWE_SECRET_KEY` to store these settings. If you do,
 > load your keyring using `mano.keyring(None)`. You won't be able to use an environment variable for
-> storing study-specific secrets (described next). But depending on your situation you may not even
-> need study-specific secrets.
+> storing study-specific secrets (next).
 
-> [!Tip]
+> [!Note]
 > You generate, name and manage your access keys under the Manage Credentials section of your Beiwe
 > Platform website.
 
