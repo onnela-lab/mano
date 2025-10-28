@@ -1,0 +1,10 @@
+line-length = 120
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes codes
+    "UP",     # pyupgrade codes
+    "COM818", # trailing-comma-on-bare-tuple
+]
