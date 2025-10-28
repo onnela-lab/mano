@@ -2,7 +2,7 @@
 
 <div align="center">
 
-# Mano - <img width="16%" height="16%" src="https://github.com/onnela-lab/beiwe-backend/blob/main/beiwe-logo-color.png?raw=true" alt="Beiwe Logo"/>
+# Mano  <span align="right"> <img width="16%" height="16%" src="https://github.com/onnela-lab/beiwe-backend/blob/main/beiwe-logo-color.png?raw=true" alt="Beiwe Logo"/> </span>
 
 </div>
 
