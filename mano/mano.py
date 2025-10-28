@@ -92,7 +92,7 @@ def interval(x: str) -> int:
     return ((now + offset) - now).total_seconds()
 
 
-def studies(Keyring: Dict[str, str]) -> Generator[Tuple[str, str], None, None]:
+def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
     """
     Request a list of studies
     """
@@ -104,7 +104,7 @@ def studies(Keyring: Dict[str, str]) -> Generator[Tuple[str, str], None, None]:
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
-    response: Dict = json.loads(resp.content)
+    response: dict = json.loads(resp.content)
 
     # yield each study name and id
     for study_id, study_name in iter(response.items()):
@@ -115,7 +115,7 @@ def keyring(
         deployment: Optional[str],
         keyring_file: str = '~/.nrg-keyring.enc',
         passphrase: Optional[str] = None
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
     """
     Get keyring for deployment
     :param deployment: Deployment name
@@ -149,7 +149,7 @@ def keyring(
     return js[deployment]
 
 
-def keyring_from_env() -> Dict[str, str]:
+def keyring_from_env() -> dict[str, str]:
     """
     Construct keyring from environment variables
     :returns: Keyring
@@ -166,7 +166,7 @@ def keyring_from_env() -> Dict[str, str]:
     return Keyring
 
 
-def expand_study_id(Keyring: Dict[str, str], segment: str) -> Optional[Tuple[str, str]]:
+def expand_study_id(Keyring: dict[str, str], segment: str) -> Optional[tuple[str, str]]:
     """
     Expand a Study ID segment to the full Study ID
 
@@ -187,7 +187,7 @@ def expand_study_id(Keyring: Dict[str, str], segment: str) -> Optional[Tuple[str
         raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
 
 
-def login(Keyring: Dict[str, str]) -> Dict:
+def login(Keyring: dict[str, str]) -> dict:
     """
     Programmatic login to the Beiwe website (returns cookies)
 
@@ -208,7 +208,7 @@ def login(Keyring: Dict[str, str]) -> Dict:
 # FIXME: this function depends on the HTML structure of the Beiwe website, AND the content of the
 # page may not accurately represent the state of data collected by the study. beiwe-backend now has
 # an issue for this, #320
-def device_settings(Keyring: Dict[str, str], study_id: str) -> Generator[Tuple[str, str], None, None]:
+def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
     """
     Get device settings for a Study
 
@@ -239,7 +239,7 @@ def device_settings(Keyring: Dict[str, str], study_id: str) -> Generator[Tuple[s
         yield e.name, e.value
 
 
-def users(Keyring: Dict[str, str], study_id: str) -> Generator[str, None, None]:
+def users(Keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
     """
     Request a list of users within a study
 
@@ -260,7 +260,7 @@ def users(Keyring: Dict[str, str], study_id: str) -> Generator[str, None, None]:
     yield from json.loads(resp.content)
 
 
-def studyid(Keyring: Dict[str, str], name: str) -> str:
+def studyid(Keyring: dict[str, str], name: str) -> str:
     """
     Get the Study ID for a given Study Name
 
@@ -274,7 +274,7 @@ def studyid(Keyring: Dict[str, str], name: str) -> str:
     raise StudyIDError(f'study not found {name}')
 
 
-def studyname(Keyring: Dict[str, str], sid: str) -> str:
+def studyname(Keyring: dict[str, str], sid: str) -> str:
     """
     Get the Study Name for a given Study ID
 

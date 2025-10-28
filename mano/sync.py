@@ -52,13 +52,13 @@ class WriteError(Exception):
 
 
 def backfill(
-        Keyring: Dict[str, str],
+        Keyring: dict[str, str],
         study_id: str,
         user_id: str,
         output_dir: str,
         start_date: str = BACKFILL_START_DATE,
-        data_streams: List[str] = None,
-        lock: List = None,
+        data_streams: list[str] = None,
+        lock: list = None,
         passphrase: str = None,
     ):
     """
@@ -123,9 +123,9 @@ def backfill(
             logger.info('backfill is complete')
 
 
-def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
-             data_streams: List[str] = None, time_start: str = None, time_end: str = None,
-             registry: Dict = None, progress: bool = False) -> zipfile.ZipFile:
+def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
+             data_streams: list[str] = None, time_start: str = None, time_end: str = None,
+             registry: dict = None, progress: bool = False) -> zipfile.ZipFile:
     """
     Request data archive from Beiwe API
 
@@ -226,7 +226,7 @@ def download(Keyring: Dict[str, str], study_id: str, user_ids: List[str],
     return zf
 
 
-def _window(timestamp: str, window: Union[int, float]) -> Tuple[str, str, str]:
+def _window(timestamp: str, window: Union[int, float]) -> tuple[str, str, str]:
     """
     Generate a backfill window (start, stop, and resume)
     """
@@ -254,8 +254,8 @@ def _window(timestamp: str, window: Union[int, float]) -> Tuple[str, str, str]:
     return win_start, win_stop, resume
 
 
-def save(Keyring: Dict[str, str], archive: zipfile.ZipFile, user_id: str, output_dir: str,
-         lock: List=None, passphrase=None):
+def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output_dir: str,
+         lock: list=None, passphrase=None):
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
         1. Save the file
