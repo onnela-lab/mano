@@ -1,11 +1,12 @@
+from collections.abc import Generator
+from datetime import datetime, timedelta
 import getpass
 import json
 import locale
 import logging
 import os
 import re
-from datetime import datetime, timedelta
-from typing import Generator, Optional
+from typing import Optional
 
 import cryptease as crypt
 import lxml.html as html
