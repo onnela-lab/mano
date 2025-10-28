@@ -1,8 +1,16 @@
-<!-- this document is duplicated in README.md and docs/index.md, update both accordingly. -->
+<!-- This document is duplicated in README.md and docs/index.md, update both accordingly. -->
 
-Mano
-====
+<div align="center">
+
+# Mano - <img width="16%" height="16%" src="https://github.com/onnela-lab/beiwe-backend/blob/main/beiwe-logo-color.png?raw=true" alt="Beiwe Logo"/>
+
+</div>
+
+<div align="center">
+
 [![CI](https://github.com/onnela-lab/mano/actions/workflows/ci.yml/badge.svg)](https://github.com/onnela-lab/mano/actions/workflows/ci.yml)
+
+</div>
 
 Mano is a Python library and CLI tool that helps you write applications that interact with the
 [Beiwe Research Platform](https://www.hsph.harvard.edu/onnela-lab/beiwe-research-platform/).
