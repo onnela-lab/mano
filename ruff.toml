@@ -1,6 +1,8 @@
+line-length = 120
+
 [lint]
 select = [
     "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings (includes W293)
-    "F",  # pyflakes
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes codes
 ]
