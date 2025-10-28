@@ -77,7 +77,7 @@ def interval(x: str) -> int:
         value = int(value)
     except ValueError as e:
         raise IntervalError(f"invalid interval '{x}': {e}")
-    
+
     # convert to seconds using datetime
     now = datetime.now()
     if units == "d":
@@ -88,7 +88,7 @@ def interval(x: str) -> int:
         offset = timedelta(minutes=value)
     elif units == "s":
         offset = timedelta(seconds=value)
-    
+
     return ((now + offset) - now).total_seconds()
 
 
@@ -99,13 +99,13 @@ def studies(Keyring: Dict[str, str]) -> Generator[Tuple[str, str], None, None]:
     # setup
     url = Keyring['URL'].rstrip('/') + '/get-studies/v1'
     payload = {'access_key': Keyring['ACCESS_KEY'], 'secret_key': Keyring['SECRET_KEY']}
-    
+
     # request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
     response: Dict = json.loads(resp.content)
-    
+
     # yield each study name and id
     for study_id, study_name in iter(response.items()):
         yield study_name, study_id
@@ -132,7 +132,7 @@ def keyring(
             passphrase = os.environ['NRG_KEYRING_PASS']
         else:
             passphrase = getpass.getpass('enter keyring passphrase: ')
-    
+
     # get keyring file using cryptease
     keyring_file = os.path.expanduser(keyring_file)
     with open(keyring_file, 'rb') as fo:
@@ -140,7 +140,7 @@ def keyring(
         content = b''
         for chunk in crypt.decrypt(fo, key):
             content += chunk
-    
+
     # load, return
     try:
         js = json.loads(content)
@@ -169,7 +169,7 @@ def keyring_from_env() -> Dict[str, str]:
 def expand_study_id(Keyring: Dict[str, str], segment: str) -> Optional[Tuple[str, str]]:
     """
     Expand a Study ID segment to the full Study ID
-    
+
     :param Keyring: Keyring dictionary
     :param segment: First characters from a Study ID
     :returns: Complete Study name and ID
@@ -190,7 +190,7 @@ def expand_study_id(Keyring: Dict[str, str], segment: str) -> Optional[Tuple[str
 def login(Keyring: Dict[str, str]) -> Dict:
     """
     Programmatic login to the Beiwe website (returns cookies)
-    
+
     :param Keyring: Keyring namespace
     :returns: Cookies
     """
@@ -211,7 +211,7 @@ def login(Keyring: Dict[str, str]) -> Dict:
 def device_settings(Keyring: Dict[str, str], study_id: str) -> Generator[Tuple[str, str], None, None]:
     """
     Get device settings for a Study
-    
+
     :param Keyring: Keyring namespace
     :param study_id: Study ID
     :returns: Generator of sensor (name, setting)
@@ -242,7 +242,7 @@ def device_settings(Keyring: Dict[str, str], study_id: str) -> Generator[Tuple[s
 def users(Keyring: Dict[str, str], study_id: str) -> Generator[str, None, None]:
     """
     Request a list of users within a study
-    
+
     :param Keyring: Keyring dictionary
     :param study_id: Study ID
     :returns: Generator of (study_name, study_id)
@@ -265,7 +265,7 @@ def users(Keyring: Dict[str, str], study_id: str) -> Generator[str, None, None]:
 def studyid(Keyring: Dict[str, str], name: str) -> str:
     """
     Get the Study ID for a given Study Name
-    
+
     :param Keyring: Keyring dictionary
     :param name: Study name
     :returns: Study ID
@@ -279,7 +279,7 @@ def studyid(Keyring: Dict[str, str], name: str) -> str:
 def studyname(Keyring: Dict[str, str], sid: str) -> str:
     """
     Get the Study Name for a given Study ID
-    
+
     :param Keyring: Keyring dictionary
     :param sid: Study ID
     :returns: Study Name

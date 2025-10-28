@@ -1,0 +1,6 @@
+[lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings (includes W293)
+    "F",  # pyflakes
+]

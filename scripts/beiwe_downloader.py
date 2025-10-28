@@ -20,7 +20,7 @@ def main():
     args = parser.parse_args()
 
     Keyring = mano.keyring(args.keyring_section)
-    
+
     for study in mano.studies(Keyring):
         study_name, study_id = study
         for user_id in mano.users(Keyring, study_id):
