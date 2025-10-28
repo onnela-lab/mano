@@ -6,7 +6,6 @@ import locale
 import logging
 import os
 import re
-from typing import Optional
 
 import cryptease as crypt
 import lxml.html as html
@@ -113,9 +112,9 @@ def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
 
 
 def keyring(
-        deployment: Optional[str],
+        deployment: str | None,
         keyring_file: str = '~/.nrg-keyring.enc',
-        passphrase: Optional[str] = None
+        passphrase: str | None = None
     ) -> dict[str, str]:
     """
     Get keyring for deployment
@@ -167,7 +166,7 @@ def keyring_from_env() -> dict[str, str]:
     return Keyring
 
 
-def expand_study_id(Keyring: dict[str, str], segment: str) -> Optional[tuple[str, str]]:
+def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | None:
     """
     Expand a Study ID segment to the full Study ID
 
