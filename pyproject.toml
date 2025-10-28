@@ -44,7 +44,7 @@ Source = "https://github.com/onnela-lab/mano"
 dev = [
     "pytest",
     "responses",
-    "ruff",
+    "ruff>=0.4.0",
     "twine"
 ]
 
@@ -57,4 +57,7 @@ include = ["mano*"]
 
 [tool.ruff]
 # Configuration is in ruff.toml - this section is for GitHub Actions version detection
-required-version = ">=0.14.0"
+required-version = ">=0.4.0"
+
+# Alternative format for GitHub Actions
+version = ">=0.4.0"
