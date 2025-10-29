@@ -3,17 +3,15 @@ title: Mano
 repository: onnela-lab/mano
 
 
-theme: midnight
+# theme: midnight
 
-# remote_theme: pages-themes/midnight@v0.2.0
-# plugins:
-# - jekyll-remote-theme # add this line to the plugins list if you already have one
-
+remote_theme: pages-themes/midnight@v0.2.0
 
 markdown: GFM 
 plugins:
 - jekyll-gfm-admonitions
 - jekyll-optional-front-matter
+- jekyll-remote-theme
 
 exclude: 
   - "**/*.ts" # Exclude source code files!
@@ -32,4 +30,3 @@ exclude:
   - vendor/cache/
   - vendor/gems/
   - vendor/ruby/
-
