@@ -347,7 +347,7 @@ def _makedirs(path: str, umask: int | None = None, exist_ok: bool = True):
             os.umask(old_umask)
 
 
-def _atomic_write(filename: str, content: bytes, overwrite=True, permissions=0o0644):
+def _atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
     """
     Write a file by first saving the content to a temporary file first, then
     renaming the file. Overwrites silently by default o_o
