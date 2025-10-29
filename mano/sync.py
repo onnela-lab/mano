@@ -376,15 +376,3 @@ def _parse_datatype(member: str, user_id: str):
             f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
         )
     return match.group(1)
-
-
-# function unused
-# def _masked_payload(p: Dict, masked_keys=['registry', 'secret_key', 'access_key']) -> Dict:
-#     """
-#     Copy and mask a request payload to safely print to console
-#     """
-#     _p = p.copy()
-#     for k in masked_keys:
-#         if k in _p and _p[k]:
-#             _p[k] = "***"
-#     return _p
