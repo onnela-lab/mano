@@ -127,7 +127,7 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
              time_start: str | datetime | None = None,
              time_end: str | datetime | None = None,
              registry: dict[str, str] | None = None,
-             progress: int = 0) -> zipfile.ZipFile:
+             progress: int = 0) -> zipfile.ZipFile | None:
     """
     Request data archive from Beiwe API
 
@@ -258,7 +258,7 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
     return win_start, win_stop, resume
 
 
-def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output_dir: str,
+def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str, output_dir: str,
          lock: list[str] | None = None, passphrase: str | None = None):
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
