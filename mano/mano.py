@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import datetime, timedelta
+from datetime import timedelta
 import getpass
 import json
 import locale
@@ -80,7 +80,6 @@ def interval(x: str) -> int:
         raise IntervalError(f"invalid interval '{x}': {e}")
 
     # convert to seconds using datetime
-    now = datetime.now()
     if units == "d":
         offset = timedelta(days=value)
     elif units == "h":
@@ -90,7 +89,7 @@ def interval(x: str) -> int:
     elif units == "s":
         offset = timedelta(seconds=value)
 
-    return int(((now + offset) - now).total_seconds())
+    return int(offset.total_seconds())
 
 
 def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
