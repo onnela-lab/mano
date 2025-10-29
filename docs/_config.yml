@@ -1,3 +1,35 @@
-theme: jekyll-theme-minimal
+title: Mano
 
-markdown: GFM
+repository: onnela-lab/mano
+
+
+theme: midnight
+
+# remote_theme: pages-themes/midnight@v0.2.0
+# plugins:
+# - jekyll-remote-theme # add this line to the plugins list if you already have one
+
+
+markdown: GFM 
+plugins:
+- jekyll-gfm-admonitions
+- jekyll-optional-front-matter
+
+exclude: 
+  - "**/*.ts" # Exclude source code files!
+  - "**/*.js"
+  - "*.ts" # Also those in the root directory!
+  - "*.js"
+  - "*.json" # Don't forget about assets!
+  - node_modules/ # And large vendored directories
+  # And these ignore all the artifacts the build produces:
+  - .sass-cache/
+  - .jekyll-cache/
+  - gemfiles/
+  - Gemfile
+  - Gemfile.lock
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+
