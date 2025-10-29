@@ -230,7 +230,7 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
     return zf
 
 
-def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
+def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
     """
     Generate a backfill window (start, stop, and resume)
     """
@@ -240,7 +240,7 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
     # by default, the download window will *stop* at `win_start` + `window`,
     # and the next *resume* point will be the same...
     win_stop = win_start + timedelta(days=window)
-    resume = win_stop
+    resume: datetime | None = win_stop
 
     # ...unless the next projected window stop point extends into the future, in which case the
     # window stop point will be set to the present time, but and next resume time will be null
@@ -250,12 +250,11 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
         resume = None
 
     # convert all timestamps to string representation before returning
-    win_start = win_start.strftime(mano.TIME_FORMAT)
-    win_stop = win_stop.strftime(mano.TIME_FORMAT)
-    if resume:
-        resume = resume.strftime(mano.TIME_FORMAT)
+    win_start_str = win_start.strftime(mano.TIME_FORMAT)
+    win_stop_str = win_stop.strftime(mano.TIME_FORMAT)
+    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
 
-    return win_start, win_stop, resume
+    return win_start_str, win_stop_str, resume_str
 
 
 def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str, output_dir: str,
