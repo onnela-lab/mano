@@ -334,21 +334,18 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
     return num_saved
 
 
-def _makedirs(path: str, umask: int = None, exist_ok: bool = True):
+def _makedirs(path: str, umask: int | None = None, exist_ok: bool = True):
     """
     Create directories recursively with a temporary umask
     """
-    if umask is None:
-        umask = os.umask(umask)
+    old_umask = None
+    if umask is not None:
+        old_umask = os.umask(umask)
     try:
-        os.makedirs(path)
-    except OSError as e:
-        if e.errno == errno.EEXIST and exist_ok:
-            pass
-        else:
-            raise e
-    if umask is None:
-        os.umask(umask)
+        os.makedirs(path, exist_ok=exist_ok)
+    finally:
+        if old_umask is not None:
+            os.umask(old_umask)
 
 
 def _atomic_write(filename: str, content: bytes, overwrite=True, permissions=0o0644):
