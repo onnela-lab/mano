@@ -1,4 +1,3 @@
-import errno
 import io
 import itertools
 import json
