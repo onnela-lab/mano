@@ -124,8 +124,8 @@ def backfill(
 
 def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
              data_streams: list[str] | None = None,
-             time_start: str | None = None,
-             time_end: str | None = None,
+             time_start: str | datetime | None = None,
+             time_end: str | datetime | None = None,
              registry: dict[str, str] | None = None,
              progress: int = 0) -> zipfile.ZipFile:
     """
@@ -148,16 +148,18 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
 
     # process start_time
     if time_start:
-        time_start: datetime = dateutil.parser.parse(time_start)
+        if isinstance(time_start, str):
+            time_start = dateutil.parser.parse(time_start)
     else:
         epoch = time.gmtime(0)
-        time_start: datetime = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
+        time_start = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
 
     # process end_time
     if time_end:
-        time_end: datetime = dateutil.parser.parse(time_end)
+        if isinstance(time_end, str):
+            time_end = dateutil.parser.parse(time_end)
     else:
-        time_end: datetime = datetime.today()
+        time_end = datetime.today()
 
     # sanity check start and end times
     if time_start > time_end:
