@@ -28,7 +28,9 @@ under the open source BSD-3-Clause license.
 > https://github.com/onnela-lab/beiwe-backend/wiki), and they can [follow announcement issues on
 > backend issues](
 > https://github.com/onnela-lab/beiwe-backend/issues?q=is%3Aissue%20state%3Aopen%20label%3AANNOUNCEMENT).
-
+>
+> If you are encountering any other issue **[Please Report Them Here](
+> https://github.com/onnela-lab/mano/issues/39)**
 
 ## Table of contents
 1. [Requirements and Compatibility](#requirements-and-compatibility)
@@ -41,8 +43,8 @@ under the open source BSD-3-Clause license.
 ## Requirements and Compatibility
 - Mano is compatible with modern versions of Python [at time of writing this means 3.10+]
 - Mano's CI runs on macOS (Unix), Ubuntu (Linux), and Windows.
-  - Note that we have not historically had many Windows users, so [Please Report Any Issues You
-  Encounter] with Windows compatibility.
+  - We have not historically had many Windows users, so [Please Report Any Issues You
+  Encounter](https://github.com/onnela-lab/mano/issues/39) with Windows compatibility.
   - Mano should be fully compatible with the Linux Subsystem for Windows (WSL).
 
 ### Old SSL Library Compatibility
