@@ -184,8 +184,10 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         return None
     elif len(ids) == 1:
         return ids[0]
-    elif len(ids) > 1:
+    else:
         raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
+
+
 def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     """
     Programmatic login to the Beiwe website (returns cookies)
