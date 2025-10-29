@@ -7,7 +7,7 @@ repository: onnela-lab/mano
 
 remote_theme: pages-themes/midnight@v0.2.0
 
-markdown: GFM 
+markdown: GFM
 plugins:
 - jekyll-gfm-admonitions
 - jekyll-optional-front-matter
