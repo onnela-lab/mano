@@ -1,15 +1,16 @@
 keyring.enc
 *.mp4
 *.csv
-*.lock
-*.swp
+#*.lock
+#*.swp
 *.DS_Store
 
 __pycache__/
 .pytest_cache
 .python-version
+.version
 .venv/
-build/
+#build/
 mano.egg-info/
 
 .vscode/

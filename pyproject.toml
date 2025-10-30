@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mano"
-version = "0.5.3"
-description = "Python API for Beiwe Research Platform"
+version = "0.6.0"
+description = "Python API for the Beiwe Research Platform"
 authors = [
     {name = "Onnela Lab", email = "onnela.lab@gmail.com"}
 ]
@@ -14,7 +14,7 @@ maintainers = [
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "cryptease",
     "lxml",
@@ -42,6 +42,7 @@ Source = "https://github.com/onnela-lab/mano"
 
 [project.optional-dependencies]
 dev = [
+    "build",
     "lxml-stubs",
     "mypy",
     "pytest",

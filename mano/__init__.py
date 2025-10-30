@@ -1,4 +1,5 @@
 # allow for direct imports of the entities in the mano file to retain compatability
+
 from mano.mano import (
     AmbiguousStudyIDError,
     APIError,
@@ -23,6 +24,13 @@ from mano.mano import (
     studyname,
 )
 
+# We have to bend over backwards to both preserve some of the imports that have historically existed
+# in this codebase (so can't be abandoned), and fix one that is broken in the current structure.
+# `from mano import sync` would fail even after `import mano`. An explicit `import mano.sync` here
+# is required to resolve this.
+import mano.sync as sync
+
+
 __all__ = [
     "AmbiguousStudyIDError",
     "APIError",
@@ -45,4 +53,5 @@ __all__ = [
     "users",
     "studyid",
     "studyname",
+    "sync",
 ]
