@@ -174,7 +174,7 @@ logging so we can see what's happening.
 
 ```python
 import logging
-import mano.sync as msync
+from mano import sync as msync
 
 logging.basicConfig(level=logging.INFO)
 
