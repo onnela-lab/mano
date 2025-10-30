@@ -1,11 +1,12 @@
 from collections.abc import Generator
-from datetime import datetime, timedelta
+from datetime import timedelta
 import getpass
 import json
 import locale
 import logging
 import os
 import re
+from typing import Any
 
 import cryptease as crypt
 import lxml.html as html
@@ -79,7 +80,6 @@ def interval(x: str) -> int:
         raise IntervalError(f"invalid interval '{x}': {e}")
 
     # convert to seconds using datetime
-    now = datetime.now()
     if units == "d":
         offset = timedelta(days=value)
     elif units == "h":
@@ -89,7 +89,7 @@ def interval(x: str) -> int:
     elif units == "s":
         offset = timedelta(seconds=value)
 
-    return ((now + offset) - now).total_seconds()
+    return int(offset.total_seconds())
 
 
 def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
@@ -183,11 +183,11 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         return None
     elif len(ids) == 1:
         return ids[0]
-    elif len(ids) > 1:
+    else:
         raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
 
 
-def login(Keyring: dict[str, str]) -> dict:
+def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     """
     Programmatic login to the Beiwe website (returns cookies)
 
@@ -227,7 +227,7 @@ def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[s
     tree = html.fromstring(resp.content)
     # run xpath expression to get study list
     expr = "//div[@class='form-group']/div/input[@class='form-control']"
-    elements = tree.xpath(expr)
+    elements: Any = tree.xpath(expr)
     if not elements:
         raise ScrapeError(f'zero anchor elements returned from expression: {expr}')
     # yield each setting name and value

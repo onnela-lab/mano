@@ -1,4 +1,3 @@
-import errno
 import io
 import itertools
 import json
@@ -56,10 +55,10 @@ def backfill(
         user_id: str,
         output_dir: str,
         start_date: str = BACKFILL_START_DATE,
-        data_streams: list[str] = None,
-        lock: list = None,
-        passphrase: str = None,
-    ):
+        data_streams: list[str] | None = None,
+        lock: list[str] | None = None,
+        passphrase: str | None = None,
+    ) -> None:
     """
     Backfill a user (participant)
     """
@@ -123,8 +122,11 @@ def backfill(
 
 
 def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
-             data_streams: list[str] = None, time_start: str = None, time_end: str = None,
-             registry: dict = None, progress: bool = False) -> zipfile.ZipFile:
+             data_streams: list[str] | None = None,
+             time_start: str | datetime | None = None,
+             time_end: str | datetime | None = None,
+             registry: dict[str, str] | None = None,
+             progress: int = 0) -> zipfile.ZipFile | None:
     """
     Request data archive from Beiwe API
 
@@ -145,16 +147,18 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
 
     # process start_time
     if time_start:
-        time_start: datetime = dateutil.parser.parse(time_start)
+        if isinstance(time_start, str):
+            time_start = dateutil.parser.parse(time_start)
     else:
         epoch = time.gmtime(0)
-        time_start: datetime = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
+        time_start = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
 
     # process end_time
     if time_end:
-        time_end: datetime = dateutil.parser.parse(time_end)
+        if isinstance(time_end, str):
+            time_end = dateutil.parser.parse(time_end)
     else:
-        time_end: datetime = datetime.today()
+        time_end = datetime.today()
 
     # sanity check start and end times
     if time_start > time_end:
@@ -225,7 +229,7 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
     return zf
 
 
-def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
+def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
     """
     Generate a backfill window (start, stop, and resume)
     """
@@ -235,7 +239,7 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
     # by default, the download window will *stop* at `win_start` + `window`,
     # and the next *resume* point will be the same...
     win_stop = win_start + timedelta(days=window)
-    resume = win_stop
+    resume: datetime | None = win_stop
 
     # ...unless the next projected window stop point extends into the future, in which case the
     # window stop point will be set to the present time, but and next resume time will be null
@@ -245,16 +249,15 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str]:
         resume = None
 
     # convert all timestamps to string representation before returning
-    win_start = win_start.strftime(mano.TIME_FORMAT)
-    win_stop = win_stop.strftime(mano.TIME_FORMAT)
-    if resume:
-        resume = resume.strftime(mano.TIME_FORMAT)
+    win_start_str = win_start.strftime(mano.TIME_FORMAT)
+    win_stop_str = win_stop.strftime(mano.TIME_FORMAT)
+    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
 
-    return win_start, win_stop, resume
+    return win_start_str, win_stop_str, resume_str
 
 
-def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output_dir: str,
-         lock: list=None, passphrase=None):
+def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str, output_dir: str,
+         lock: list[str] | None = None, passphrase: str | None = None) -> int:
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
         1. Save the file
@@ -330,24 +333,21 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile, user_id: str, output
     return num_saved
 
 
-def _makedirs(path: str, umask: int = None, exist_ok: bool = True):
+def _makedirs(path: str, umask: int | None = None, exist_ok: bool = True):
     """
     Create directories recursively with a temporary umask
     """
-    if umask is None:
-        umask = os.umask(umask)
+    old_umask = None
+    if umask is not None:
+        old_umask = os.umask(umask)
     try:
-        os.makedirs(path)
-    except OSError as e:
-        if e.errno == errno.EEXIST and exist_ok:
-            pass
-        else:
-            raise e
-    if umask is None:
-        os.umask(umask)
+        os.makedirs(path, exist_ok=exist_ok)
+    finally:
+        if old_umask is not None:
+            os.umask(old_umask)
 
 
-def _atomic_write(filename: str, content: bytes, overwrite=True, permissions=0o0644):
+def _atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
     """
     Write a file by first saving the content to a temporary file first, then
     renaming the file. Overwrites silently by default o_o
@@ -376,15 +376,3 @@ def _parse_datatype(member: str, user_id: str):
             f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
         )
     return match.group(1)
-
-
-# function unused
-# def _masked_payload(p: Dict, masked_keys=['registry', 'secret_key', 'access_key']) -> Dict:
-#     """
-#     Copy and mask a request payload to safely print to console
-#     """
-#     _p = p.copy()
-#     for k in masked_keys:
-#         if k in _p and _p[k]:
-#             _p[k] = "***"
-#     return _p

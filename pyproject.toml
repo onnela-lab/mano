@@ -43,10 +43,14 @@ Source = "https://github.com/onnela-lab/mano"
 [project.optional-dependencies]
 dev = [
     "build",
+    "lxml-stubs",
+    "mypy",
     "pytest",
     "responses",
     "ruff",
     "twine",
+    "types-python-dateutil",
+    "types-requests",
 ]
 
 [tool.setuptools.packages.find]
