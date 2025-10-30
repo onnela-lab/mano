@@ -1,5 +1,3 @@
-<!-- This document is duplicated in README.md and docs/index.md, update both accordingly. -->
-
 <div align="center">
 
 # Mano 
@@ -134,7 +132,7 @@ Keyring = mano.keyring('beiwe.onnela')
 
 Mano still requires that you provide the decryption key for your keyring file. By default it will
 prompt you to type it in directly, but there are two mechanisms for providing it programmatically.
-- Setting an environment variable `NRG_KEYRING_PASS` in environment where Mano is running.
+- Setting the environment variable `NRG_KEYRING_PASS` where Mano is running.
 - As the second argument to the `mano.keyring` function in your code.
   - We recommend against placing the decryption key as text in your code, or in any file that gets
   committed to a source control system like Git. This mechanism is provided so that you can
