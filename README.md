@@ -58,6 +58,21 @@ The simplest way to install `mano` is to just use `pip`
 pip install mano
 ```
 
+<details>
+<summary> Click For Developer Instructions </summary>
+
+For developers of `mano`, clone the repository, make sure you are on the `develop` branch, and
+set up a virtual environment.  In that environment run these commands:
+
+```bash
+pip install ".[dev]"  # installs all development dependencies.
+pip uninstall mano    # removes mano as an _installed_ package.
+mypy --install-types  # (typing dependencies should already be present.)
+```
+
+</details>
+
+
 ## Initial Setup
 To interact with Beiwe and download files you will need your Beiwe Platform `url`, `username`,
 `password`, `access key`, and `secret key` in a JSON file. Don't worry, we're going to eventually

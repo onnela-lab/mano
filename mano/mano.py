@@ -1,11 +1,11 @@
-from collections.abc import Generator
-from datetime import timedelta
 import getpass
 import json
 import locale
 import logging
 import os
 import re
+from collections.abc import Generator
+from datetime import timedelta
 from typing import Any
 
 import cryptease as crypt
@@ -29,40 +29,15 @@ LOCALE = str(Config['locale'])
 locale.setlocale(locale.LC_ALL, LOCALE)
 
 
-class AmbiguousStudyIDError(Exception):
-    pass
-
-
-class APIError(Exception):
-    pass
-
-
-class KeyringError(Exception):
-    pass
-
-
-class IntervalError(Exception):
-    pass
-
-
-class LoginError(Exception):
-    pass
-
-
-class ScrapeError(Exception):
-    pass
-
-
-class StudyIDError(Exception):
-    pass
-
-
-class StudyNameError(Exception):
-    pass
-
-
-class StudySettingsError(Exception):
-    pass
+class AmbiguousStudyIDError(Exception): pass  # noqa
+class APIError(Exception): pass  # noqa
+class IntervalError(Exception): pass  # noqa
+class KeyringError(Exception): pass  # noqa
+class LoginError(Exception): pass  # noqa
+class ScrapeError(Exception): pass  # noqa
+class StudyIDError(Exception): pass  # noqa
+class StudyNameError(Exception): pass  # noqa
+class StudySettingsError(Exception): pass  # noqa
 
 
 def interval(x: str) -> int:
@@ -78,7 +53,7 @@ def interval(x: str) -> int:
         value = int(value)
     except ValueError as e:
         raise IntervalError(f"invalid interval '{x}': {e}")
-
+    
     # convert to seconds using datetime
     if units == "d":
         offset = timedelta(days=value)
@@ -88,7 +63,7 @@ def interval(x: str) -> int:
         offset = timedelta(minutes=value)
     elif units == "s":
         offset = timedelta(seconds=value)
-
+    
     return int(offset.total_seconds())
 
 
@@ -99,13 +74,13 @@ def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
     # setup
     url = Keyring['URL'].rstrip('/') + '/get-studies/v1'
     payload = {'access_key': Keyring['ACCESS_KEY'], 'secret_key': Keyring['SECRET_KEY']}
-
+    
     # request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
     response: dict = json.loads(resp.content)
-
+    
     # yield each study name and id
     for study_id, study_name in iter(response.items()):
         yield study_name, study_id
@@ -132,7 +107,7 @@ def keyring(
             passphrase = os.environ['NRG_KEYRING_PASS']
         else:
             passphrase = getpass.getpass('enter keyring passphrase: ')
-
+    
     # get keyring file using cryptease
     keyring_file = os.path.expanduser(keyring_file)
     with open(keyring_file, 'rb') as fo:
@@ -140,7 +115,7 @@ def keyring(
         content = b''
         for chunk in crypt.decrypt(fo, key):
             content += chunk
-
+    
     # load, return
     try:
         js = json.loads(content)

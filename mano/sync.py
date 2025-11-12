@@ -28,46 +28,33 @@ logger = logging.getLogger(__name__)
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
-
-class APIError(Exception):
-    pass
-
-
-class DownloadError(Exception):
-    pass
-
-
-class ParseError(Exception):
-    pass
-
-
-class SaveError(Exception):
-    pass
-
-
-class WriteError(Exception):
-    pass
+class APIError(Exception): pass  # noqa
+class DownloadError(Exception): pass  # noqa
+class ParseError(Exception): pass  # noqa
+class SaveError(Exception): pass  # noqa
+class WriteError(Exception): pass  # noqa
 
 
 def backfill(
-        Keyring: dict[str, str],
-        study_id: str,
-        user_id: str,
-        output_dir: str,
-        start_date: str = BACKFILL_START_DATE,
-        data_streams: list[str] | None = None,
-        lock: list[str] | None = None,
-        passphrase: str | None = None,
-    ) -> None:
+    Keyring: dict[str, str],
+    study_id: str,
+    user_id: str,
+    output_dir: str,
+    start_date: str = BACKFILL_START_DATE,
+    data_streams: list[str] | None = None,
+    lock: list[str] | None = None,
+    passphrase: str | None = None,
+) -> None:
     """
     Backfill a user (participant)
     """
+    
     encoding = locale.getpreferredencoding()
     if not data_streams:
         data_streams = mano.DATA_STREAMS
     if not os.path.exists(output_dir):
         _makedirs(output_dir, umask=0o077)
-
+    
     # backfill continuously until this function finally returns
     while True:
         # read backfill state from file
@@ -81,21 +68,21 @@ def backfill(
             timestamp = fo.read().strip()
         if timestamp:
             logger.debug(f'backfill file contains string: {timestamp}')
-
+        
         # return immediately if backfill state file contains string COMPLETE
         if timestamp == 'COMPLETE':
             logger.debug('no backfill is necessary')
             return
-
+        
         # if there is no backfill state, default to start_date
         if not timestamp:
             timestamp = start_date
             logger.debug(f'no backfill timestamp found, using: {timestamp}')
-
+        
         # get download window and next resume point
         start, stop, resume = _window(timestamp, BACKFILL_WINDOW)
         logger.info(f'processing window is [{start}, {stop}]')
-
+        
         # download window of data
         archive = download(
             Keyring,
@@ -106,11 +93,11 @@ def backfill(
             time_start=start,
             time_end=stop
         )
-
+        
         # save data
         num_saved = save(Keyring, archive, user_id, output_dir, lock, passphrase)
         logger.info(f'saved {num_saved} files')
-
+        
         # wite the new resume point to the backfill file
         if resume:
             _atomic_write(backfill_file, resume.encode(encoding))
@@ -121,30 +108,35 @@ def backfill(
             logger.info('backfill is complete')
 
 
-def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
-             data_streams: list[str] | None = None,
-             time_start: str | datetime | None = None,
-             time_end: str | datetime | None = None,
-             registry: dict[str, str] | None = None,
-             progress: int = 0) -> zipfile.ZipFile | None:
+def download(
+    Keyring: dict[str, str],
+    study_id: str,
+    user_ids: list[str],
+    data_streams: list[str] | None = None,
+    time_start: str | datetime | None = None,
+    time_end: str | datetime | None = None,
+    registry: dict[str, str] | None = None,
+    progress: int = 0
+) -> zipfile.ZipFile | None:
     """
     Request data archive from Beiwe API
-
+    
     :param progress: Progress indicator (in bytes)
     :type progress: int
     :returns: Zip archive object
     :rtype: zipfile.ZipFile
     """
+    
     if not registry:
         registry = dict()
     if not user_ids:
         user_ids = list()
     if not data_streams:
         data_streams = list()
-
+    
     # base url for beiwe instance
     url = Keyring['URL']
-
+    
     # process start_time
     if time_start:
         if isinstance(time_start, str):
@@ -152,18 +144,18 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
     else:
         epoch = time.gmtime(0)
         time_start = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
-
+    
     # process end_time
     if time_end:
         if isinstance(time_end, str):
             time_end = dateutil.parser.parse(time_end)
     else:
         time_end = datetime.today()
-
+    
     # sanity check start and end times
     if time_start > time_end:
         raise DownloadError(f'start time {time_start} is after end time {time_end}')
-
+    
     # setup request payload
     url = url.rstrip('/') + '/get-data/v1'
     payload = {
@@ -176,7 +168,7 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
         'time_end': time_end.strftime(mano.TIME_FORMAT),
         'registry': registry
     }
-
+    
     # logs
     logger.debug('payload contains')
     logger.debug(f'study_id={study_id}')
@@ -184,23 +176,23 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
     logger.debug(f'data_streams={data_streams}')
     logger.debug(f'time_start={time_start.strftime(mano.TIME_FORMAT)}')
     logger.debug(f'time_end={time_end.strftime(mano.TIME_FORMAT)}')
-
+    
     # submit download request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code == requests.codes.NOT_FOUND:
         return None
     elif resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
-
+    
     # read response in chunks
     if progress:
         sys.stdout.write('reading response data: ')
         sys.stdout.flush()
     meter = 0
-
+    
     chunk_size = 1024 * 64
     content = io.BytesIO()  # temporary storage for response content, required to use ZipFile
-
+    
     # chunk_size may not be respected, at least in more recent versions of requests.
     for chunk in resp.iter_content(chunk_size=chunk_size):
         if progress and meter >= progress:
@@ -210,22 +202,22 @@ def download(Keyring: dict[str, str], study_id: str, user_ids: list[str],
             meter = 0
         content.write(chunk)
         meter += chunk_size
-
+    
     # shut down progress indicator
     if progress:
         sys.stdout.write('done.\n')
         sys.stdout.flush()
-
+    
     # load reponse content into a zipfile object
     try:
         zf = zipfile.ZipFile(content)
-    except zipfile.BadZipfile:
+    except zipfile.BadZipfile as e:
         with tf.NamedTemporaryFile(dir='.', prefix='beiwe', suffix='.zip', delete=False) as fo:
             content.seek(0)
             fo.write(content.read())
             fo.flush()
             os.fsync(fo.fileno())
-        raise DownloadError(f'bad zip file written to {fo.name}')
+        raise DownloadError(f'bad zip file written to {fo.name}') from e
     return zf
 
 
@@ -235,29 +227,35 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
     """
     # parse the input timestamp into a datetime object
     win_start = dateutil.parser.parse(timestamp)
-
+    
     # by default, the download window will *stop* at `win_start` + `window`,
     # and the next *resume* point will be the same...
     win_stop = win_start + timedelta(days=window)
     resume: datetime | None = win_stop
-
+    
     # ...unless the next projected window stop point extends into the future, in which case the
     # window stop point will be set to the present time, but and next resume time will be null
     now = datetime.today()
     if win_stop > now:
         win_stop = now
         resume = None
-
+    
     # convert all timestamps to string representation before returning
     win_start_str = win_start.strftime(mano.TIME_FORMAT)
     win_stop_str = win_stop.strftime(mano.TIME_FORMAT)
     resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
-
+    
     return win_start_str, win_stop_str, resume_str
 
 
-def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str, output_dir: str,
-         lock: list[str] | None = None, passphrase: str | None = None) -> int:
+def save(
+    Keyring: dict[str, str],
+    archive: zipfile.ZipFile | None,
+    user_id: str,
+    output_dir: str,
+    lock: list[str] | None = None,
+    passphrase: str | None = None
+) -> int:
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
         1. Save the file
@@ -272,13 +270,13 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
     else:
         if not passphrase:
             raise SaveError('if you wish to lock a data type, you need a passphrase')
-
+    
     lock_ext = LOCK_EXT.lstrip('.')
     # open registry file in downloaded archive
     logger.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
         registry = json.loads(fo.read().decode('utf-8'))
-
+    
     # if archive registry contains any entries, process them
     if registry:
         # iterate over archive members
@@ -286,10 +284,10 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
             # skip over the registry file
             if member == 'registry':
                 continue
-
+            
             # debugging get information about the current archive member
             # info = archive.getinfo(member)
-
+            
             # parse the data type determine if it should be encrypted
             encrypt = _parse_datatype(member, user_id) in lock
             logger.debug(f'processing archive member: {member} (lock={encrypt})')
@@ -298,7 +296,7 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
             # add lock extension to target name if necessary
             if encrypt:
                 target = f'{target}.{lock_ext}'
-
+            
             # detect if target exists, create the directory
             target_abs = os.path.join(output_dir, target)
             target_dir = os.path.dirname(target_abs)
@@ -306,10 +304,10 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
                 os.remove(target_abs)
             if not os.path.exists(target_dir):
                 _makedirs(target_dir, umask=0o5022)
-
+            
             # read archive member content and encrypt it if necessary
             content = archive.open(member)
-
+            
             if encrypt:
                 key = crypt.kdf(passphrase)
                 crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
@@ -317,18 +315,18 @@ def save(Keyring: dict[str, str], archive: zipfile.ZipFile | None, user_id: str,
                 # write content to persistent storage
                 _atomic_write(target_abs, content.read())
             num_saved += 1
-
+        
         # update local registry file to avoid re-downloading these files
         local_registry_file = os.path.join(output_dir, user_id, '.registry')
         local_registry = dict()
         if os.path.exists(local_registry_file):
             with open(local_registry_file) as fo:
                 local_registry = json.load(fo)
-
+        
         local_registry.update(registry)
         local_registry_str = json.dumps(local_registry, indent=2)
         _atomic_write(local_registry_file, local_registry_str.encode(encoding))
-
+    
     # return the number of saved files
     return num_saved
 

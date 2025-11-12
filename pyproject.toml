@@ -1,10 +1,125 @@
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+#
+## Developer Dependencies and Requirements
+#
 
+[project.optional-dependencies]
+dev = [  # development dependencies, pip install with: pip install mano[dev]
+    "build",
+    "lxml-stubs",
+    "mypy",
+    "pytest==8.4.0",
+    "responses",
+    "ruff",
+    "twine",
+    "types-python-dateutil",
+    "types-requests",
+]
+
+
+#
+## Pytest configuration
+#
+
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+# minversion = "9.0.0"
+testpaths = [
+    "tests",
+]
+
+
+#
+## Linters Etc.
+#
+
+
+#
+# Ruff - general purpose python linter++
+#
+[tool.ruff]
+line-length = 105
+indent-width = 4
+
+[tool.ruff.format]
+indent-style = "space"  # use spaces for indentation
+line-ending = "lf"  # use \n for line endings
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120  # maximum line length
+
+[tool.ruff.lint]
+future-annotations = true
+
+select = [  # (linting directives to enable)
+    "E",       # pycodestyle errors
+    "W",       # pycodestyle warnings
+    "F",       # pyflakes codes
+    "UP",      # pyupgrade codes
+    "COM818",  # trailing-comma-on-bare-tuple
+    "A",       # flake8-annotations codes
+]
+
+ignore = [  # (linting directives to ignore)
+    "E701",  # multiple statements on one line - one line Exception subclasses are great.
+    "W293",  # blank line contains whitespace
+]
+
+# import sorting rules
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+order-by-type = false
+
+known-third-party = [  # Force these libraries to a special spot in import order (second to bottom)
+    "forest",
+    "requests",
+]
+
+known-first-party = [  # Force these libraries to a special spot in import order (bottom)
+    "mano",
+]
+
+#
+# make isort's - import sorting - make it use the above Ruff rules
+#
+[tool.isort]
+profile = "ruff"
+
+#
+# MyPy - Type checking
+#
+[tool.mypy]
+packages = "mano"
+
+[[tool.mypy.overrides]]        # trying to replicate this from the mypy.ini
+module = ["cryptease"]         #   [mypy-cryptease]
+ignore_missing_imports = true  #   ignore_missing_imports = true
+
+
+#
+## Mano Project Information
+#
+
+
+[project.urls]
+Homepage = "https://github.com/onnela-lab/mano#Mano"
+Issues = "https://github.com/onnela-lab/mano/issues/39"
+Source = "https://github.com/onnela-lab/mano"
+
+
+# Structural Information
 [project]
-name = "mano"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+# Version
 version = "0.6.0"
+
+# Python Version Requirement
+requires-python = ">=3.10"
+
+# Authorship
+name = "mano"
 description = "Python API for the Beiwe Research Platform"
 authors = [
     {name = "Onnela Lab", email = "onnela.lab@gmail.com"}
@@ -12,15 +127,8 @@ authors = [
 maintainers = [
     {name = "Onnela Lab", email = "onnela.lab@gmail.com"}
 ]
-readme = "README.md"
-license = {file = "LICENSE"}
-requires-python = ">=3.10"
-dependencies = [
-    "cryptease",
-    "lxml",
-    "python-dateutil",
-    "requests"
-]
+
+# PyPi Information
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -28,30 +136,29 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Natural Language :: English",
     "Operating System :: MacOS :: MacOS X",
-    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 
-[project.urls]
-Homepage = "https://onnela-lab.github.io/mano"
-Issues = "https://github.com/onnela-lab/mano/issues"
-Source = "https://github.com/onnela-lab/mano"
 
-[project.optional-dependencies]
-dev = [
-    "build",
-    "lxml-stubs",
-    "mypy",
-    "pytest",
-    "responses",
-    "ruff",
-    "twine",
-    "types-python-dateutil",
-    "types-requests",
+#
+## Core Dependencies and Build System Configuration
+#
+
+
+dependencies = [  # this is underneath [project] but is about the build / dependencies systems
+    "cryptease",
+    "lxml",
+    "python-dateutil",
+    "requests"
 ]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
