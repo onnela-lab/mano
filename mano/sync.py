@@ -152,6 +152,9 @@ def download(
     else:
         time_end = datetime.today()
     
+    assert isinstance(time_start, datetime)
+    assert isinstance(time_end, datetime)
+    
     # sanity check start and end times
     if time_start > time_end:
         raise DownloadError(f'start time {time_start} is after end time {time_end}')

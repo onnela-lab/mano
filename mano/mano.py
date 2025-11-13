@@ -44,15 +44,18 @@ def interval(x: str) -> int:
     """
     Convert an interval e.g., 1d, 12h, into seconds
     """
-    # validate and extract
+    x = x.lower()
+    
+    # validate and extract - any number of digits followed by single character s m h d
     result = re.split("^([0-9]+)([smhd]$)", x)
     if len(result) != 4:
         raise IntervalError(f"invalid interval '{x}'")
+    
     value, units = result[1], result[2]
     try:
         value = int(value)
     except ValueError as e:
-        raise IntervalError(f"invalid interval '{x}': {e}")
+        raise IntervalError(f"invalid interval '{x}': {e}") from None
     
     # convert to seconds using datetime
     if units == "d":
@@ -63,6 +66,8 @@ def interval(x: str) -> int:
         offset = timedelta(minutes=value)
     elif units == "s":
         offset = timedelta(seconds=value)
+    else:
+        raise IntervalError(f"invalid interval unit '{units}'")
     
     return int(offset.total_seconds())
 
@@ -87,10 +92,10 @@ def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
 
 
 def keyring(
-        deployment: str | None,
-        keyring_file: str = '~/.nrg-keyring.enc',
-        passphrase: str | None = None
-    ) -> dict[str, str]:
+    deployment: str | None,
+    keyring_file: str = '~/.nrg-keyring.enc',
+    passphrase: str | None = None
+) -> dict[str, str]:
     """
     Get keyring for deployment
     :param deployment: Deployment name
@@ -110,17 +115,20 @@ def keyring(
     
     # get keyring file using cryptease
     keyring_file = os.path.expanduser(keyring_file)
+    
     with open(keyring_file, 'rb') as fo:
         key = crypt.key_from_file(fo, passphrase)
         content = b''
-        for chunk in crypt.decrypt(fo, key):
+        
+        # crypt.decrypt is not a None-y
+        for chunk in crypt.decrypt(fo, key):  # type: ignore
             content += chunk
     
     # load, return
     try:
         js = json.loads(content)
     except ValueError:
-        raise KeyringError(f'could not decrypt file {keyring_file} (wrong passphrase perhaps?)')
+        raise KeyringError(f'could not decrypt file {keyring_file} (wrong passphrase perhaps?)') from ValueError
     return js[deployment]
 
 
@@ -137,7 +145,7 @@ def keyring_from_env() -> dict[str, str]:
         Keyring['ACCESS_KEY'] = os.environ['BEIWE_ACCESS_KEY']
         Keyring['SECRET_KEY'] = os.environ['BEIWE_SECRET_KEY']
     except KeyError as e:
-        raise KeyringError(f'environment variable not found: {e}')
+        raise KeyringError(f'environment variable not found: {e}') from None
     return Keyring
 
 
