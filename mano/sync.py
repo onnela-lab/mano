@@ -16,7 +16,7 @@ import requests
 
 import mano
 from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, EARLIEST_POSSIBLE_DATA_DATE,
-    BACKFILL_WINDOW)
+    BACKFILL_WINDOW, spinner)
 
 
 logger = logging.getLogger(__name__)
