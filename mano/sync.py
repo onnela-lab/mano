@@ -332,7 +332,7 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
     # by default, the download window will *stop* at `win_start` + `window`,
     # and the next *resume* point will be the same...
     window_stop = win_start + timedelta(days=window)
-    resume = window_stop
+    resume: datetime | None = window_stop  # mypy wants this explicit type hint
     
     # ...unless the next projected window stop point extends into the future, in which case the
     # window stop point will be set to the present time, but and next resume time will be null
