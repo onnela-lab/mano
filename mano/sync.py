@@ -15,8 +15,8 @@ import dateutil
 import requests
 
 import mano
-from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, EARLIEST_POSSIBLE_DATA_DATE,
-    BACKFILL_WINDOW, spinner)
+from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, BACKFILL_WINDOW,
+    EARLIEST_POSSIBLE_DATA_DATE, spinner)
 
 
 logger = logging.getLogger(__name__)

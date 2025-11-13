@@ -117,8 +117,8 @@ def keyring(
     # load, return
     try:
         js = json.loads(content)
-    except ValueError:
-        raise KeyringError(f'could not decrypt file {keyring_file} (wrong passphrase perhaps?)') from ValueError
+    except ValueError as e:
+        raise KeyringError(f'could not decrypt file {keyring_file} (wrong passphrase perhaps?)') from e
     return js[deployment]
 
 
