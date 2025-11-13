@@ -5,29 +5,20 @@ import os
 import re
 from collections.abc import Generator
 from datetime import timedelta
-from typing import Any
 
 import cryptease as crypt
-import lxml.html as html
 import requests
+from lxml import html
+from lxml.html import HtmlElement
+
+from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError,
+    LoginError, ScrapeError, StudyIDError, StudyNameError, StudySettingsError)
 
 
 logger = logging.getLogger(__name__)
 
-
-class AmbiguousStudyIDError(Exception): pass  # noqa
-class APIError(Exception): pass  # noqa
-class IntervalError(Exception): pass  # noqa
-class KeyringError(Exception): pass  # noqa
-class LoginError(Exception): pass  # noqa
-class ScrapeError(Exception): pass  # noqa
-class StudyIDError(Exception): pass  # noqa
-class StudyNameError(Exception): pass  # noqa
-class StudySettingsError(Exception): pass  # noqa
-
-
 # historical namespace items
-from mano.constants import Config, DATA_STREAMS, LOCALE, TIME_FORMAT  # noqa
+from mano.constants import DATA_STREAMS, LOCALE, TIME_FORMAT, Config  # noqa # type: ignore
 
 
 def interval(x: str) -> int:
@@ -74,7 +65,7 @@ def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
-    response: dict = json.loads(resp.content)
+    response: dict[str, str] = json.loads(resp.content)
     
     # yield each study name and id
     for study_id, study_name in iter(response.items()):
@@ -127,7 +118,7 @@ def keyring_from_env() -> dict[str, str]:
     Construct keyring from environment variables
     :returns: Keyring
     """
-    Keyring = dict()
+    Keyring = dict[str, str]()
     try:
         Keyring['URL'] = os.environ['BEIWE_URL']
         Keyring['USERNAME'] = os.environ['BEIWE_USERNAME']
@@ -147,7 +138,7 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
     :param segment: First characters from a Study ID
     :returns: Complete Study name and ID
     """
-    ids = list()
+    ids = list[tuple[str, str]]()
     for study_name, study_id in studies(Keyring):
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
@@ -158,58 +149,6 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         return ids[0]
     else:
         raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
-
-
-def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
-    """
-    Programmatic login to the Beiwe website (returns cookies)
-
-    :param Keyring: Keyring namespace
-    :returns: Cookies
-    """
-    # setup
-    url = Keyring['URL'].rstrip('/') + '/validate_login'
-    payload = {'username': Keyring['USERNAME'], 'password': Keyring['PASSWORD']}
-    # request
-    resp = requests.post(url, data=payload)
-    if resp.status_code != requests.codes.OK:
-        raise LoginError(f'response not ok ({resp.status_code}) for {resp.url}')
-    # there is a redirect after login
-    return resp.history[0].cookies
-
-
-# FIXME: this function depends on the HTML structure of the Beiwe website, AND the content of the
-# page may not accurately represent the state of data collected by the study. beiwe-backend now has
-# an issue for this, #320
-def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
-    """
-    Get device settings for a Study
-
-    :param Keyring: Keyring namespace
-    :param study_id: Study ID
-    :returns: Generator of sensor (name, setting)
-    """
-    # get login cookies
-    cookies = login(Keyring)
-    # request choose_study html page
-    url = Keyring['URL'].rstrip('/') + f'/device_settings/{study_id}'
-    resp = requests.get(url, cookies=cookies)
-    if resp.status_code != requests.codes.OK:
-        raise StudySettingsError(f'response not ok ({resp.status_code}) for url={resp.url}')
-    # parse html page
-    tree = html.fromstring(resp.content)
-    # run xpath expression to get study list
-    expr = "//div[@class='form-group']/div/input[@class='form-control']"
-    elements: Any = tree.xpath(expr)
-    if not elements:
-        raise ScrapeError(f'zero anchor elements returned from expression: {expr}')
-    # yield each setting name and value
-    for e in elements:
-        if "name" not in e.attrib:
-            raise ScrapeError('input element is missing "name" attribute')
-        if "value" not in e.attrib:
-            raise ScrapeError('input element is missing "value" attribute')
-        yield e.name, e.value
 
 
 def users(Keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
@@ -227,9 +166,12 @@ def users(Keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
         'secret_key': Keyring['SECRET_KEY'],
         'study_id': study_id
     }
+    
     resp = requests.post(url, data=payload, stream=True)
+    
     if resp.status_code != requests.codes.OK:
         raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
+    
     yield from json.loads(resp.content)
 
 
@@ -259,3 +201,66 @@ def studyname(Keyring: dict[str, str], sid: str) -> str:
         if sid == study_id:
             return study_name
     raise StudyNameError(f'study not found {sid}')
+
+
+#
+## Old to-be-deprecated functionality, replace with API calls
+#
+
+
+# FIXME: this function depends on the HTML structure of the Beiwe website, AND the content of the
+# page may not accurately represent the state of data collected by the study. beiwe-backend now has
+# an issue for this, #320
+def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
+    """
+    Get device settings for a Study
+
+    :param Keyring: Keyring namespace
+    :param study_id: Study ID
+    :returns: Generator of sensor (name, setting)
+    """
+    # get login cookies
+    cookies = login(Keyring)
+    
+    # request choose_study html page
+    url = Keyring['URL'].rstrip('/') + f'/device_settings/{study_id}'
+    resp = requests.get(url, cookies=cookies)
+    if resp.status_code != requests.codes.OK:
+        raise StudySettingsError(f'response not ok ({resp.status_code}) for url={resp.url}')
+    
+    # parse html page
+    tree: HtmlElement = html.fromstring(resp.content)
+    
+    # run xpath expression to get study list
+    expr = "//div[@class='form-group']/div/input[@class='form-control']"
+    elements: list[HtmlElement] = tree.xpath(expr)
+    
+    if not elements:
+        raise ScrapeError(f'zero anchor elements returned from expression: {expr}')
+    
+    # yield each setting name and value
+    for e in elements:
+        if "name" not in e.attrib:
+            raise ScrapeError('input element is missing "name" attribute')
+        if "value" not in e.attrib:
+            raise ScrapeError('input element is missing "value" attribute')
+        yield e.name, e.value
+
+
+# FIXME: this function is the login to the beiwe website, a detail we want to drop entirely
+def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
+    """
+    Programmatic login to the Beiwe website (returns cookies)
+
+    :param Keyring: Keyring namespace
+    :returns: Cookies
+    """
+    # setup
+    url = Keyring['URL'].rstrip('/') + '/validate_login'
+    payload = {'username': Keyring['USERNAME'], 'password': Keyring['PASSWORD']}
+    # request
+    resp = requests.post(url, data=payload)
+    if resp.status_code != requests.codes.OK:
+        raise LoginError(f'response not ok ({resp.status_code}) for {resp.url}')
+    # there is a redirect after login
+    return resp.history[0].cookies
