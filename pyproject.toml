@@ -65,25 +65,29 @@ ignore = [  # (linting directives to ignore)
     "W293",  # blank line contains whitespace
 ]
 
-# import sorting rules
-[tool.ruff.lint.isort]
-lines-after-imports = 2
-order-by-type = false
+#
+# isort - import sorting
+#
+[tool.isort]
+line_length = 100
+use_parentheses = true
+remove_redundant_aliases = true
+star_first = true
+multi_line_output = 10  # aka HANGING_INDENT_WITH_PARENTHESES
+combine_as_imports = true
+lines_after_imports = 2
+lines_between_types = 0
+# dont_order_by_type = true  # not supported in config file???
 
-known-third-party = [  # Force these libraries to a special spot in import order (second to bottom)
+known_third_party = [  # Force these libraries to a special spot in import order (second to bottom)
     "forest",
     "requests",
 ]
 
-known-first-party = [  # Force these libraries to a special spot in import order (bottom)
+known_first_party = [  # Force these libraries to a special spot in import order (bottom)
     "mano",
 ]
 
-#
-# make isort's - import sorting - make it use the above Ruff rules
-#
-[tool.isort]
-profile = "ruff"
 
 #
 # MyPy - Type checking

@@ -1,6 +1,5 @@
 import getpass
 import json
-import locale
 import logging
 import os
 import re
@@ -15,19 +14,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-DIR = os.path.dirname(__file__)
-
-# read configuration file
-Config = os.path.join(DIR, 'config.json')
-with open(Config, 'rb') as fo:
-    Config = json.load(fo)
-
-DATA_STREAMS = Config['data_streams']
-TIME_FORMAT = Config['time_format']
-LOCALE = str(Config['locale'])
-
-locale.setlocale(locale.LC_ALL, LOCALE)
-
 
 class AmbiguousStudyIDError(Exception): pass  # noqa
 class APIError(Exception): pass  # noqa
@@ -38,6 +24,10 @@ class ScrapeError(Exception): pass  # noqa
 class StudyIDError(Exception): pass  # noqa
 class StudyNameError(Exception): pass  # noqa
 class StudySettingsError(Exception): pass  # noqa
+
+
+# historical namespace items
+from mano.constants import Config, DATA_STREAMS, LOCALE, TIME_FORMAT  # noqa
 
 
 def interval(x: str) -> int:

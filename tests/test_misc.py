@@ -1,12 +1,7 @@
-import os
-
 import pytest
 import responses
 
 import mano
-
-
-DIR = os.path.dirname(__file__)
 
 
 @responses.activate

@@ -1,5 +1,4 @@
 import io
-import itertools
 import json
 import locale
 import logging
@@ -12,21 +11,16 @@ import zipfile
 from datetime import datetime, timedelta
 
 import cryptease as crypt
-import dateutil.parser
+import dateutil
 import requests
 
 import mano
+from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, EARLIEST_POSSIBLE_DATA_DATE,
+    BACKFILL_WINDOW)
 
-
-BACKFILL_WINDOW = 5
-BACKFILL_INTERVAL_SLEEP = 3
-# this is the earliest possible date for data out of any Beiwe study
-BACKFILL_START_DATE = '2015-9-01T00:00:00'
-LOCK_EXT = '.lock'
 
 logger = logging.getLogger(__name__)
 
-spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 class APIError(Exception): pass  # noqa
 class DownloadError(Exception): pass  # noqa
@@ -40,7 +34,7 @@ def backfill(
     study_id: str,
     user_id: str,
     output_dir: str,
-    start_date: str = BACKFILL_START_DATE,
+    start_date: str = EARLIEST_POSSIBLE_DATA_DATE,
     data_streams: list[str] | None = None,
     lock: list[str] | None = None,
     passphrase: str | None = None,
@@ -274,7 +268,7 @@ def save(
         if not passphrase:
             raise SaveError('if you wish to lock a data type, you need a passphrase')
     
-    lock_ext = LOCK_EXT.lstrip('.')
+    lock_ext = BACKFILL_LOCK_EXT.lstrip('.')
     # open registry file in downloaded archive
     logger.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
