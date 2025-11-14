@@ -5,7 +5,6 @@ import logging
 import os
 import re
 import sys
-import time
 import zipfile
 from datetime import datetime, timedelta
 from os.path import dirname, exists as path_exists, join as path_join
@@ -18,7 +17,8 @@ import requests
 
 import mano
 from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, BACKFILL_WINDOW,
-    EARLIEST_POSSIBLE_DATA_DATE, spinner)
+    EARLIEST_POSSIBLE_DATA_DT, EARLIEST_POSSIBLE_DATA_STR, spinner, TIME_FORMAT, URL_COMPRESSED,
+    URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories
 
 
@@ -33,7 +33,7 @@ def backfill(
     study_id: str,
     user_id: str,
     output_dir: str,
-    start_date: str = EARLIEST_POSSIBLE_DATA_DATE,
+    start_date: str = EARLIEST_POSSIBLE_DATA_STR,
     data_streams: list[str] | None = None,
     lock: list[str] | None = None,
     passphrase: str | None = None,
@@ -113,7 +113,8 @@ def download(
     time_start: str | datetime | None = None,
     time_end: str | datetime | None = None,
     registry: dict[str, str] | None = None,
-    progress: int = 0
+    progress: int = 0,
+    compressed: bool = False,
 ) -> zipfile.ZipFile | None:
     """
     Request data archive from Beiwe API
@@ -139,8 +140,7 @@ def download(
         if isinstance(time_start, str):
             time_start = dateutil.parser.parse(time_start)
     else:
-        epoch = time.gmtime(0)
-        time_start = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
+        time_start = EARLIEST_POSSIBLE_DATA_DT
     
     # process end_time
     if time_end:
@@ -149,21 +149,24 @@ def download(
     else:
         time_end = datetime.today()
     
+    assert isinstance(time_start, datetime)  # mypy can get confused here
+    assert isinstance(time_end, datetime)
+    
     # sanity check start and end times
     if time_start > time_end:
         raise DownloadError(f'start time {time_start} is after end time {time_end}')
     
     # setup request payload
-    url = url.rstrip('/') + '/get-data/v1'
+    url = url.rstrip('/') + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
     payload = {
         'access_key': Keyring['ACCESS_KEY'],
         'secret_key': Keyring['SECRET_KEY'],
         'study_id': study_id,
         'user_ids': user_ids,
         'data_streams': data_streams,
-        'time_start': time_start.strftime(mano.TIME_FORMAT),
-        'time_end': time_end.strftime(mano.TIME_FORMAT),
-        'registry': registry
+        'time_start': time_start.strftime(TIME_FORMAT),
+        'time_end': time_end.strftime(TIME_FORMAT),
+        'registry': registry,
     }
     
     # logs
@@ -171,8 +174,8 @@ def download(
     logger.debug(f'study_id={study_id}')
     logger.debug(f'user_ids={user_ids}')
     logger.debug(f'data_streams={data_streams}')
-    logger.debug(f'time_start={time_start.strftime(mano.TIME_FORMAT)}')
-    logger.debug(f'time_end={time_end.strftime(mano.TIME_FORMAT)}')
+    logger.debug(f'time_start={time_start.strftime(TIME_FORMAT)}')
+    logger.debug(f'time_end={time_end.strftime(TIME_FORMAT)}')
     
     # submit download request
     resp = requests.post(url, data=payload, stream=True)
@@ -183,8 +186,7 @@ def download(
     
     # read response in chunks
     if progress:
-        sys.stdout.write('reading response data: ')
-        sys.stdout.flush()
+        print('reading response data: ', end='', flush=True)
     meter = 0
     
     chunk_size = 1024 * 64
@@ -202,8 +204,7 @@ def download(
     
     # shut down progress indicator
     if progress:
-        sys.stdout.write('done.\n')
-        sys.stdout.flush()
+        print('done.')
     
     # load reponse content into a zipfile object
     try:
@@ -223,7 +224,7 @@ def save(
     user_id: str,
     output_dir: str,
     lock: list[str] | None = None,
-    passphrase: str | None = None
+    passphrase: str | None = None,
 ) -> int:
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
@@ -342,8 +343,8 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
         resume = None
     
     # convert all timestamps to string representation before returning
-    win_start_str = win_start.strftime(mano.TIME_FORMAT)
-    win_stop_str = window_stop.strftime(mano.TIME_FORMAT)
-    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
+    win_start_str = win_start.strftime(TIME_FORMAT)
+    win_stop_str = window_stop.strftime(TIME_FORMAT)
+    resume_str = resume.strftime(TIME_FORMAT) if resume else None
     
     return win_start_str, win_stop_str, resume_str
