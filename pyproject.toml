@@ -117,7 +117,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 
 # Version
-version = "0.6.0"
+version = "0.7.0-dev"
 
 # Python Version Requirement
 requires-python = ">=3.10"
@@ -157,7 +157,8 @@ dependencies = [  # this is underneath [project] but is about the build / depend
     "cryptease",
     "lxml",
     "python-dateutil",
-    "requests"
+    "pyzstd",
+    "requests",
 ]
 
 [build-system]
