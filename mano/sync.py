@@ -277,39 +277,36 @@ def process_one_archive_file(
     passphrase: str | None,
     lock: list[str],
 ) -> bool:
-    # skip over the registry file
-    if file_name == 'registry':
+    """
+    Handle one file from inside a ZipFile Archive
+    """
+    
+    if file_name == 'registry':  # skip the registry file
         return False
     
-    # debugging get information about the current archive member
-    # info = archive.getinfo(member)
+    # info = archive.getinfo(member)  # debugging get information about the current archive member
     
     # parse the data type determine if it should be encrypted
     encrypt = _parse_datatype(file_name, user_id) in lock
     logger.debug(f'processing archive member: {file_name} (lock={encrypt})')
-    # create target name
-    target = file_name
-    # add lock extension to target name if necessary
-    if encrypt:
-        target = f'{target}.lock'
+    
+    output_filename = f'{file_name}.lock' if encrypt else file_name  # lock extension if we need it
     
     # detect if target exists, create the directory
-    target_abs = path_join(output_dir, target)
-    target_dir = dirname(target_abs)
-    if path_exists(target_abs):
+    if path_exists(target_abs:= path_join(output_dir, output_filename)):
         os.remove(target_abs)
-    if not path_exists(target_dir):
+    if not path_exists(target_dir:= dirname(target_abs)):
         make_directories(target_dir, umask=0o5022)
     
     # read archive member content and encrypt it if necessary
-    content = archive.open(file_name)
+    file_content = archive.open(file_name)
     
     if encrypt:
         key = crypt.kdf(passphrase)
-        crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
+        crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)
     else:
         # write content to persistent storage
-        atomic_write(target_abs, content.read())
+        atomic_write(target_abs, file_content.read())
     
     return True
 
