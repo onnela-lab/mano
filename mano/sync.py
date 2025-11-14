@@ -5,7 +5,6 @@ import logging
 import os
 import re
 import sys
-import time
 import zipfile
 from datetime import datetime, timedelta
 from os.path import dirname, exists as path_exists, join as path_join
@@ -17,8 +16,8 @@ import dateutil
 import requests
 
 import mano
-from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, BACKFILL_WINDOW,
-    EARLIEST_POSSIBLE_DATA_DATE, spinner)
+from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT,
+    EARLIEST_POSSIBLE_DATA_STR, spinner, TIME_FORMAT, URL_COMPRESSED, URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories
 
 
@@ -33,7 +32,7 @@ def backfill(
     study_id: str,
     user_id: str,
     output_dir: str,
-    start_date: str = EARLIEST_POSSIBLE_DATA_DATE,
+    start_date: str = EARLIEST_POSSIBLE_DATA_STR,
     data_streams: list[str] | None = None,
     lock: list[str] | None = None,
     passphrase: str | None = None,
@@ -113,7 +112,8 @@ def download(
     time_start: str | datetime | None = None,
     time_end: str | datetime | None = None,
     registry: dict[str, str] | None = None,
-    progress: int = 0
+    progress: int = 0,
+    compressed: bool = False,
 ) -> zipfile.ZipFile | None:
     """
     Request data archive from Beiwe API
@@ -139,8 +139,7 @@ def download(
         if isinstance(time_start, str):
             time_start = dateutil.parser.parse(time_start)
     else:
-        epoch = time.gmtime(0)
-        time_start = datetime(epoch.tm_year, epoch.tm_mon, epoch.tm_mday)
+        time_start = EARLIEST_POSSIBLE_DATA_DT
     
     # process end_time
     if time_end:
@@ -149,21 +148,24 @@ def download(
     else:
         time_end = datetime.today()
     
+    assert isinstance(time_start, datetime)  # mypy can get confused here
+    assert isinstance(time_end, datetime)
+    
     # sanity check start and end times
     if time_start > time_end:
         raise DownloadError(f'start time {time_start} is after end time {time_end}')
     
     # setup request payload
-    url = url.rstrip('/') + '/get-data/v1'
+    url = url.rstrip('/') + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
     payload = {
         'access_key': Keyring['ACCESS_KEY'],
         'secret_key': Keyring['SECRET_KEY'],
         'study_id': study_id,
         'user_ids': user_ids,
         'data_streams': data_streams,
-        'time_start': time_start.strftime(mano.TIME_FORMAT),
-        'time_end': time_end.strftime(mano.TIME_FORMAT),
-        'registry': registry
+        'time_start': time_start.strftime(TIME_FORMAT),
+        'time_end': time_end.strftime(TIME_FORMAT),
+        'registry': registry,
     }
     
     # logs
@@ -171,8 +173,8 @@ def download(
     logger.debug(f'study_id={study_id}')
     logger.debug(f'user_ids={user_ids}')
     logger.debug(f'data_streams={data_streams}')
-    logger.debug(f'time_start={time_start.strftime(mano.TIME_FORMAT)}')
-    logger.debug(f'time_end={time_end.strftime(mano.TIME_FORMAT)}')
+    logger.debug(f'time_start={time_start.strftime(TIME_FORMAT)}')
+    logger.debug(f'time_end={time_end.strftime(TIME_FORMAT)}')
     
     # submit download request
     resp = requests.post(url, data=payload, stream=True)
@@ -183,8 +185,7 @@ def download(
     
     # read response in chunks
     if progress:
-        sys.stdout.write('reading response data: ')
-        sys.stdout.flush()
+        print('reading response data: ', end='', flush=True)
     meter = 0
     
     chunk_size = 1024 * 64
@@ -195,17 +196,16 @@ def download(
         if progress and meter >= progress:
             sys.stdout.write(next(spinner))
             sys.stdout.flush()
-            # sys.stdout.write('\b')  # this code was here already, but it seems... clearly wrong?
+            sys.stdout.write('\b')  # backspace, not flushed
             meter = 0
         content.write(chunk)
         meter += chunk_size
     
     # shut down progress indicator
     if progress:
-        sys.stdout.write('done.\n')
-        sys.stdout.flush()
+        print('done.')
     
-    # load reponse content into a zipfile object
+    # load response content into a zipfile object
     try:
         zf = zipfile.ZipFile(content)
     except zipfile.BadZipfile as e:
@@ -223,7 +223,7 @@ def save(
     user_id: str,
     output_dir: str,
     lock: list[str] | None = None,
-    passphrase: str | None = None
+    passphrase: str | None = None,
 ) -> int:
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
@@ -241,7 +241,6 @@ def save(
         if not passphrase:
             raise SaveError('if you wish to lock a data type, you need a passphrase')
     
-    lock_ext = BACKFILL_LOCK_EXT.lstrip('.')
     # open registry file in downloaded archive
     logger.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
@@ -251,40 +250,8 @@ def save(
     if registry:
         # iterate over archive members
         for member in archive.namelist():
-            # skip over the registry file
-            if member == 'registry':
-                continue
-            
-            # debugging get information about the current archive member
-            # info = archive.getinfo(member)
-            
-            # parse the data type determine if it should be encrypted
-            encrypt = _parse_datatype(member, user_id) in lock
-            logger.debug(f'processing archive member: {member} (lock={encrypt})')
-            # create target name
-            target = member
-            # add lock extension to target name if necessary
-            if encrypt:
-                target = f'{target}.{lock_ext}'
-            
-            # detect if target exists, create the directory
-            target_abs = path_join(output_dir, target)
-            target_dir = dirname(target_abs)
-            if path_exists(target_abs):
-                os.remove(target_abs)
-            if not path_exists(target_dir):
-                make_directories(target_dir, umask=0o5022)
-            
-            # read archive member content and encrypt it if necessary
-            content = archive.open(member)
-            
-            if encrypt:
-                key = crypt.kdf(passphrase)
-                crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
-            else:
-                # write content to persistent storage
-                atomic_write(target_abs, content.read())
-            num_saved += 1
+            if process_one_archive_file(member, output_dir, archive, user_id, passphrase, lock):
+                num_saved += 1
         
         # update local registry file to avoid re-downloading these files
         local_registry = dict[str, str]()
@@ -300,6 +267,48 @@ def save(
     
     # return the number of saved files
     return num_saved
+
+
+def process_one_archive_file(
+    file_name: str,
+    output_dir: str,
+    archive: zipfile.ZipFile,
+    user_id: str,
+    passphrase: str | None,
+    lock: list[str],
+) -> bool:
+    """
+    Handle one file from inside a ZipFile Archive
+    """
+    
+    if file_name == 'registry':  # skip the registry file
+        return False
+    
+    # info = archive.getinfo(member)  # debugging get information about the current archive member
+    
+    # parse the data type determine if it should be encrypted
+    encrypt = _parse_datatype(file_name, user_id) in lock
+    logger.debug(f'processing archive member: {file_name} (lock={encrypt})')
+    
+    output_filename = f'{file_name}.lock' if encrypt else file_name  # lock extension if we need it
+    
+    # detect if target exists, create the directory
+    if path_exists(target_abs:= path_join(output_dir, output_filename)):
+        os.remove(target_abs)
+    if not path_exists(target_dir:= dirname(target_abs)):
+        make_directories(target_dir, umask=0o5022)
+    
+    # read archive member content and encrypt it if necessary
+    file_content = archive.open(file_name)
+    
+    if encrypt:
+        key = crypt.kdf(passphrase)
+        crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)
+    else:
+        # write content to persistent storage
+        atomic_write(target_abs, file_content.read())
+    
+    return True
 
 
 ## Helper functions
@@ -342,8 +351,8 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
         resume = None
     
     # convert all timestamps to string representation before returning
-    win_start_str = win_start.strftime(mano.TIME_FORMAT)
-    win_stop_str = window_stop.strftime(mano.TIME_FORMAT)
-    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
+    win_start_str = win_start.strftime(TIME_FORMAT)
+    win_stop_str = window_stop.strftime(TIME_FORMAT)
+    resume_str = resume.strftime(TIME_FORMAT) if resume else None
     
     return win_start_str, win_stop_str, resume_str

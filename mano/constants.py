@@ -2,6 +2,14 @@ import itertools
 import json
 import locale
 import os
+from datetime import datetime
+
+from dateutil.tz import UTC
+
+
+# URL endpoints
+URL_UNCOMPRESSED = '/get-data/v1'
+URL_COMPRESSED = '/get-data/v2'
 
 
 # read configuration file
@@ -18,11 +26,12 @@ locale.setlocale(locale.LC_ALL, LOCALE)
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 # this is the earliest possible date for data out of any Beiwe study
-EARLIEST_POSSIBLE_DATA_DATE = '2015-9-01T00:00:00'
+EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
+EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
+
 
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
-BACKFILL_LOCK_EXT = '.lock'
 
 
 # Exception Types
