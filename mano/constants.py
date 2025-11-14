@@ -32,7 +32,6 @@ EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
-BACKFILL_LOCK_EXT = '.lock'
 
 
 # Exception Types

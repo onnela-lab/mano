@@ -16,9 +16,8 @@ import dateutil
 import requests
 
 import mano
-from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, BACKFILL_WINDOW,
-    EARLIEST_POSSIBLE_DATA_DT, EARLIEST_POSSIBLE_DATA_STR, spinner, TIME_FORMAT, URL_COMPRESSED,
-    URL_UNCOMPRESSED)
+from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT,
+    EARLIEST_POSSIBLE_DATA_STR, spinner, TIME_FORMAT, URL_COMPRESSED, URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories
 
 
@@ -197,7 +196,7 @@ def download(
         if progress and meter >= progress:
             sys.stdout.write(next(spinner))
             sys.stdout.flush()
-            # sys.stdout.write('\b')  # this code was here already, but it seems... clearly wrong?
+            sys.stdout.write('\b')  # backspace, not flushed
             meter = 0
         content.write(chunk)
         meter += chunk_size
@@ -206,7 +205,7 @@ def download(
     if progress:
         print('done.')
     
-    # load reponse content into a zipfile object
+    # load response content into a zipfile object
     try:
         zf = zipfile.ZipFile(content)
     except zipfile.BadZipfile as e:
@@ -242,7 +241,6 @@ def save(
         if not passphrase:
             raise SaveError('if you wish to lock a data type, you need a passphrase')
     
-    lock_ext = BACKFILL_LOCK_EXT.lstrip('.')
     # open registry file in downloaded archive
     logger.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
@@ -252,40 +250,8 @@ def save(
     if registry:
         # iterate over archive members
         for member in archive.namelist():
-            # skip over the registry file
-            if member == 'registry':
-                continue
-            
-            # debugging get information about the current archive member
-            # info = archive.getinfo(member)
-            
-            # parse the data type determine if it should be encrypted
-            encrypt = _parse_datatype(member, user_id) in lock
-            logger.debug(f'processing archive member: {member} (lock={encrypt})')
-            # create target name
-            target = member
-            # add lock extension to target name if necessary
-            if encrypt:
-                target = f'{target}.{lock_ext}'
-            
-            # detect if target exists, create the directory
-            target_abs = path_join(output_dir, target)
-            target_dir = dirname(target_abs)
-            if path_exists(target_abs):
-                os.remove(target_abs)
-            if not path_exists(target_dir):
-                make_directories(target_dir, umask=0o5022)
-            
-            # read archive member content and encrypt it if necessary
-            content = archive.open(member)
-            
-            if encrypt:
-                key = crypt.kdf(passphrase)
-                crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
-            else:
-                # write content to persistent storage
-                atomic_write(target_abs, content.read())
-            num_saved += 1
+            if process_one_archive_file(member, output_dir, archive, user_id, passphrase, lock):
+                num_saved += 1
         
         # update local registry file to avoid re-downloading these files
         local_registry = dict[str, str]()
@@ -301,6 +267,51 @@ def save(
     
     # return the number of saved files
     return num_saved
+
+
+def process_one_archive_file(
+    file_name: str,
+    output_dir: str,
+    archive: zipfile.ZipFile,
+    user_id: str,
+    passphrase: str | None,
+    lock: list[str],
+) -> bool:
+    # skip over the registry file
+    if file_name == 'registry':
+        return False
+    
+    # debugging get information about the current archive member
+    # info = archive.getinfo(member)
+    
+    # parse the data type determine if it should be encrypted
+    encrypt = _parse_datatype(file_name, user_id) in lock
+    logger.debug(f'processing archive member: {file_name} (lock={encrypt})')
+    # create target name
+    target = file_name
+    # add lock extension to target name if necessary
+    if encrypt:
+        target = f'{target}.lock'
+    
+    # detect if target exists, create the directory
+    target_abs = path_join(output_dir, target)
+    target_dir = dirname(target_abs)
+    if path_exists(target_abs):
+        os.remove(target_abs)
+    if not path_exists(target_dir):
+        make_directories(target_dir, umask=0o5022)
+    
+    # read archive member content and encrypt it if necessary
+    content = archive.open(file_name)
+    
+    if encrypt:
+        key = crypt.kdf(passphrase)
+        crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
+    else:
+        # write content to persistent storage
+        atomic_write(target_abs, content.read())
+    
+    return True
 
 
 ## Helper functions
