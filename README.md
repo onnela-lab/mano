@@ -199,7 +199,6 @@ zf.extractall(output_folder)
 ```
 
 > [!Tip]
-
 > _New in 0.7.0_ - the `download` function also accepts a boolean `compressed` parameter. If set to
 > `True` Mano will download the raw compressed version of the data. These source files use `zstd`
 > (`.zst`) compression but are contained in the same structure of an uncompressed Zip archive. On
