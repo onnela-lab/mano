@@ -198,6 +198,15 @@ zf = msync.download(Keyring, study_id, user_id, data_streams=['identifiers'])
 zf.extractall(output_folder)
 ```
 
+> [!Tip]
+
+> _New in 0.7.0_ - the `download` function also accepts a boolean `compressed` parameter. If set to
+> `True` Mano will download the raw compressed version of the data. These source files use `zstd`
+> (`.zst`) compression but are contained in the same structure of an uncompressed Zip archive. On
+> average the `zstd` compressed files are one-fifth the size of uncompressed files. Note that this
+> will result in a 404 error on outdated Beiwe servers.
+
+
 > [!WARNING]
 > We passed `data_streams=['identifiers']` to `msync.download`. Without that parameter that function
 > will request *all* data for *all* data streams, which may amount to many gigabytes of data. Check
