@@ -1,38 +1,31 @@
 import io
-import itertools
 import json
 import locale
 import logging
 import os
 import re
 import sys
-import tempfile as tf
 import time
 import zipfile
 from datetime import datetime, timedelta
+from os.path import dirname, exists as path_exists, join as path_join
+from tempfile import NamedTemporaryFile
+from time import sleep
 
 import cryptease as crypt
-import dateutil.parser
+import dateutil
 import requests
 
 import mano
+from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_LOCK_EXT, BACKFILL_WINDOW,
+    EARLIEST_POSSIBLE_DATA_DATE, spinner)
+from mano.file_management import atomic_write, make_directories
 
-
-BACKFILL_WINDOW = 5
-BACKFILL_INTERVAL_SLEEP = 3
-# this is the earliest possible date for data out of any Beiwe study
-BACKFILL_START_DATE = '2015-9-01T00:00:00'
-LOCK_EXT = '.lock'
 
 logger = logging.getLogger(__name__)
 
-spinner = itertools.cycle(['-', '/', '|', '\\'])
-
-class APIError(Exception): pass  # noqa
-class DownloadError(Exception): pass  # noqa
-class ParseError(Exception): pass  # noqa
-class SaveError(Exception): pass  # noqa
-class WriteError(Exception): pass  # noqa
+# historical namespace items
+from mano.constants import APIError, DownloadError, ParseError, SaveError, WriteError  # noqa
 
 
 def backfill(
@@ -40,7 +33,7 @@ def backfill(
     study_id: str,
     user_id: str,
     output_dir: str,
-    start_date: str = BACKFILL_START_DATE,
+    start_date: str = EARLIEST_POSSIBLE_DATA_DATE,
     data_streams: list[str] | None = None,
     lock: list[str] | None = None,
     passphrase: str | None = None,
@@ -50,19 +43,23 @@ def backfill(
     """
     
     encoding = locale.getpreferredencoding()
+    
     if not data_streams:
         data_streams = mano.DATA_STREAMS
-    if not os.path.exists(output_dir):
-        _makedirs(output_dir, umask=0o077)
+    
+    if not path_exists(output_dir):
+        make_directories(output_dir, umask=0o077)
     
     # backfill continuously until this function finally returns
     while True:
         # read backfill state from file
-        user_dir = os.path.join(output_dir, user_id)
-        if not os.path.exists(user_dir):
-            _makedirs(user_dir)
-        backfill_file = os.path.join(user_dir, '.backfill')
+        user_dir = path_join(output_dir, user_id)
+        if not path_exists(user_dir):
+            make_directories(user_dir)
+        backfill_file = path_join(user_dir, '.backfill')
+        
         logger.info(f'reading backfill file {backfill_file}')
+        
         with open(backfill_file, 'a+') as fo:
             fo.seek(0)
             timestamp = fo.read().strip()
@@ -95,16 +92,16 @@ def backfill(
         )
         
         # save data
-        num_saved = save(Keyring, archive, user_id, output_dir, lock, passphrase)
+        num_saved = save(archive, user_id, output_dir, lock, passphrase)
         logger.info(f'saved {num_saved} files')
         
         # wite the new resume point to the backfill file
         if resume:
-            _atomic_write(backfill_file, resume.encode(encoding))
+            atomic_write(backfill_file, resume.encode(encoding))
             logger.debug('waiting for next backfill interval')
-            time.sleep(BACKFILL_INTERVAL_SLEEP)
+            sleep(BACKFILL_INTERVAL_SLEEP)
         else:
-            _atomic_write(backfill_file, 'COMPLETE'.encode(encoding))
+            atomic_write(backfill_file, 'COMPLETE'.encode(encoding))
             logger.info('backfill is complete')
 
 
@@ -212,7 +209,7 @@ def download(
     try:
         zf = zipfile.ZipFile(content)
     except zipfile.BadZipfile as e:
-        with tf.NamedTemporaryFile(dir='.', prefix='beiwe', suffix='.zip', delete=False) as fo:
+        with NamedTemporaryFile(dir='.', prefix='beiwe', suffix='.zip', delete=False) as fo:
             content.seek(0)
             fo.write(content.read())
             fo.flush()
@@ -221,35 +218,7 @@ def download(
     return zf
 
 
-def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
-    """
-    Generate a backfill window (start, stop, and resume)
-    """
-    # parse the input timestamp into a datetime object
-    win_start = dateutil.parser.parse(timestamp)
-    
-    # by default, the download window will *stop* at `win_start` + `window`,
-    # and the next *resume* point will be the same...
-    win_stop = win_start + timedelta(days=window)
-    resume: datetime | None = win_stop
-    
-    # ...unless the next projected window stop point extends into the future, in which case the
-    # window stop point will be set to the present time, but and next resume time will be null
-    now = datetime.today()
-    if win_stop > now:
-        win_stop = now
-        resume = None
-    
-    # convert all timestamps to string representation before returning
-    win_start_str = win_start.strftime(mano.TIME_FORMAT)
-    win_stop_str = win_stop.strftime(mano.TIME_FORMAT)
-    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
-    
-    return win_start_str, win_stop_str, resume_str
-
-
 def save(
-    Keyring: dict[str, str],
     archive: zipfile.ZipFile | None,
     user_id: str,
     output_dir: str,
@@ -261,6 +230,7 @@ def save(
         1. Save the file
         2. Update the local registry
     """
+    
     num_saved = 0
     if not archive:
         return num_saved
@@ -271,7 +241,7 @@ def save(
         if not passphrase:
             raise SaveError('if you wish to lock a data type, you need a passphrase')
     
-    lock_ext = LOCK_EXT.lstrip('.')
+    lock_ext = BACKFILL_LOCK_EXT.lstrip('.')
     # open registry file in downloaded archive
     logger.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
@@ -298,12 +268,12 @@ def save(
                 target = f'{target}.{lock_ext}'
             
             # detect if target exists, create the directory
-            target_abs = os.path.join(output_dir, target)
-            target_dir = os.path.dirname(target_abs)
-            if os.path.exists(target_abs):
+            target_abs = path_join(output_dir, target)
+            target_dir = dirname(target_abs)
+            if path_exists(target_abs):
                 os.remove(target_abs)
-            if not os.path.exists(target_dir):
-                _makedirs(target_dir, umask=0o5022)
+            if not path_exists(target_dir):
+                make_directories(target_dir, umask=0o5022)
             
             # read archive member content and encrypt it if necessary
             content = archive.open(member)
@@ -313,51 +283,26 @@ def save(
                 crypt.encrypt(content, key, filename=target_abs, permissions=0o0644)
             else:
                 # write content to persistent storage
-                _atomic_write(target_abs, content.read())
+                atomic_write(target_abs, content.read())
             num_saved += 1
         
         # update local registry file to avoid re-downloading these files
-        local_registry_file = os.path.join(output_dir, user_id, '.registry')
-        local_registry = dict()
-        if os.path.exists(local_registry_file):
+        local_registry = dict[str, str]()
+        local_registry_file = path_join(output_dir, user_id, '.registry')
+        
+        if path_exists(local_registry_file):
             with open(local_registry_file) as fo:
                 local_registry = json.load(fo)
         
         local_registry.update(registry)
         local_registry_str = json.dumps(local_registry, indent=2)
-        _atomic_write(local_registry_file, local_registry_str.encode(encoding))
+        atomic_write(local_registry_file, local_registry_str.encode(encoding))
     
     # return the number of saved files
     return num_saved
 
 
-def _makedirs(path: str, umask: int | None = None, exist_ok: bool = True):
-    """
-    Create directories recursively with a temporary umask
-    """
-    old_umask = None
-    if umask is not None:
-        old_umask = os.umask(umask)
-    try:
-        os.makedirs(path, exist_ok=exist_ok)
-    finally:
-        if old_umask is not None:
-            os.umask(old_umask)
-
-
-def _atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
-    """
-    Write a file by first saving the content to a temporary file first, then
-    renaming the file. Overwrites silently by default o_o
-    """
-    filename = os.path.expanduser(filename)
-    if not overwrite and os.path.exists(filename):
-        raise WriteError(f"file already exists: {filename}")
-    dirname = os.path.dirname(filename)
-    with tf.NamedTemporaryFile(dir=dirname, prefix='.', delete=False) as tmp:
-        tmp.write(content)
-    os.chmod(tmp.name, permissions)
-    os.rename(tmp.name, filename)
+## Helper functions
 
 
 def _parse_datatype(member: str, user_id: str):
@@ -374,3 +319,31 @@ def _parse_datatype(member: str, user_id: str):
             f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
         )
     return match.group(1)
+
+
+def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
+    """
+    Generate a backfill window (start, stop, and resume)
+    """
+    
+    # parse the input timestamp into a datetime object
+    win_start = dateutil.parser.parse(timestamp)
+    
+    # by default, the download window will *stop* at `win_start` + `window`,
+    # and the next *resume* point will be the same...
+    window_stop = win_start + timedelta(days=window)
+    resume: datetime | None = window_stop  # mypy wants this explicit type hint
+    
+    # ...unless the next projected window stop point extends into the future, in which case the
+    # window stop point will be set to the present time, but and next resume time will be null
+    now = datetime.today()
+    if window_stop > now:
+        window_stop = now
+        resume = None
+    
+    # convert all timestamps to string representation before returning
+    win_start_str = win_start.strftime(mano.TIME_FORMAT)
+    win_stop_str = window_stop.strftime(mano.TIME_FORMAT)
+    resume_str = resume.strftime(mano.TIME_FORMAT) if resume else None
+    
+    return win_start_str, win_stop_str, resume_str

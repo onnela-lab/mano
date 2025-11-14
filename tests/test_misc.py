@@ -1,10 +1,7 @@
-import os
-
+import pytest
 import responses
 
 import mano
-
-DIR = os.path.dirname(__file__)
 
 
 @responses.activate
@@ -62,3 +59,33 @@ def test_device_settings():
             ans.add(setting)
         assert ans == device_settings
     """
+
+
+def test_interval():
+    assert mano.interval("10s") == 10
+    assert mano.interval("5m") == 300
+    assert mano.interval("2h") == 7200
+    assert mano.interval("1d") == 86400
+    assert mano.interval("0s") == 0
+    assert mano.interval("0h") == 0
+    assert mano.interval("0H") == 0
+    assert mano.interval("0m") == 0
+    assert mano.interval("0d") == 0
+    assert mano.interval("000000000000m") == 0
+    
+    with pytest.raises(mano.IntervalError, match="invalid interval 'y'"):
+        mano.interval("y")
+    
+    # there's a regex that catches it first
+    # with pytest.raises(mano.IntervalError, match="invalid interval unit '10x'"):
+    with pytest.raises(mano.IntervalError, match="invalid interval '10x'"):
+        mano.interval("10x")
+    
+    with pytest.raises(mano.IntervalError, match="invalid interval 'abc'"):
+        mano.interval("abc")
+    
+    with pytest.raises(mano.IntervalError, match="invalid interval ''"):
+        mano.interval("")
+    
+    with pytest.raises(mano.IntervalError, match="invalid interval ''"):
+        mano.interval("")
