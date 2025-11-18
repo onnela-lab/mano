@@ -12,7 +12,7 @@ from mano import sync
 from mano.constants import APIError
 
 
-def test_download_returns_zipfile(mock_download_api: RequestsMock, keyring: dict[str, str]):
+def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download function returns a ZipFile object."""
     # Call the download function
     zf = sync.download(
@@ -28,7 +28,7 @@ def test_download_returns_zipfile(mock_download_api: RequestsMock, keyring: dict
     assert isinstance(zf, zipfile.ZipFile)
 
 
-def test_download_file_count(mock_download_api: RequestsMock, keyring: dict[str, str]):
+def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download returns the expected number of files."""
     # Call the download function
     zf = sync.download(
@@ -50,7 +50,7 @@ def test_download_file_count(mock_download_api: RequestsMock, keyring: dict[str,
 
 
 def test_download_contains_expected_files_with_correct_crcs(
-    mock_download_api: RequestsMock,
+    mock_download_v1_api: RequestsMock,
     keyring: dict[str, str],
     expected_download_files: set[tuple[str, int]],
 ):
@@ -80,7 +80,7 @@ def test_download_contains_expected_files_with_correct_crcs(
     assert filtered_actual_files == expected_download_files
 
 
-def test_download_gps_files(mock_download_api: RequestsMock, keyring: dict[str, str]):
+def test_download_gps_files(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download contains the expected GPS files."""
     # Call the download function
     zf = sync.download(
@@ -105,7 +105,7 @@ def test_download_gps_files(mock_download_api: RequestsMock, keyring: dict[str, 
     assert any('2018-06-16' in f for f in gps_files)
 
 
-def test_download_api_request(mock_download_api: RequestsMock, keyring: dict[str, str]):
+def test_download_v1_api_request(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download makes the correct API request."""
     # Call the download function
     sync.download(
@@ -118,8 +118,8 @@ def test_download_api_request(mock_download_api: RequestsMock, keyring: dict[str
     )
     
     # Verify the API was called correctly
-    assert len(mock_download_api.calls) == 1
-    request = mock_download_api.calls[0].request
+    assert len(mock_download_v1_api.calls) == 1
+    request = mock_download_v1_api.calls[0].request
     
     # Check that the request contains expected parameters
     assert isinstance(request.body, str)
@@ -127,6 +127,32 @@ def test_download_api_request(mock_download_api: RequestsMock, keyring: dict[str
     assert 'secret_key=SECRET_KEY' in request.body
     assert 'study_id=STUDY_ID' in request.body
     assert 'user_ids=USER_ID' in request.body
+
+
+# def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: dict[str, str]):
+#     """Test that download makes the correct API request."""
+#     # Call the download function
+#     sync.download(
+#         keyring,
+#         study_id='STUDY_ID',
+#         user_ids=['USER_ID'],
+#         data_streams=['identifiers', 'gps'],
+#         time_start='2018-06-15T00:00:00',
+#         time_end='2018-06-17T00:00:00',
+#         compressed=True,
+#     )
+    
+#     # Verify the API was called correctly
+#     assert len(mock_download_v1_api.calls) == 1
+#     request = mock_download_v1_api.calls[0].request
+    
+#     # Check that the request contains expected parameters
+#     assert isinstance(request.body, str)
+#     assert 'access_key=ACCESS_KEY' in request.body
+#     assert 'secret_key=SECRET_KEY' in request.body
+#     assert 'study_id=STUDY_ID' in request.body
+#     assert 'user_ids=USER_ID' in request.body
+
 
 
 def test_download_network_error_during_streaming(keyring: dict[str, str]):

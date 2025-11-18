@@ -37,7 +37,7 @@ def mock_zip_data():
 
 
 @pytest.fixture
-def mock_download_api(mock_zip_data: bytes):
+def mock_download_v1_api(mock_zip_data: bytes):
     """Fixture that sets up the mock API endpoint for download testing."""
     with responses.RequestsMock() as rsps:
         rsps.add(
@@ -48,6 +48,20 @@ def mock_download_api(mock_zip_data: bytes):
             content_type='application/zip'
         )
         yield rsps
+
+
+# @pytest.fixture
+# def mock_download_v2_api(mock_zip_data: bytes):
+#     """Fixture that sets up the mock API endpoint for download testing."""
+#     with responses.RequestsMock() as rsps:
+#         rsps.add(
+#             responses.POST,
+#             'https://studies.beiwe.org/get-data/v2',
+#             body=mock_zip_data,
+#             status=200,
+#             content_type='application/zip'
+#         )
+#         yield rsps
 
 
 @pytest.fixture
