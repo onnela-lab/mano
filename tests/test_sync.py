@@ -6,6 +6,7 @@ import zipfile
 import pytest
 import requests
 import responses
+from pyzstd import decompress
 from responses import RequestsMock
 
 from mano import sync
@@ -49,13 +50,12 @@ def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[s
     assert len(file_names) == 31
 
 
-def test_download_contains_expected_files_with_correct_crcs(
+def test_download_v1_contains_expected_files_with_correct_crcs(
     mock_download_v1_api: RequestsMock,
     keyring: dict[str, str],
-    expected_download_files: set[tuple[str, int]],
+    expected_uncompressed_filenames: set[tuple[str, int]],
 ):
-    """Test download contains expected files with correct CRC values from
-    original data."""
+    """Test download contains expected files with correct CRC values from original data."""
     # Call the download function
     zf = sync.download(
         keyring,
@@ -73,12 +73,87 @@ def test_download_contains_expected_files_with_correct_crcs(
     # Filter actual files to only include expected ones (excludes directories)
     filtered_actual_files = {
         (filename, crc) for filename, crc in actual_files
-        if filename in {f for f, _ in expected_download_files}
+        if filename in {f for f, _ in expected_uncompressed_filenames}
     }
     
     # Verify that the CRC values match exactly
-    assert filtered_actual_files == expected_download_files
+    assert filtered_actual_files == expected_uncompressed_filenames
 
+
+def test_download_v2_contains_expected_files_with_correct_crcs(
+    mock_download_v2_api: RequestsMock,
+    keyring: dict[str, str],
+    expected_compressed_filenames: set[tuple[str, int]],
+):
+    """Test download contains expected files with correct CRC values from original data."""
+    # Call the download function
+    zf = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        user_ids=['USER_ID'],
+        data_streams=['identifiers', 'gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        compressed=True,
+    )
+    
+    # Get the actual files and their CRC values from the zip
+    assert isinstance(zf, zipfile.ZipFile)
+    actual_files = {(zinfo.filename, zinfo.CRC) for zinfo in zf.infolist()}
+    
+    # Filter actual files to only include expected ones (excludes directories)
+    filtered_actual_files = {
+        (filename, crc) for filename, crc in actual_files
+        if filename in {f for f, _ in expected_compressed_filenames}
+    }
+    
+    # Verify that the CRC values match exactly
+    assert filtered_actual_files == expected_compressed_filenames
+
+
+def test_download_v1_and_v2_have_same_underlying_data(
+    mock_download_v1_and_v2_api: RequestsMock,
+    keyring: dict[str, str],
+    expected_compressed_filenames: set[tuple[str, int]],
+    expected_uncompressed_filenames: set[tuple[str, int]],
+):
+    compressed_filenames = {n[:-4] for n, _ in expected_compressed_filenames}
+    compressed_filenames.remove("regi")
+    compressed_filenames.add("registry")
+    uncompressed_filenames = {n for n, _ in expected_uncompressed_filenames}
+    assert compressed_filenames == uncompressed_filenames
+    names = compressed_filenames
+    
+    
+    zf1 = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        user_ids=['USER_ID'],
+        data_streams=['identifiers', 'gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00'
+    )
+    zf2 = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        user_ids=['USER_ID'],
+        data_streams=['identifiers', 'gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        compressed=True,
+    )
+    
+    assert isinstance(zf1, zipfile.ZipFile)
+    assert isinstance(zf2, zipfile.ZipFile)
+    
+    names.remove("registry")
+    for name in names:
+        
+        data1 = zf1.read(name)
+        data2 = decompress(zf2.read(name+".zst"))
+        assert data1 == data2
+    
+    assert zf1.read("registry") == zf2.read("registry")
 
 def test_download_gps_files(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download contains the expected GPS files."""
@@ -129,30 +204,29 @@ def test_download_v1_api_request(mock_download_v1_api: RequestsMock, keyring: di
     assert 'user_ids=USER_ID' in request.body
 
 
-# def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: dict[str, str]):
-#     """Test that download makes the correct API request."""
-#     # Call the download function
-#     sync.download(
-#         keyring,
-#         study_id='STUDY_ID',
-#         user_ids=['USER_ID'],
-#         data_streams=['identifiers', 'gps'],
-#         time_start='2018-06-15T00:00:00',
-#         time_end='2018-06-17T00:00:00',
-#         compressed=True,
-#     )
+def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: dict[str, str]):
+    """Test that download makes the correct API request."""
+    # Call the download function
+    sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        user_ids=['USER_ID'],
+        data_streams=['identifiers', 'gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        compressed=True,
+    )
     
-#     # Verify the API was called correctly
-#     assert len(mock_download_v1_api.calls) == 1
-#     request = mock_download_v1_api.calls[0].request
+    # Verify the API was called correctly
+    assert len(mock_download_v2_api.calls) == 1
+    request = mock_download_v2_api.calls[0].request
     
-#     # Check that the request contains expected parameters
-#     assert isinstance(request.body, str)
-#     assert 'access_key=ACCESS_KEY' in request.body
-#     assert 'secret_key=SECRET_KEY' in request.body
-#     assert 'study_id=STUDY_ID' in request.body
-#     assert 'user_ids=USER_ID' in request.body
-
+    # Check that the request contains expected parameters
+    assert isinstance(request.body, str)
+    assert 'access_key=ACCESS_KEY' in request.body
+    assert 'secret_key=SECRET_KEY' in request.body
+    assert 'study_id=STUDY_ID' in request.body
+    assert 'user_ids=USER_ID' in request.body
 
 
 def test_download_network_error_during_streaming(keyring: dict[str, str]):
