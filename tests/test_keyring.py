@@ -4,11 +4,12 @@ import pytest
 
 import mano
 
+
 DIR = os.path.dirname(__file__)
 NRG_KEYRING_PASS = 'foobar'
 
 
-def test_keyring(keyring):
+def test_keyring(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
         os.environ['NRG_KEYRING_PASS'] = NRG_KEYRING_PASS
@@ -44,7 +45,7 @@ def test_keyring_missing_file():
         os.environ.update(_environ)
 
 
-def test_keyring_from_env(keyring):
+def test_keyring_from_env(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
         os.environ['BEIWE_URL'] = keyring['URL']
@@ -59,7 +60,7 @@ def test_keyring_from_env(keyring):
         os.environ.update(_environ)
 
 
-def test_keyring_from_env_missing(keyring):
+def test_keyring_from_env_missing(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
         os.environ['BEIWE_USERNAME'] = keyring['USERNAME']

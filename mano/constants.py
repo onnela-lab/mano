@@ -34,7 +34,7 @@ BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
 
 
-# Exception Types
+# Exception Types - ensure all exception types have the work error in them for easy identification
 
 # originally in mano/sync.py
 class APIError(Exception): pass  # noqa
