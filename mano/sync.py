@@ -1,7 +1,6 @@
 import io
 import json
 import locale
-import logging
 import os
 import re
 import sys
@@ -17,11 +16,9 @@ import requests
 
 import mano
 from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT,
-    EARLIEST_POSSIBLE_DATA_STR, spinner, TIME_FORMAT, URL_COMPRESSED, URL_UNCOMPRESSED)
+    EARLIEST_POSSIBLE_DATA_STR, logger, spinner, TIME_FORMAT, URL_COMPRESSED, URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories
 
-
-logger = logging.getLogger(__name__)
 
 # historical namespace items
 from mano.constants import APIError, DownloadError, ParseError, SaveError, WriteError  # noqa

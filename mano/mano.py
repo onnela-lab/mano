@@ -1,6 +1,5 @@
 import getpass
 import json
-import logging
 import os
 import re
 from collections.abc import Generator
@@ -11,11 +10,9 @@ import requests
 from lxml import html
 from lxml.html import HtmlElement
 
-from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError,
+from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError, logger,
     LoginError, ScrapeError, StudyIDError, StudyNameError, StudySettingsError)
 
-
-logger = logging.getLogger(__name__)
 
 # historical namespace items
 from mano.constants import DATA_STREAMS, LOCALE, TIME_FORMAT, Config  # noqa # type: ignore

@@ -1,3 +1,4 @@
+import logging
 import itertools
 import json
 import locale
@@ -29,9 +30,11 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
 EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 
-
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
+
+# The logger
+logger = logging.getLogger("mano")
 
 
 # Exception Types - ensure all exception types have the work error in them for easy identification
