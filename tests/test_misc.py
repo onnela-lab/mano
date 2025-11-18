@@ -5,7 +5,7 @@ import mano
 
 
 @responses.activate
-def test_users(keyring, mock_users_response):
+def test_users(keyring: dict[str, str], mock_users_response: str):
     expected_users = set(["tgsidhm", "lholbc5", "yxzxtwr"])
     responses.post(
         keyring['URL'] + '/get-users/v1',
@@ -13,7 +13,7 @@ def test_users(keyring, mock_users_response):
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    users = set()
+    users = set[str]()
     for user in mano.users(keyring, 'STUDY_ID'):
         users.add(user)
     assert users == expected_users

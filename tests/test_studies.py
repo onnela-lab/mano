@@ -5,7 +5,7 @@ import mano
 
 
 @responses.activate
-def test_studies(keyring, mock_studies_response):
+def test_studies(keyring: dict[str, str], mock_studies_response: str):
     expected_studies = {
         ('Project A', '123lrVdb0g6tf3PeJr5ZtZC8'),
         ('Project B', '123U93wwgS18aLDIwdYXTXsr')
@@ -16,15 +16,15 @@ def test_studies(keyring, mock_studies_response):
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    studies = set()
+    studies = set[tuple[str, str]]()
     for study in mano.studies(keyring):
         studies.add(study)
-
+    
     assert studies == expected_studies
 
 
 @responses.activate
-def test_expand_study_id(keyring, mock_studies_response):
+def test_expand_study_id(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -37,7 +37,7 @@ def test_expand_study_id(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_expand_study_id_conflict(keyring, mock_studies_response):
+def test_expand_study_id_conflict(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -49,7 +49,7 @@ def test_expand_study_id_conflict(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_expand_study_id_nomatch(keyring, mock_studies_response):
+def test_expand_study_id_nomatch(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -61,7 +61,7 @@ def test_expand_study_id_nomatch(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_studyid(keyring, mock_studies_response):
+def test_studyid(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -74,7 +74,7 @@ def test_studyid(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_studyid_not_found(keyring, mock_studies_response):
+def test_studyid_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -86,7 +86,7 @@ def test_studyid_not_found(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_studyname(keyring, mock_studies_response):
+def test_studyname(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,
@@ -99,7 +99,7 @@ def test_studyname(keyring, mock_studies_response):
 
 
 @responses.activate
-def test_studyname_not_found(keyring, mock_studies_response):
+def test_studyname_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
         body=mock_studies_response,

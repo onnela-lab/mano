@@ -8,7 +8,7 @@ import responses
 
 
 @pytest.fixture
-def keyring():
+def keyring() -> dict[str, str]:
     """Fixture providing test credentials for Beiwe API authentication."""
     return {
         'URL': 'https://studies.beiwe.org',
@@ -31,13 +31,13 @@ def mock_zip_data():
     original_zip_file = os.path.join(
         os.path.dirname(__file__), 'data', 'download.v1.zip'
     )
-
+    
     with open(original_zip_file, 'rb') as f:
         return f.read()
 
 
 @pytest.fixture
-def mock_download_api(mock_zip_data):
+def mock_download_api(mock_zip_data: bytes):
     """Fixture that sets up the mock API endpoint for download testing."""
     with responses.RequestsMock() as rsps:
         rsps.add(
@@ -51,7 +51,7 @@ def mock_download_api(mock_zip_data):
 
 
 @pytest.fixture
-def expected_download_files():
+def expected_download_files() -> set[tuple[str, int]]:
     """Expected files and CRC values from the original download.
 
     These values represent what we expect the download function to return
@@ -95,8 +95,7 @@ def expected_download_files():
 @pytest.fixture
 def mock_studies_response():
     """Mock API response for get-studies/v1 endpoint"""
-    return ('{"123lrVdb0g6tf3PeJr5ZtZC8": "Project A", '
-            '"123U93wwgS18aLDIwdYXTXsr": "Project B"}')
+    return  '{"123lrVdb0g6tf3PeJr5ZtZC8": "Project A", "123U93wwgS18aLDIwdYXTXsr": "Project B"}'
 
 
 @pytest.fixture
