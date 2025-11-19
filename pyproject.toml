@@ -76,8 +76,6 @@ star_first = true
 multi_line_output = 10  # aka HANGING_INDENT_WITH_PARENTHESES
 combine_as_imports = true
 lines_after_imports = 2
-lines_between_types = 0
-# dont_order_by_type = true  # not supported in config file???
 
 known_third_party = [  # Force these libraries to a special spot in import order (second to bottom)
     "forest",
@@ -154,6 +152,7 @@ classifiers = [
 
 
 dependencies = [  # this is underneath [project] but is about the build / dependencies systems
+    "coloredlogs",
     "cryptease",
     "lxml",
     "python-dateutil",

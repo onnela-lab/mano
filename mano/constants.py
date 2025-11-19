@@ -4,7 +4,7 @@ import locale
 import logging
 import os
 from datetime import datetime
-
+import coloredlogs
 import pyzstd
 from dateutil.tz import UTC
 
@@ -34,10 +34,6 @@ EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
 
-# The logger
-logger = logging.getLogger("mano")
-
-
 # pyzstd custom paramaters
 # Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
 BACKEND_PYZSTD_PARAMS = {
@@ -65,3 +61,12 @@ class ScrapeError(Exception): pass  # noqa
 class StudyIDError(Exception): pass  # noqa
 class StudyNameError(Exception): pass  # noqa
 class StudySettingsError(Exception): pass  # noqa
+
+
+
+# configure colored logging
+# coloredlogs.install(fmt="%(levelname)s %(name)s: %(message)s")
+coloredlogs.install(fmt="%(message)s")
+coloredlogs.auto_install()
+# The logger
+logger = logging.getLogger("mano")

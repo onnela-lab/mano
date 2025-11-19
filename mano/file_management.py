@@ -64,6 +64,10 @@ def bytes_to_human_filesize(b: bytes) -> str:
         count /= 1024
         index += 1
     
+    # bytes don't have fractions
+    if index == 0:
+        return f"{int(count)}{suffixes[index]}"
+    
     return f"{count:.2f}{suffixes[index]}"
 
 
@@ -83,7 +87,7 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
     
     it_exists = path_exists(decompressed_path)
     if not overwrite and it_exists:
-        log.warning(f"Skipping: `{decompressed_path}`, file already exists.")
+        log.warning(f"Skipping: `{full_path}`, file already exists.")
         return
     
     with open(full_path, 'rb') as fo:
@@ -95,7 +99,8 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
     size_decompressed = bytes_to_human_filesize(decompressed_bytes)
     
     label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
-    log.info(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
+    _log = log.warning if it_exists else log.info
+    _log(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
     
     with open(decompressed_path, 'wb') as fo:
         fo.write(decompressed_bytes)
@@ -142,7 +147,8 @@ def compress_one_zstd_file(
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     
     label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
-    log.info(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
+    _log = log.warning if it_exists else log.info
+    _log(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
     
     with open(compressed_path, 'wb') as fo:
         fo.write(compressed_bytes)
