@@ -3,9 +3,11 @@ from os import chmod, makedirs as _make_directories, rename
 from os.path import dirname, exists as path_exists, expanduser, join as path_join
 from tempfile import NamedTemporaryFile
 
+import pyzstd
 from pyzstd import decompress
 
 from mano.constants import logger as log, WriteError
+
 
 def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
     """
@@ -87,14 +89,13 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
     with open(full_path, 'rb') as fo:
         compressed_bytes = fo.read()
     
+    # decompression speed should be over 1GB/s on anything remotely modern as of 2025
     decompressed_bytes = decompress(compressed_bytes)
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     size_decompressed = bytes_to_human_filesize(decompressed_bytes)
     
-    if it_exists:
-        log.info(f"Overwriting: `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
-    else:
-        log.info(f"Creating:::: `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
+    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
+    log.info(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
     
     with open(decompressed_path, 'wb') as fo:
         fo.write(decompressed_bytes)
@@ -112,7 +113,7 @@ def compress_zstd_files(directory_path: str, delete_original: bool = False, over
         compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)
 
 
-def compress_one_zstd_file(full_path: str, delete_original: bool = False, overwrite: bool = False):
+def compress_one_zstd_file(full_path: str, delete_original: bool = False, overwrite: bool = False, compression_level: int = 2):
     """ Compress a single file to .zst """
     
     compressed_path = full_path + '.zst'
@@ -125,18 +126,43 @@ def compress_one_zstd_file(full_path: str, delete_original: bool = False, overwr
     with open(full_path, 'rb') as fo:
         original_bytes = fo.read()
     
-    compressed_bytes = decompress(original_bytes)
+    if compression_level == 2:
+        compressed_bytes = compress_as_backend(original_bytes)
+    else:
+        compressed_bytes = compress_general(original_bytes, level=compression_level)
+    
     size_original = bytes_to_human_filesize(original_bytes)
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     
-    if it_exists:
-        # Log info this one because it is the default behavior to overwrite
-        log.info(f"Overwriting: `{compressed_path}` ({size_original} -> {size_compressed}).")
-    else:
-        log.info(f"Creating:::: `{compressed_path}` ({size_original} -> {size_compressed}).")
+    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
+    log.info(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
     
     with open(compressed_path, 'wb') as fo:
         fo.write(compressed_bytes)
     
     if delete_original:
         os.remove(full_path)
+
+
+def compress_as_backend(b: bytes) -> bytes:
+    """
+    This function matches the exact compression parameters used by the Beiwe backend. These
+    parameters were tested and found to be fairly ideal, achieving 18-19% original size at hundreds
+    of MB/s. Less aggressive compression may be _slower_, as well as worse. More aggressive
+    parameters will drop speed _significantly_, down to single digit MB/s by level 18, with maximum
+    compression raised to around 14-15%.  Decompression speed is always extremely fast (~2GB/s).
+    (Your speeds will differ, compression ratios are stable.)
+    """
+    # Beiwe does not produce files large enough to benefit from multiple threads (at this level)
+    return pyzstd.RichMemZstdCompressor(
+        {
+            pyzstd.CParameter.compressionLevel: 2,  # type: ignore
+            pyzstd.CParameter.nbWorkers: -1,
+            pyzstd.CParameter.strategy: pyzstd.Strategy.dfast,
+        }
+    ).compress(b)
+
+
+def compress_general(b: bytes, level: int) -> bytes:
+    """ The richmem compressor is slightly faster and uses a tiny fraction more RAM. """
+    return pyzstd.RichMemZstdCompressor({pyzstd.CParameter.compressionLevel: level}).compress(b) # type: ignore
