@@ -1,10 +1,11 @@
-import logging
 import itertools
 import json
 import locale
+import logging
 import os
 from datetime import datetime
 
+import pyzstd
 from dateutil.tz import UTC
 
 
@@ -35,6 +36,15 @@ BACKFILL_INTERVAL_SLEEP = 3
 
 # The logger
 logger = logging.getLogger("mano")
+
+
+# pyzstd custom paramaters
+# Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
+BACKEND_PYZSTD_PARAMS = {
+    pyzstd.CParameter.compressionLevel: 2,
+    pyzstd.CParameter.nbWorkers: -1,
+    pyzstd.CParameter.strategy: pyzstd.Strategy.dfast,
+}
 
 
 # Exception Types - ensure all exception types have the work error in them for easy identification

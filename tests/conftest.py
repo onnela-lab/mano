@@ -1,10 +1,14 @@
+from os.path import dirname, join as path_join
+from pathlib import Path
+
+import pytest
+import pyzstd
+import responses
+
+
 """
 Pytest configuration and shared fixtures for mano tests.
 """
-from os.path import dirname, join as path_join
-
-import pytest
-import responses
 
 
 @pytest.fixture
@@ -180,3 +184,23 @@ def mock_studies_response():
 def mock_users_response():
     """Mock API response for get-users/v1 endpoint"""
     return '["tgsidhm", "lholbc5", "yxzxtwr"]'
+
+
+#
+# Helper functions for zstd compression tests - require the test uses the tmp_path fixture and pass it in
+#
+def generate_uncompressed_zstd_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
+    uncompressed_path = tmp_path / "testzstd.txt"
+    original_bytes = b"Sample data for compression test." * 20
+    uncompressed_path.write_bytes(original_bytes)
+    compressed_path = tmp_path / "testzstd.txt.zst"
+    return uncompressed_path, compressed_path, original_bytes
+
+
+def generate_compressed_zstd_file(tmp_path: Path) -> tuple[Path, Path, bytes]:
+    uncompressed_path = tmp_path / "testzstd.txt"
+    compressed_path = tmp_path / "testzstd.txt.zst"
+    original_bytes = b"Sample data for compression test." * 20
+    compressed_bytes = pyzstd.compress(original_bytes, 2)  # type: ignore
+    compressed_path.write_bytes(compressed_bytes)
+    return uncompressed_path, compressed_path, original_bytes

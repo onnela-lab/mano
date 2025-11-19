@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 import pyzstd
 from pyzstd import decompress
 
-from mano.constants import logger as log, WriteError
+from mano.constants import BACKEND_PYZSTD_PARAMS, logger as log, WriteError
 
 
 def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
@@ -104,7 +104,9 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
         os.remove(full_path)
 
 
-def compress_zstd_files(directory_path: str, delete_original: bool = False, overwrite: bool = False):
+def compress_zstd_files(
+    directory_path: str, delete_original: bool = False, overwrite: bool = False
+):
     """ Compress all files in a directory to .zst """
     
     for full_path in iterate_all_files(directory_path):
@@ -113,7 +115,12 @@ def compress_zstd_files(directory_path: str, delete_original: bool = False, over
         compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)
 
 
-def compress_one_zstd_file(full_path: str, delete_original: bool = False, overwrite: bool = False, compression_level: int = 2):
+def compress_one_zstd_file(
+    full_path: str,
+    delete_original: bool = False,
+    overwrite: bool = False,
+    compression_level: int = 2
+):
     """ Compress a single file to .zst """
     
     compressed_path = full_path + '.zst'
@@ -153,16 +160,8 @@ def compress_as_backend(b: bytes) -> bytes:
     compression raised to around 14-15%.  Decompression speed is always extremely fast (~2GB/s).
     (Your speeds will differ, compression ratios are stable.)
     """
-    # Beiwe does not produce files large enough to benefit from multiple threads (at this level)
-    return pyzstd.RichMemZstdCompressor(
-        {
-            pyzstd.CParameter.compressionLevel: 2,  # type: ignore
-            pyzstd.CParameter.nbWorkers: -1,
-            pyzstd.CParameter.strategy: pyzstd.Strategy.dfast,
-        }
-    ).compress(b)
+    return pyzstd.compress(b, BACKEND_PYZSTD_PARAMS)  # type: ignore
 
 
 def compress_general(b: bytes, level: int) -> bytes:
-    """ The richmem compressor is slightly faster and uses a tiny fraction more RAM. """
-    return pyzstd.RichMemZstdCompressor({pyzstd.CParameter.compressionLevel: level}).compress(b) # type: ignore
+    return pyzstd.compress(b, {pyzstd.CParameter.compressionLevel: level}) # type: ignore

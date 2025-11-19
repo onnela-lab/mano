@@ -1,7 +1,13 @@
+from pathlib import Path
+
 import pytest
 import responses
+from pyzstd import decompress
 
 import mano
+from mano.file_management import (compress_as_backend, compress_general, compress_one_zstd_file,
+    decompress_one_zstd_file)
+from tests.conftest import generate_compressed_zstd_file, generate_uncompressed_zstd_files
 
 
 @responses.activate
@@ -89,3 +95,94 @@ def test_interval():
     
     with pytest.raises(mano.IntervalError, match="invalid interval ''"):
         mano.interval("")
+
+
+def test_compress_as_backend():
+    original_bytes = b'This is some test data to be compressed using the backend compression settings.' * 10
+    compressed_bytes = compress_as_backend(original_bytes)
+    assert decompress(compressed_bytes) == original_bytes
+    assert len(compressed_bytes) < len(original_bytes)
+
+
+def test_compress_general():
+    original_bytes = b'This is some test data to be compressed using the general compression settings.' * 10
+    compressed_bytes = compress_general(original_bytes, level=19)  # take it slow
+    assert decompress(compressed_bytes) == original_bytes
+    assert len(compressed_bytes) < len(original_bytes)
+
+
+# (tmp_path is a built-in pytest fixture, it creates a temporary directory for the test)
+# test compress
+
+
+def test_compress_one_zstd_file_defaults(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
+    compress_one_zstd_file(str(uncompressed_path))
+    assert compressed_path.exists()
+    assert uncompressed_path.exists()
+    assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
+    assert len(compressed_bytes) < len(original_bytes)
+
+
+def test_compress_one_zstd_file_overwrite_fail(tmp_path: Path):
+    uncompressed_path, compressed_path, _original_bytes = generate_uncompressed_zstd_files(tmp_path)
+    compressed_path.write_bytes(b"super secret data")
+    compress_one_zstd_file(str(uncompressed_path), overwrite=False)
+    assert compressed_path.read_bytes() == b"super secret data"
+
+
+def test_compress_one_zstd_file_overwrite_success(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
+    compressed_path.write_bytes(b"super secret data")
+    compress_one_zstd_file(str(uncompressed_path), overwrite=True)
+    assert original_bytes == decompress(compressed_path.read_bytes())
+
+
+def test_compress_one_zstd_file_delete_original(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
+    compress_one_zstd_file(str(uncompressed_path), delete_original=True)
+    assert not uncompressed_path.exists()
+    assert compressed_path.exists()
+    assert original_bytes == decompress(compressed_path.read_bytes())
+
+
+def tesst_compress_one_zstd_file_custom_level(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
+    compress_one_zstd_file(str(uncompressed_path), compression_level=19)  # take it slow
+    assert compressed_path.exists()
+    assert uncompressed_path.exists()
+    assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
+    assert len(compressed_bytes) < len(original_bytes)
+
+
+# test decompress
+
+
+def test_decompress_one_zstd_file_defaults(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
+    decompress_one_zstd_file(str(compressed_path))
+    assert uncompressed_path.exists()
+    assert compressed_path.exists()
+    assert original_bytes == uncompressed_path.read_bytes()
+
+
+def test_decompress_one_zstd_file_overwrite_fail(tmp_path: Path):
+    uncompressed_path, compressed_path, _original_bytes = generate_compressed_zstd_file(tmp_path)
+    uncompressed_path.write_bytes(b"super secret data")
+    decompress_one_zstd_file(str(compressed_path), overwrite=False)
+    assert uncompressed_path.read_bytes() == b"super secret data"
+
+
+def test_decompress_one_zstd_file_overwrite_success(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
+    uncompressed_path.write_bytes(b"super secret data")
+    decompress_one_zstd_file(str(compressed_path), overwrite=True)
+    assert original_bytes == uncompressed_path.read_bytes()
+
+
+def test_decompress_one_zstd_file_delete_zst(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
+    decompress_one_zstd_file(str(compressed_path), delete_zst=True)
+    assert not compressed_path.exists()
+    assert uncompressed_path.exists()
+    assert original_bytes == uncompressed_path.read_bytes()
