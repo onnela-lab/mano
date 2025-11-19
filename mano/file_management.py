@@ -108,7 +108,7 @@ def compress_zstd_files(
     directory_path: str, delete_original: bool = False, overwrite: bool = False
 ):
     """ Compress all files in a directory to .zst """
-    
+    # todo: multithread this using physical core count
     for full_path in iterate_all_files(directory_path):
         if full_path.endswith('.zst'):
             continue

@@ -171,3 +171,6 @@ include = ["mano*"]
 
 [tool.setuptools.package-data]
 "mano" = ["config.json"]
+
+[project.scripts]
+mano = "mano.mano_cli:main"

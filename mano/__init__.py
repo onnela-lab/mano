@@ -32,6 +32,8 @@ from mano import constants
 # was required to resolve this.
 import mano.sync as sync
 
+from mano import mano_cli
+
 
 __all__ = [
     "AmbiguousStudyIDError",
@@ -47,6 +49,7 @@ __all__ = [
     "KeyringError",
     "login",
     "LoginError",
+    "mano_cli",
     "ScrapeError",
     "studies",
     "studyid",
