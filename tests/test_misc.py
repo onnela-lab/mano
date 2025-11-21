@@ -211,17 +211,26 @@ def test_iterate_valid_data_files(tmp_path: Path):
 def test_iterate_no_such_folder():
     with pytest.raises(FileNotFoundError, match="No such directory: `this/path/does/not/exist`"):
         for fp in iterate_beiwe_data_files_recursively("this/path/does/not/exist"):
-            log.error(f"Unexpected file found: {fp}")
+            log.error(f"Unexpected file found while running test 1: {fp}")  # debugging helper
+        
+    with pytest.raises(FileNotFoundError, match="No such directory: `this/path/does/not/exist`"):
+        for fp in iterate_beiwe_data_files_recursively("this/path/does/not/exist", zst_only=True):
+            log.error(f"Unexpected file found while running test 2: {fp}")  # debugging helper
 
 
 def test_empty_folder(tmp_path: Path):
     restricted_dir = tmp_path / "restricted"
     restricted_dir.mkdir()
     
-    # this is the error for when the had nothing valid,
+    # this is the error for when it had nothing with the right extensions
     with pytest.raises(FileNotFoundError, match=f"{VALID_EXTENSIONS_MESSAGE}: `{str(tmp_path)}`"):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
-            log.error(f"Unexpected file found: {fp}")
+            log.error(f"Unexpected file found while running test 3: {fp}")  # debugging helper
+    
+    msg2 =f"No `.zst` files found in directory `{str(tmp_path)}` or its subdirectories."
+    with pytest.raises(FileNotFoundError, match=msg2):
+        for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
+            log.error(f"Unexpected file found while running test 4: {fp}")  # debugging helper
 
 
 def test_iterate_recursive(tmp_path: Path):
@@ -249,3 +258,31 @@ def test_iterate_recursive(tmp_path: Path):
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path))}
     expected_valid_filenames = {f.as_posix() for f in valid_files}
     assert found_files == expected_valid_filenames
+
+
+def test_iterate_recursive_zst_only(tmp_path: Path):
+    # create some valid and invalid files in subdirectories
+    (tmp_path / "subdir1").mkdir()
+    (tmp_path / "subdir2").mkdir()
+    
+    zst_files = [
+        tmp_path / "data1.csv.zst",
+        tmp_path / "subdir1" / "audio.wav.zst",
+        tmp_path / "subdir2" / "video.mp4.zst",
+        tmp_path / "subdir2" / "data2.json.zst"
+    ]
+    non_zst_files = [
+        tmp_path / "document.txt",
+        tmp_path / "subdir1" / "image.jpg",
+        tmp_path / "subdir2" / "archive.zstd",
+        tmp_path / "subdir1" / "script.py",
+        tmp_path / "data3.csv"
+    ]
+    
+    # make them exist
+    for filepath in zst_files + non_zst_files:
+        filepath.write_text("test content")
+    
+    found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True)}
+    expected_zst_filenames = {f.as_posix() for f in zst_files}
+    assert found_files == expected_zst_filenames

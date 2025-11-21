@@ -3,14 +3,14 @@ import sys
 from copy import deepcopy
 from os import name
 from os.path import abspath
-from pprint import pprint
 from sys import argv as command_line_args
 
 from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
-from mano.file_management import compress_zstd_files, decompress_zstd_files
+from mano.file_management import compress_to_zst_files, decompress_zstd_files
 
 
 log.setLevel(logging.DEBUG)
+
 
 # list all double-dashed parameters here
 DELETE_ZST = "--delete-zst"
@@ -42,13 +42,13 @@ def main():
     
     if "decompress" == args[0]:
         decompress(args)
-        exit()
     elif "compress" == args[0]:
         compress(args)
-        exit()
     else:
         log.error(f"unknown command: `{args}`")
         exit(1)
+    
+    exit(0)
 
 
 #
@@ -116,6 +116,8 @@ def decompress(args: list[str]):
     try:
         decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
     except Exception:
+        # simple statement of what failed, details should be printed in the called functions.
+        log.error("An error occurred while decompressing .zst files.")
         exit(2)
 
 
@@ -148,8 +150,10 @@ def compress(args: list[str]):
     )
     
     try:
-        compress_zstd_files(directory_path, delete_original=delete_original, overwrite=overwrite)
+        compress_to_zst_files(directory_path, delete_original=delete_original, overwrite=overwrite)
     except Exception:
+        # simple statement of what failed, details should be printed in the called functions.
+        log.error("An error occurred while compressing zstd files.")
         exit(2)
 
 

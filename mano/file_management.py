@@ -44,7 +44,7 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
     rename(tmp.name, filename)
 
 
-def iterate_beiwe_data_files_recursively(directory_path: str):
+def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False):
     """
     Generator for all file paths in a directory tree
     """
@@ -53,22 +53,34 @@ def iterate_beiwe_data_files_recursively(directory_path: str):
     try:
         for root, _, files in os.walk(directory_path):
             anything_at_all = True
-            for file in files:
-                if any(file.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS):
+            
+            for file_path in files:
+                
+                if zst_only:
+                    is_valid = file_path.endswith('.zst')
+                else:
+                    is_valid = any(file_path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)
+                
+                if is_valid:
                     any_valid_files = True
-                    yield path_join(root, file)
+                    yield path_join(root, file_path)
     
     except Exception as e:
         # All other file system related errors seem to subclass OSError, we'll be broader.
         log.error(f"There was an issue accessing files in: `{directory_path}`: {e}")
         raise
     
-    if not anything_at_all:
+    if not anything_at_all:  # walk doesn't error on empty dirs.
         log.error(msg:= f"No such directory: `{directory_path}`")
         raise FileNotFoundError(msg)
     
     if not any_valid_files:
-        log.error(msg:= f"{VALID_EXTENSIONS_MESSAGE}: `{directory_path}`")
+        # there were files, but not of the correct type
+        if zst_only:
+            msg = f"No `.zst` files found in directory `{directory_path}` or its subdirectories."
+        else:
+            msg = f"{VALID_EXTENSIONS_MESSAGE}: `{directory_path}` or its subdirectories."
+        log.error(msg)
         raise FileNotFoundError(msg)
 
 
@@ -94,10 +106,7 @@ def bytes_to_human_filesize(b: bytes) -> str:
 def decompress_zstd_files(directory_path: str, delete_zsts: bool = False, overwrite: bool = False):
     """ Decompress all .zst files in a directory. """
     # todo: multithread this using physical core count
-    
-    for full_path in iterate_beiwe_data_files_recursively(directory_path):
-        if not full_path.endswith('.zst'):
-            continue
+    for full_path in iterate_beiwe_data_files_recursively(directory_path, zst_only=True):
         decompress_one_zstd_file(full_path, delete_zst=delete_zsts, overwrite=overwrite)
 
 
@@ -129,14 +138,12 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
         os.remove(full_path)
 
 
-def compress_zstd_files(
+def compress_to_zst_files(
     directory_path: str, delete_original: bool = False, overwrite: bool = False
 ):
     """ Compress all files in a directory to .zst """
     # todo: multithread this using physical core count
     for full_path in iterate_beiwe_data_files_recursively(directory_path):
-        if full_path.endswith('.zst'):
-            continue
         compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)
 
 
