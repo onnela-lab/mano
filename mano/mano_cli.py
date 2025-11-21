@@ -89,6 +89,7 @@ def confirm_command(*args: str):
 
 def decompress(args: list[str]):
     ensure_minimum_number_of_args("decompress", args, 2)
+    ensure_only_allowed_parameters("decompress", args, [DELETE_ZST, OVERWRITE])
     
     # file path must come before delete_zst and overwrite (index 1)
     directory_path = args[1]
@@ -112,11 +113,15 @@ def decompress(args: list[str]):
         info.delete_zst[delete_zst],
         info.overwrite[overwrite],
     )
-    decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
+    try:
+        decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
+    except Exception:
+        exit(2)
 
 
 def compress(args: list[str]):
     ensure_minimum_number_of_args("compress", args, 2)
+    ensure_only_allowed_parameters("compress", args, [DELETE_ORIGINAL, OVERWRITE])
     
     # file path must come before delete_original and overwrite (index 1)
     directory_path = args[1]
@@ -141,7 +146,11 @@ def compress(args: list[str]):
         command_info.delete_original[delete_original],
         command_info.overwrite[overwrite],
     )
-    compress_zstd_files(directory_path, delete_original=delete_original, overwrite=overwrite)
+    
+    try:
+        compress_zstd_files(directory_path, delete_original=delete_original, overwrite=overwrite)
+    except Exception:
+        exit(2)
 
 
 #
@@ -154,23 +163,43 @@ def ensure_minimum_number_of_args(
     args: list[str],
     minimum_required_argument_count_including_the_command_itself: int,
 ):
+    _confirm_arg_matches_name(command_name, args)
     
-    if command_name != args[0]:  # save us from ourselves, names should match the command.
-        raise NotImplementedError(
-            f"command name '{command_name}' does not match first arg '{args[0]}' "
-                "be more careful when calling this function."
-        )
-    
+    # Display a useful error about missing arguments, then exit with a non-zero status.
     if len(args) < minimum_required_argument_count_including_the_command_itself:
         log.error(
             "\n"
             f"insufficient arguments, `{command_name}` expected at least "
             f"{minimum_required_argument_count_including_the_command_itself}, but got {len(args)}."
         )
-        log.error(f"\targs: {args}\n")
+        # log.error(f"\targs: {args}\n")
         exit(1)
 
 
+def ensure_only_allowed_parameters(command_name: str, args: list[str], allowed_parameters: list[str]):
+    """
+    Currently a check for exact match of allowed parameters only.
+    """
+    _confirm_arg_matches_name(command_name, args)
+    
+    
+    # Display a useful error about _all_ unrecognized parameters, then exit with a non-zero status.
+    any_bad_params = False
+    for arg in args[1:]:
+        if arg not in allowed_parameters:
+            log.error(f"\nUnknown parameter '{arg}' provided to command '{args[0]}'.\n")
+            any_bad_params = True
+    
+    if any_bad_params:
+        exit(1)
+
+
+def _confirm_arg_matches_name(command_name: str, args: list[str]):
+    """ Ensure the first argument matches the command name. """
+    if command_name != args[0]:
+        raise InternalError(
+            f"'{command_name}' does not match first arg '{args[0]}' passed to argument validation"
+        )
 
 
 if name == "__main__":
