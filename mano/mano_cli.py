@@ -3,27 +3,36 @@ import sys
 from copy import deepcopy
 from os import name
 from os.path import abspath
+from pprint import pprint
 from sys import argv as command_line_args
 
-from mano.constants import VALID_EXTENSIONS_ANDED, logger as log
+from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
 from mano.file_management import compress_zstd_files, decompress_zstd_files
 
 
 log.setLevel(logging.DEBUG)
 
+# list all double-dashed parameters here
+DELETE_ZST = "--delete-zst"
+OVERWRITE = "--overwrite"
+DELETE_ORIGINAL = "--delete-original"
+
+
 
 def main():
+    log.debug(f"mano received the following cli args: {sys.argv}")
     
-    log.warning(f"mano received the following cli args: {sys.argv}")
-    if len(sys.argv) < 2:
+    # (when main is called sys.argv[0] should always be the script's name.)
+    # Display help on no args, -h, --help
+    if len(sys.argv) < 2 or "-h" in sys.argv or "--help" in sys.argv:
         log.info("\n")
         log.info("mano currently supports 2 commands: decompress and compress")
         log.info("\n")
-        log.info("decompress <directory_path> [--delete-zst] [--overwrite]")
+        log.info(f"decompress <directory_path> [{DELETE_ZST}] [{OVERWRITE}]")
         log.info("\tThis command will decompress all .zst files in the specified directory.")
         log.info("\t(You can specify the current directory with a single dot: `.`)")
         log.info("\n")
-        log.info("compress <directory_path> [--delete-original] [--overwrite]")
+        log.info(f"compress <directory_path> [{DELETE_ORIGINAL}] [{OVERWRITE}]")
         log.info("\tThis command will compress all .zst files in the specified directory.")
         log.info("\t(You can specify the current directory with a single dot: `.`)")
         log.info("\n")
@@ -47,23 +56,30 @@ def main():
 #
 
 
-def confirm(*args: str):
+def confirm_command(*args: str):
+    """
+    Provide any number of strings describing exactly what is about to happen.
+    The first parameter should be a general description, subsequent parameters
+    should describe the state of every option/flag whether it was provided or not.
+    """
     
+    for arg in args:
+        if not isinstance(arg, str):  # type: ignore
+            raise InternalError("confirm() only accepts string arguments")
+    
+    # display, confirm, exit or proceed.
     log.info("\nPlease confirm you want to:")
-    describe_actions(args)
-    response = input("(y/n): ").strip().lower()
+    for arg in args:
+        log.info(f"\t- {arg}")
     
-    if response == "y" or response == "yes":
+    response = input("(y/n): ").strip().lower()
+    if response == "y" or response == "yes":  # don't get fancy, just y and yes
         log.info("proceeding...")
         return
     
-    log.error("exiting, doing nothing.")
+    log.error("")  # blank line for readability
+    log.error("Exiting mano, no actions were taken.")
     exit(0)
-
-
-def describe_actions(actions: tuple[str, ...]):
-    for action in actions:
-        log.info(f"\t- {action}")
 
 
 #
@@ -74,24 +90,27 @@ def describe_actions(actions: tuple[str, ...]):
 def decompress(args: list[str]):
     ensure_minimum_number_of_args("decompress", args, 2)
     
+    # file path must come before delete_zst and overwrite (index 1)
     directory_path = args[1]
-    delete_zst = "--delete-zst" in args
-    overwrite = "--overwrite" in args
+    delete_zst = DELETE_ZST in args
+    overwrite = OVERWRITE in args
     
-    decompress_summary = {
-        "delete_zst": {
+    class info:
+        describe = \
+            f"Decompress all .zst files in the directory `{abspath(directory_path)}` and it's subdirectories."
+        delete_zst = {
             True: "DELETE the .zst files after decompressing them",
             False: "RETAIN any .zst files after decompressing them"
-        },
-        "overwrite": {
+        }
+        overwrite = {
             True: "OVERWRITE any existing files",
             False: "SKIP any files that already exist"
-        },
-    }
-    confirm(
-        f"Decompress all .zst files in the directory `{abspath(directory_path)}` and it's subdirectories.",
-        decompress_summary["delete_zst"][delete_zst],
-        decompress_summary["overwrite"][overwrite],
+        }
+    
+    confirm_command(
+        info.describe,
+        info.delete_zst[delete_zst],
+        info.overwrite[overwrite],
     )
     decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
 
@@ -99,26 +118,29 @@ def decompress(args: list[str]):
 def compress(args: list[str]):
     ensure_minimum_number_of_args("compress", args, 2)
     
-    # todo: make this look like the above decompress function style
-    
+    # file path must come before delete_original and overwrite (index 1)
     directory_path = args[1]
-    delete_original = "--delete-original" in args
-    overwrite = "--overwrite" in args
+    delete_original = DELETE_ORIGINAL in args
+    overwrite = OVERWRITE in args
     
-    description = [
-        f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory `{abspath(directory_path)}` "
-        "and it's subdirectories."
-    ]
-    if delete_original:
-        description.append("DELETE the original files after compressing them")
-    else:
-        description.append("RETAIN the original files after compressing them")
-    if overwrite:
-        description.append("OVERWRITE any existing .zst files")
-    else:
-        description.append("SKIP any .zst files that already exist")
+    class command_info:
+        describe = \
+            f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
+                f"`{abspath(directory_path)}` and it's subdirectories."
+        delete_original = {
+            True: "DELETE the original files after compressing them",
+            False: "RETAIN the original files after compressing them"
+        }
+        overwrite = {
+            True: "OVERWRITE any existing .zst files",
+            False: "SKIP any .zst files that already exist"
+        }
     
-    confirm(*description)
+    confirm_command(
+        command_info.describe,
+        command_info.delete_original[delete_original],
+        command_info.overwrite[overwrite],
+    )
     compress_zstd_files(directory_path, delete_original=delete_original, overwrite=overwrite)
 
 
@@ -128,14 +150,22 @@ def compress(args: list[str]):
 
 
 def ensure_minimum_number_of_args(
-    command_name: str, args: list[str], minimum_including_command_itself: int
+    command_name: str,
+    args: list[str],
+    minimum_required_argument_count_including_the_command_itself: int,
 ):
-    if len(args) < minimum_including_command_itself:
-        
+    
+    if command_name != args[0]:  # save us from ourselves, names should match the command.
+        raise NotImplementedError(
+            f"command name '{command_name}' does not match first arg '{args[0]}' "
+                "be more careful when calling this function."
+        )
+    
+    if len(args) < minimum_required_argument_count_including_the_command_itself:
         log.error(
             "\n"
             f"insufficient arguments, `{command_name}` expected at least "
-            f"{minimum_including_command_itself}, but got {len(args)}."
+            f"{minimum_required_argument_count_including_the_command_itself}, but got {len(args)}."
         )
         log.error(f"\targs: {args}\n")
         exit(1)

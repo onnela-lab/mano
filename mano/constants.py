@@ -60,6 +60,9 @@ VALID_EXTENSIONS_MESSAGE = f"No files ending in {VALID_EXTENSIONS_ORED} found in
 #
 # Exception Types - ensure all exception types have the work error in them for easy identification
 #
+# General Errors
+class InternalError(Exception): pass  # noqa
+
 # originally in mano/sync.py
 class APIError(Exception): pass  # noqa
 class DownloadError(Exception): pass  # noqa
