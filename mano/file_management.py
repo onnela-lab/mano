@@ -6,7 +6,8 @@ from tempfile import NamedTemporaryFile
 import pyzstd
 from pyzstd import decompress
 
-from mano.constants import BACKEND_PYZSTD_PARAMS, logger as log, WriteError
+from mano.constants import (BACKEND_PYZSTD_PARAMS, logger as log, VALID_BEIWE_FILE_EXTENSIONS,
+    VALID_EXTENSIONS_MESSAGE, WriteError)
 
 
 def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
@@ -43,13 +44,32 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
     rename(tmp.name, filename)
 
 
-def iterate_all_files(directory_path: str):
+def iterate_beiwe_data_files_recursively(directory_path: str):
     """
-    Generator that yields all file paths in a directory tree
+    Generator for all file paths in a directory tree
     """
-    for root, _, files in os.walk(directory_path):
-        for file in files:
-            yield path_join(root, file)
+    any_valid_files = False  # two error cases we want to have separate messages for
+    anything_at_all = False
+    try:
+        for root, _, files in os.walk(directory_path):
+            anything_at_all = True
+            for file in files:
+                if any(file.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS):
+                    any_valid_files = True
+                    yield path_join(root, file)
+    
+    except Exception as e:
+        # All other file system related errors seem to subclass OSError, we'll be broader.
+        log.error(f"There was an issue accessing files in: `{directory_path}`: {e}")
+        raise
+    
+    if not anything_at_all:
+        log.error(msg:= f"No such directory: `{directory_path}`")
+        raise FileNotFoundError(msg)
+    
+    if not any_valid_files:
+        log.error(msg:= f"{VALID_EXTENSIONS_MESSAGE}: `{directory_path}`")
+        raise FileNotFoundError(msg)
 
 
 def bytes_to_human_filesize(b: bytes) -> str:
@@ -75,7 +95,7 @@ def decompress_zstd_files(directory_path: str, delete_zsts: bool = False, overwr
     """ Decompress all .zst files in a directory. """
     # todo: multithread this using physical core count
     
-    for full_path in iterate_all_files(directory_path):
+    for full_path in iterate_beiwe_data_files_recursively(directory_path):
         if not full_path.endswith('.zst'):
             continue
         decompress_one_zstd_file(full_path, delete_zst=delete_zsts, overwrite=overwrite)
@@ -114,7 +134,7 @@ def compress_zstd_files(
 ):
     """ Compress all files in a directory to .zst """
     # todo: multithread this using physical core count
-    for full_path in iterate_all_files(directory_path):
+    for full_path in iterate_beiwe_data_files_recursively(directory_path):
         if full_path.endswith('.zst'):
             continue
         compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)

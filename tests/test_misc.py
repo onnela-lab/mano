@@ -5,8 +5,9 @@ import responses
 from pyzstd import decompress
 
 import mano
+from mano.constants import logger as log, VALID_EXTENSIONS_MESSAGE
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zstd_file,
-    decompress_one_zstd_file)
+    decompress_one_zstd_file, iterate_beiwe_data_files_recursively)
 from tests.conftest import generate_compressed_zstd_file, generate_uncompressed_zstd_files
 
 
@@ -186,3 +187,65 @@ def test_decompress_one_zstd_file_delete_zst(tmp_path: Path):
     assert not compressed_path.exists()
     assert uncompressed_path.exists()
     assert original_bytes == uncompressed_path.read_bytes()
+
+
+# test file iteration
+
+
+def test_iterate_valid_data_files(tmp_path: Path):
+    # create some valid and invalid files
+    valid_files = ["data1.csv", "audio.wav", "video.mp4" "data2.json"]
+    invalid_files = ["document.txt", "image.jpg", "archive.zip", "script.py"]
+    
+    # make them exist
+    for filename in valid_files + invalid_files:
+        (tmp_path / filename).write_text("test content")
+    
+    found_files = set[str]()
+    for file_path in iterate_beiwe_data_files_recursively(str(tmp_path)):
+        found_files.add(Path(file_path).name)
+    
+    assert found_files == set(valid_files)
+
+
+def test_iterate_no_such_folder():
+    with pytest.raises(FileNotFoundError, match="No such directory: `this/path/does/not/exist`"):
+        for fp in iterate_beiwe_data_files_recursively("this/path/does/not/exist"):
+            log.error(f"Unexpected file found: {fp}")
+
+
+def test_empty_folder(tmp_path: Path):
+    restricted_dir = tmp_path / "restricted"
+    restricted_dir.mkdir()
+    
+    # this is the error for when the had nothing valid,
+    with pytest.raises(FileNotFoundError, match=f"{VALID_EXTENSIONS_MESSAGE}: `{str(tmp_path)}`"):
+        for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
+            log.error(f"Unexpected file found: {fp}")
+
+
+def test_iterate_recursive(tmp_path: Path):
+    # create some valid and invalid files in subdirectories
+    (tmp_path / "subdir1").mkdir()
+    (tmp_path / "subdir2").mkdir()
+    
+    valid_files = [
+        tmp_path / "data1.csv",
+        tmp_path / "subdir1" / "audio.wav",
+        tmp_path / "subdir2" / "video.mp4",
+        tmp_path / "subdir2" / "data2.json"
+    ]
+    invalid_files = [
+        tmp_path / "document.txt",
+        tmp_path / "subdir1" / "image.jpg",
+        tmp_path / "subdir2" / "archive.zip",
+        tmp_path / "subdir1" / "script.py"
+    ]
+    
+    # make them exist
+    for filepath in valid_files + invalid_files:
+        filepath.write_text("test content")
+    
+    found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path))}
+    expected_valid_filenames = {f.as_posix() for f in valid_files}
+    assert found_files == expected_valid_filenames

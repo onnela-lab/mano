@@ -42,9 +42,24 @@ BACKEND_PYZSTD_PARAMS = {
     pyzstd.CParameter.strategy: pyzstd.Strategy.dfast,
 }
 
+#
+# valid Beiwe data file extensions
+#
+_VBDTE = VALID_BEIWE_FILE_EXTENSIONS = [
+    '.csv',
+    '.json',
+    '.wav',
+    '.mp4',
+]
 
+VALID_EXTENSIONS_ANDED = ", ".join(_VBDTE[:-1]) + f", and {_VBDTE[-1]}"
+VALID_EXTENSIONS_ORED = ", ".join(_VBDTE[:-1]) + f", or {_VBDTE[-1]}"
+VALID_EXTENSIONS_MESSAGE = f"No files ending in {VALID_EXTENSIONS_ORED} found in directory"
+
+
+#
 # Exception Types - ensure all exception types have the work error in them for easy identification
-
+#
 # originally in mano/sync.py
 class APIError(Exception): pass  # noqa
 class DownloadError(Exception): pass  # noqa

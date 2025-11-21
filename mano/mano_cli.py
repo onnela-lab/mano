@@ -5,7 +5,7 @@ from os import name
 from os.path import abspath
 from sys import argv as command_line_args
 
-from mano.constants import logger as log
+from mano.constants import VALID_EXTENSIONS_ANDED, logger as log
 from mano.file_management import compress_zstd_files, decompress_zstd_files
 
 
@@ -47,9 +47,10 @@ def main():
 #
 
 
-def confirm(action_descriptions: list[str]):
+def confirm(*args: str):
+    
     log.info("\nPlease confirm you want to:")
-    describe_actions(action_descriptions)
+    describe_actions(args)
     response = input("(y/n): ").strip().lower()
     
     if response == "y" or response == "yes":
@@ -60,7 +61,7 @@ def confirm(action_descriptions: list[str]):
     exit(0)
 
 
-def describe_actions(actions: list[str]):
+def describe_actions(actions: tuple[str, ...]):
     for action in actions:
         log.info(f"\t- {action}")
 
@@ -79,19 +80,19 @@ def decompress(args: list[str]):
     
     decompress_summary = {
         "delete_zst": {
-            True: "delete the .zst files after decompressing them",
-            False: "keep any .zst files after decompressing them"
+            True: "DELETE the .zst files after decompressing them",
+            False: "RETAIN any .zst files after decompressing them"
         },
         "overwrite": {
-            True: "blindly overwrite any existing files",
-            False: "skip any files that already exist"
+            True: "OVERWRITE any existing files",
+            False: "SKIP any files that already exist"
         },
     }
-    confirm([
-        f"decompress all .zst files in the directory `{abspath(directory_path)}`",
+    confirm(
+        f"Decompress all .zst files in the directory `{abspath(directory_path)}` and it's subdirectories.",
         decompress_summary["delete_zst"][delete_zst],
         decompress_summary["overwrite"][overwrite],
-    ])
+    )
     decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
 
 
@@ -104,17 +105,20 @@ def compress(args: list[str]):
     delete_original = "--delete-original" in args
     overwrite = "--overwrite" in args
     
-    description = [f"compress all .zst files in the directory `{abspath(directory_path)}`"]
+    description = [
+        f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory `{abspath(directory_path)}` "
+        "and it's subdirectories."
+    ]
     if delete_original:
-        description.append("delete the original files after compressing them")
+        description.append("DELETE the original files after compressing them")
     else:
-        description.append("keep the original files after compressing them")
+        description.append("RETAIN the original files after compressing them")
     if overwrite:
-        description.append("blindly overwrite any existing .zst files")
+        description.append("OVERWRITE any existing .zst files")
     else:
-        description.append("skip any .zst files that already exist")
+        description.append("SKIP any .zst files that already exist")
     
-    confirm(description)
+    confirm(*description)
     compress_zstd_files(directory_path, delete_original=delete_original, overwrite=overwrite)
 
 
