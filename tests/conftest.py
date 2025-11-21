@@ -189,17 +189,21 @@ def mock_users_response():
 #
 # Helper functions for zstd compression tests - require the test uses the tmp_path fixture and pass it in
 #
+
 def generate_uncompressed_zstd_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
-    uncompressed_path = tmp_path / "testzstd.txt"
+    """
+    Basic setup so running compress doesn't error and compresses something.
+    """
+    uncompressed_path = tmp_path / "testzstd.csv"
     original_bytes = b"Sample data for compression test." * 20
     uncompressed_path.write_bytes(original_bytes)
-    compressed_path = tmp_path / "testzstd.txt.zst"
+    compressed_path = tmp_path / "testzstd.csv.zst"
     return uncompressed_path, compressed_path, original_bytes
 
 
 def generate_compressed_zstd_file(tmp_path: Path) -> tuple[Path, Path, bytes]:
-    uncompressed_path = tmp_path / "testzstd.txt"
-    compressed_path = tmp_path / "testzstd.txt.zst"
+    uncompressed_path = tmp_path / "testzstd.csv"
+    compressed_path = tmp_path / "testzstd.csv.zst"
     original_bytes = b"Sample data for compression test." * 20
     compressed_bytes = pyzstd.compress(original_bytes, 2)  # type: ignore
     compressed_path.write_bytes(compressed_bytes)

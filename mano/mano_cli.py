@@ -89,7 +89,7 @@ def confirm_command(*args: str):
 
 def decompress(args: list[str]):
     ensure_minimum_number_of_args("decompress", args, 2)
-    ensure_only_allowed_parameters("decompress", args, [DELETE_ZST, OVERWRITE])
+    ensure_only_allowed_parameters("decompress", args, [DELETE_ZST, OVERWRITE, args[1]])
     
     # file path must come before delete_zst and overwrite (index 1)
     directory_path = args[1]
@@ -123,7 +123,7 @@ def decompress(args: list[str]):
 
 def compress(args: list[str]):
     ensure_minimum_number_of_args("compress", args, 2)
-    ensure_only_allowed_parameters("compress", args, [DELETE_ORIGINAL, OVERWRITE])
+    ensure_only_allowed_parameters("compress", args, [DELETE_ORIGINAL, OVERWRITE, args[1]])
     
     # file path must come before delete_original and overwrite (index 1)
     directory_path = args[1]
@@ -186,10 +186,10 @@ def ensure_only_allowed_parameters(command_name: str, args: list[str], allowed_p
     """
     _confirm_arg_matches_name(command_name, args)
     
-    
     # Display a useful error about _all_ unrecognized parameters, then exit with a non-zero status.
     any_bad_params = False
     for arg in args[1:]:
+        
         if arg not in allowed_parameters:
             log.error(f"\nUnknown parameter '{arg}' provided to command '{args[0]}'.\n")
             any_bad_params = True
