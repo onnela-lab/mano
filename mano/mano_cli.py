@@ -54,6 +54,8 @@ def main():
         log.info("\tThis command will compress all .zst files in the specified directory.")
         log.info("\t(You can specify the current directory with a single dot: `.`)")
         log.info("\n")
+        log.info("You can provide -y or --yes to skip all user interaction prompts.")
+        log.info("\n")
         return
     
     args = deepcopy(command_line_args[1:])

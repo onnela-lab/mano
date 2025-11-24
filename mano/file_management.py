@@ -59,7 +59,7 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
                 if zst_only:
                     is_valid = file_path.endswith('.zst')
                 else:
-                    is_valid = any(file_path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)
+                    is_valid = check_is_valid_beiwe_data_file(file_path)
                 
                 if is_valid:
                     any_valid_files = True
@@ -264,6 +264,7 @@ def validate_is_a_folder_or_zst_file(path: str):
         exit(1)
 
 
+# does not exit on failure, just returns a boolean
 def check_is_valid_beiwe_data_file(path: str) -> bool:
     """ Check if a path is a valid Beiwe data file. """
     return any(path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)

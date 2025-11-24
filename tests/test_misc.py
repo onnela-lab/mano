@@ -291,6 +291,7 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
 # test mano CLI commands
 #
 
+
 def _setup_mock_compress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
     # mocks the function call and sets up `input` to let us run the function without breaking
     _, _, _ = generate_uncompressed_zstd_files(tmp_path)
