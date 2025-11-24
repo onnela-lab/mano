@@ -394,6 +394,7 @@ def test_mano_cli_decompress_no_delete_no_overwrite(tmp_path: Path, mocker: Mock
         overwrite=False,
     )
 
+
 def test_mano_cli_decompress_only_delete(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
     mano_cli.decompress([
@@ -406,6 +407,7 @@ def test_mano_cli_decompress_only_delete(tmp_path: Path, mocker: MockerFixture):
         delete_zsts=True,
         overwrite=False,
     )
+
 
 def test_mano_cli_decompress_only_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
