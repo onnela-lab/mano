@@ -28,7 +28,16 @@ PARAMETERS_BY_COMMAND = {
 }
 
 
+# Glabal settings should default to values as if they were NOT called from the CLI
+# the main() function will set these values appropriately for CLI usage.
+class GlobalSettings:
+    skip_user_interaction: bool = True
+
+
 def main():
+    # reset global settings to default CLI values
+    GlobalSettings.skip_user_interaction = False
+    
     log.debug(f"mano received the following cli args: {sys.argv}")
     
     # (when main is called sys.argv[0] should always be the script's name.)
@@ -49,9 +58,17 @@ def main():
     
     args = deepcopy(command_line_args[1:])
     
-    if DECOMPRESS == args[0]:
+    # handle global parameters first, remove from args
+    if "-y" in args or "--yes" in args:
+        GlobalSettings.skip_user_interaction = True
+        args.remove("-y") if "-y" in args else args.remove("--yes")
+    
+    the_command = args.pop(0)
+    
+    # dispatch to the appropriate command
+    if the_command == DECOMPRESS:
         decompress(args)
-    elif COMPRESS == args[0]:
+    elif the_command == COMPRESS:
         compress(args)
     else:
         log.error(f"unknown command: `{args}`")
@@ -71,6 +88,8 @@ def confirm_command(*args: str):
     The first parameter should be a general description, subsequent parameters
     should describe the state of every option/flag whether it was provided or not.
     """
+    if GlobalSettings.skip_user_interaction:
+        return
     
     for arg in args:
         if not isinstance(arg, str):  # type: ignore
@@ -97,11 +116,11 @@ def confirm_command(*args: str):
 
 
 def decompress(args: list[str]):
-    ensure_minimum_number_of_args(DECOMPRESS, args, 2)
-    ensure_only_allowed_parameters(DECOMPRESS, args, [DELETE_ZST, OVERWRITE, args[1]])
+    ensure_minimum_number_of_args(DECOMPRESS, args, 1)
+    ensure_only_allowed_parameters(DECOMPRESS, args, [DELETE_ZST, OVERWRITE], args[0])
     
-    # file path must come before delete_zst and overwrite (index 1)
-    target_path = args[1]
+    # file path must come before delete_zst and overwrite (index 0)
+    target_path = args[0]
     delete_zst = DELETE_ZST in args
     overwrite = OVERWRITE in args
     
@@ -143,11 +162,11 @@ def decompress(args: list[str]):
 
 
 def compress(args: list[str]):
-    ensure_minimum_number_of_args(COMPRESS, args, 2)
-    ensure_only_allowed_parameters(COMPRESS, args, [DELETE_ORIGINAL, OVERWRITE, args[1]])
+    ensure_minimum_number_of_args(COMPRESS, args, 1)
+    ensure_only_allowed_parameters(COMPRESS, args, [DELETE_ORIGINAL, OVERWRITE], args[0])
     
-    # file path must come before delete_original and overwrite (index 1)
-    target_path = args[1]
+    # file path must come before delete_original and overwrite (index 0)
+    target_path = args[0]
     delete_original = DELETE_ORIGINAL in args
     overwrite = OVERWRITE in args
     
@@ -200,8 +219,6 @@ def ensure_minimum_number_of_args(
     args: list[str],
     minimum_required_argument_count_including_the_command_itself: int,
 ):
-    _confirm_arg_matches_name(command_name, args)
-    
     # Display a useful error about missing arguments, then exit with a non-zero status.
     if len(args) < minimum_required_argument_count_including_the_command_itself:
         log.error(
@@ -213,16 +230,17 @@ def ensure_minimum_number_of_args(
         exit(1)
 
 
-def ensure_only_allowed_parameters(command_name: str, args: list[str], allowed_parameters: list[str]):
+def ensure_only_allowed_parameters(
+    command_name: str, args: list[str], allowed_parameters: list[str], file_path_parameter: str|None = None
+):
     """
     Currently a check for exact match of allowed parameters only.
     """
-    _confirm_arg_matches_name(command_name, args)
-    
     # Display a useful error about _all_ unrecognized parameters, then exit with a non-zero status.
     any_bad_params = False
-    for arg in args[1:]:
-        
+    for arg in args:
+        if arg is file_path_parameter:
+            continue
         if arg not in allowed_parameters:
             log.error(f"\nUnknown parameter `{arg}` provided to command `{command_name}`.\n")
             any_bad_params = True
@@ -232,15 +250,6 @@ def ensure_only_allowed_parameters(command_name: str, args: list[str], allowed_p
     
     if any_bad_params:
         exit(1)
-
-
-# functions to tell you that this is a developer mistake, not a user mistake.
-def _confirm_arg_matches_name(command_name: str, args: list[str]):
-    """ Ensure the first argument matches the command name. """
-    if command_name != args[0]:
-        raise InternalError(
-            f"'{command_name}' does not match first arg '{command_name}' passed to argument validation"
-        )
 
 
 if name == "__main__":

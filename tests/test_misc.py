@@ -310,7 +310,6 @@ def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
 def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
     mano_cli.compress([
-        "compress",
         str(tmp_path),
         "--delete-original",
         "--overwrite",
@@ -325,7 +324,6 @@ def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
 def test_mano_cli_compress_no_delete_no_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
     mano_cli.compress([
-        "compress",
         str(tmp_path),
     ])
     mock_compress_to_zst_files.assert_called_once_with(
@@ -338,7 +336,6 @@ def test_mano_cli_compress_no_delete_no_overwrite(tmp_path: Path, mocker: Mocker
 def test_mano_cli_compress_only_delete(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
     mano_cli.compress([
-        "compress",
         str(tmp_path),
         "--delete-original",
     ])
@@ -352,7 +349,6 @@ def test_mano_cli_compress_only_delete(tmp_path: Path, mocker: MockerFixture):
 def test_mano_cli_compress_only_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
     mano_cli.compress([
-        "compress",
         str(tmp_path),
         "--overwrite",
     ])
@@ -366,7 +362,6 @@ def test_mano_cli_compress_only_overwrite(tmp_path: Path, mocker: MockerFixture)
 def test_mano_cli_decompress_all(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
     mano_cli.decompress([
-        "decompress",
         str(tmp_path),
         "--delete-zst",
         "--overwrite",
@@ -381,7 +376,6 @@ def test_mano_cli_decompress_all(tmp_path: Path, mocker: MockerFixture):
 def test_mano_cli_decompress_no_delete_no_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
     mano_cli.decompress([
-        "decompress",
         str(tmp_path),
     ])
     mock_decompress_zst_files.assert_called_once_with(
@@ -394,7 +388,6 @@ def test_mano_cli_decompress_no_delete_no_overwrite(tmp_path: Path, mocker: Mock
 def test_mano_cli_decompress_only_delete(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
     mano_cli.decompress([
-        "decompress",
         str(tmp_path),
         "--delete-zst",
     ])
@@ -408,7 +401,6 @@ def test_mano_cli_decompress_only_delete(tmp_path: Path, mocker: MockerFixture):
 def test_mano_cli_decompress_only_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
     mano_cli.decompress([
-        "decompress",
         str(tmp_path),
         "--overwrite",
     ])
