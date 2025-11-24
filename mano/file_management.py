@@ -1,6 +1,6 @@
-import os
-from os import chmod, makedirs as _make_directories, rename
-from os.path import dirname, exists as path_exists, expanduser, join as path_join
+from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
+    umask as get_umask, walk as walk_directory)
+from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
 
 import pyzstd
@@ -17,12 +17,12 @@ def make_directories(path: str, umask: int | None = None, exist_ok: bool = True)
     
     old_umask = None
     if umask is not None:
-        old_umask = os.umask(umask)
+        old_umask = get_umask(umask)
     try:
         _make_directories(path, exist_ok=exist_ok)
     finally:
         if old_umask is not None:
-            os.umask(old_umask)
+            get_umask(old_umask)
 
 
 def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
@@ -51,7 +51,7 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
     any_valid_files = False  # two error cases we want to have separate messages for
     anything_at_all = False
     try:
-        for root, _, files in os.walk(directory_path):
+        for root, _, files in walk_directory(directory_path):
             anything_at_all = True
             
             for file_path in files:
@@ -105,12 +105,17 @@ def bytes_to_human_filesize(b: bytes) -> str:
 
 def decompress_zstd_files(directory_path: str, delete_zsts: bool = False, overwrite: bool = False):
     """ Decompress all .zst files in a directory. """
+    
+    if directory_path.endswith('.zst'):
+        decompress_one_zstd_file(directory_path, delete_zsts=delete_zsts, overwrite=overwrite)
+        return
+    
     # todo: multithread this using physical core count
     for full_path in iterate_beiwe_data_files_recursively(directory_path, zst_only=True):
-        decompress_one_zstd_file(full_path, delete_zst=delete_zsts, overwrite=overwrite)
+        decompress_one_zstd_file(full_path, delete_zsts=delete_zsts, overwrite=overwrite)
 
 
-def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite: bool = False):
+def decompress_one_zstd_file(full_path: str, delete_zsts: bool = False, overwrite: bool = False):
     """ Decompress a single .zst file. """
     decompressed_path = full_path[:-4]
     
@@ -134,15 +139,20 @@ def decompress_one_zstd_file(full_path: str, delete_zst: bool = False, overwrite
     with open(decompressed_path, 'wb') as fo:
         fo.write(decompressed_bytes)
     
-    if delete_zst:
-        os.remove(full_path)
+    if delete_zsts:
+        delete_file(full_path)
 
 
 def compress_to_zst_files(
     directory_path: str, delete_original: bool = False, overwrite: bool = False
 ):
     """ Compress all files in a directory to .zst """
-    # todo: multithread this using physical core count
+    
+    if check_is_valid_beiwe_data_file(directory_path):
+        compress_one_zstd_file(directory_path, delete_original=delete_original, overwrite=overwrite)
+        return
+    
+    # TODO: multithread this using physical core count
     for full_path in iterate_beiwe_data_files_recursively(directory_path):
         compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)
 
@@ -159,7 +169,7 @@ def compress_one_zstd_file(
     
     it_exists = path_exists(compressed_path)
     if not overwrite and it_exists:
-        log.warning(f"Skipping: `{compressed_path}`, file already exists.")
+        log.warning(f"Skipping: `{full_path}`, .zst file already exists.")
         return
     
     with open(full_path, 'rb') as fo:
@@ -173,7 +183,7 @@ def compress_one_zstd_file(
     size_original = bytes_to_human_filesize(original_bytes)
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     
-    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
+    label = "Overwrote:" if it_exists else "Created:  "  # ensure same length prefix
     _log = log.warning if it_exists else log.info
     _log(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
     
@@ -181,7 +191,7 @@ def compress_one_zstd_file(
         fo.write(compressed_bytes)
     
     if delete_original:
-        os.remove(full_path)
+        delete_file(full_path)
 
 
 def compress_as_backend(b: bytes) -> bytes:
@@ -198,3 +208,62 @@ def compress_as_backend(b: bytes) -> bytes:
 
 def compress_general(b: bytes, level: int) -> bytes:
     return pyzstd.compress(b, {pyzstd.CParameter.compressionLevel: level}) # type: ignore
+
+
+#
+# File Validation
+#
+
+
+def validate_exists_at_all(path: str):
+    """ Ensure a path exists. """
+    if not path_exists(path):
+        log.error(f"`{path}` does not exist.")
+        exit(1)
+
+
+def validate_is_a_folder_or_valid_beiwe_data_file(path: str):
+    """ Ensure a path is either a directory or a valid Beiwe data file. """
+    validate_exists_at_all(path)
+    
+    is_a_dir = isdir(path)
+    is_a_beiwe = check_is_valid_beiwe_data_file(path)
+    
+    if is_a_dir or is_a_beiwe:
+        return
+    
+    if not is_a_dir and not is_a_beiwe:
+        log.error(f"`{path}` is neither a directory nor a valid Beiwe data file.")
+        exit(1)
+    if not is_a_dir:
+        log.error(f"`{path}` is not a directory.")
+        exit(1)
+    if not is_a_beiwe:
+        log.error(f"`{path}` is not a valid Beiwe data file.")
+        exit(1)
+
+
+def validate_is_a_folder_or_zst_file(path: str):
+    """ Ensure a path is either a directory or a .zst file. """
+    validate_exists_at_all(path)
+    
+    is_a_dir = isdir(path)
+    is_a_zst = path.endswith('.zst')
+    
+    if is_a_dir or is_a_zst:
+        return
+    
+    if not is_a_dir and not is_a_zst:
+        log.error(f"`{path}` is neither a directory nor a .zst file.")
+        exit(1)
+    if not is_a_dir:
+        log.error(f"`{path}` is not a directory.")
+        exit(1)
+    if not is_a_zst:
+        log.error(f"`{path}` is not a .zst file.")
+        exit(1)
+
+
+def check_is_valid_beiwe_data_file(path: str) -> bool:
+    """ Check if a path is a valid Beiwe data file. """
+    return any(path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)

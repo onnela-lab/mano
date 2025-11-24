@@ -47,9 +47,9 @@ BACKEND_PYZSTD_PARAMS = {
 #
 _VBDTE = VALID_BEIWE_FILE_EXTENSIONS = [
     '.csv',
-    '.json',
+    # '.json',  # this is too broad
     '.wav',
-    '.mp4',
+    # '.mp4',  # these should not be double compressed
 ]
 
 VALID_EXTENSIONS_ANDED = ", ".join(_VBDTE[:-1]) + f", and {_VBDTE[-1]}"

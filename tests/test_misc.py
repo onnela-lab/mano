@@ -186,7 +186,7 @@ def test_decompress_one_zstd_file_overwrite_success(tmp_path: Path):
 
 def test_decompress_one_zstd_file_delete_zst(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
-    decompress_one_zstd_file(str(compressed_path), delete_zst=True)
+    decompress_one_zstd_file(str(compressed_path), delete_zsts=True)
     assert not compressed_path.exists()
     assert uncompressed_path.exists()
     assert original_bytes == uncompressed_path.read_bytes()
@@ -197,7 +197,7 @@ def test_decompress_one_zstd_file_delete_zst(tmp_path: Path):
 
 def test_iterate_valid_data_files(tmp_path: Path):
     # create some valid and invalid files
-    valid_files = ["data1.csv", "audio.wav", "video.mp4" "data2.json"]
+    valid_files = ["data1.csv", "audio.wav"]
     invalid_files = ["document.txt", "image.jpg", "archive.zip", "script.py"]
     
     # make them exist
@@ -244,8 +244,6 @@ def test_iterate_recursive(tmp_path: Path):
     valid_files = [
         tmp_path / "data1.csv",
         tmp_path / "subdir1" / "audio.wav",
-        tmp_path / "subdir2" / "video.mp4",
-        tmp_path / "subdir2" / "data2.json"
     ]
     invalid_files = [
         tmp_path / "document.txt",
@@ -271,8 +269,6 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
     zst_files = [
         tmp_path / "data1.csv.zst",
         tmp_path / "subdir1" / "audio.wav.zst",
-        tmp_path / "subdir2" / "video.mp4.zst",
-        tmp_path / "subdir2" / "data2.json.zst"
     ]
     non_zst_files = [
         tmp_path / "document.txt",

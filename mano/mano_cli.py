@@ -6,17 +6,26 @@ from os.path import abspath
 from sys import argv as command_line_args
 
 from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
-from mano.file_management import compress_to_zst_files, decompress_zstd_files
+from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
+    decompress_zstd_files, validate_is_a_folder_or_valid_beiwe_data_file, validate_is_a_folder_or_zst_file)
 
 
 log.setLevel(logging.DEBUG)
 
+# list of all commands
+COMPRESS = "compress"
+DECOMPRESS = "decompress"
 
 # list all double-dashed parameters here
 DELETE_ZST = "--delete-zst"
 OVERWRITE = "--overwrite"
 DELETE_ORIGINAL = "--delete-original"
 
+
+PARAMETERS_BY_COMMAND = {
+    DECOMPRESS: [DELETE_ZST, OVERWRITE],
+    COMPRESS: [DELETE_ORIGINAL, OVERWRITE],
+}
 
 
 def main():
@@ -40,9 +49,9 @@ def main():
     
     args = deepcopy(command_line_args[1:])
     
-    if "decompress" == args[0]:
+    if DECOMPRESS == args[0]:
         decompress(args)
-    elif "compress" == args[0]:
+    elif COMPRESS == args[0]:
         compress(args)
     else:
         log.error(f"unknown command: `{args}`")
@@ -88,17 +97,19 @@ def confirm_command(*args: str):
 
 
 def decompress(args: list[str]):
-    ensure_minimum_number_of_args("decompress", args, 2)
-    ensure_only_allowed_parameters("decompress", args, [DELETE_ZST, OVERWRITE, args[1]])
+    ensure_minimum_number_of_args(DECOMPRESS, args, 2)
+    ensure_only_allowed_parameters(DECOMPRESS, args, [DELETE_ZST, OVERWRITE, args[1]])
     
     # file path must come before delete_zst and overwrite (index 1)
-    directory_path = args[1]
+    target_path = args[1]
     delete_zst = DELETE_ZST in args
     overwrite = OVERWRITE in args
     
+    validate_is_a_folder_or_zst_file(target_path)
+    
     class info:
         describe = \
-            f"Decompress all .zst files in the directory `{abspath(directory_path)}` and it's subdirectories."
+            f"Decompress all .zst files in the directory `{abspath(target_path)}` and it's subdirectories."
         delete_zst = {
             True: "DELETE the .zst files after decompressing them",
             False: "RETAIN any .zst files after decompressing them"
@@ -107,6 +118,16 @@ def decompress(args: list[str]):
             True: "OVERWRITE any existing files",
             False: "SKIP any files that already exist"
         }
+    if target_path.endswith('.zst'):
+        info.describe = f"Decompress the .zst file `{abspath(target_path)}`"
+        info.delete_zst = {
+            True: "DELETE the .zst file when finished",
+            False: "RETAIN the .zst file when finished"
+        }
+        info.overwrite = {
+            True: "OVERWRITE the existing file",
+            False: "SKIP it if a file already exist-"
+        }
     
     confirm_command(
         info.describe,
@@ -114,7 +135,7 @@ def decompress(args: list[str]):
         info.overwrite[overwrite],
     )
     try:
-        decompress_zstd_files(directory_path, delete_zsts=delete_zst, overwrite=overwrite)
+        decompress_zstd_files(target_path, delete_zsts=delete_zst, overwrite=overwrite)
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
         log.error("An error occurred while decompressing .zst files.")
@@ -122,18 +143,20 @@ def decompress(args: list[str]):
 
 
 def compress(args: list[str]):
-    ensure_minimum_number_of_args("compress", args, 2)
-    ensure_only_allowed_parameters("compress", args, [DELETE_ORIGINAL, OVERWRITE, args[1]])
+    ensure_minimum_number_of_args(COMPRESS, args, 2)
+    ensure_only_allowed_parameters(COMPRESS, args, [DELETE_ORIGINAL, OVERWRITE, args[1]])
     
     # file path must come before delete_original and overwrite (index 1)
-    directory_path = args[1]
+    target_path = args[1]
     delete_original = DELETE_ORIGINAL in args
     overwrite = OVERWRITE in args
     
-    class command_info:
+    validate_is_a_folder_or_valid_beiwe_data_file(target_path)
+    
+    class info:
         describe = \
             f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
-                f"`{abspath(directory_path)}` and it's subdirectories."
+                f"`{abspath(target_path)}` and it's subdirectories."
         delete_original = {
             True: "DELETE the original files after compressing them",
             False: "RETAIN the original files after compressing them"
@@ -142,15 +165,25 @@ def compress(args: list[str]):
             True: "OVERWRITE any existing .zst files",
             False: "SKIP any .zst files that already exist"
         }
+    if check_is_valid_beiwe_data_file(target_path):
+        info.describe = f"Compress the file `{abspath(target_path)}`"
+        info.delete_original = {
+                True: "DELETE the original file after compressing it",
+                False: "RETAIN the original file after compressing it"
+            }
+        info.overwrite = {
+                True: "OVERWRITE any existing .zst file",
+                False: "SKIP if a .zst file already exists"
+            }
     
     confirm_command(
-        command_info.describe,
-        command_info.delete_original[delete_original],
-        command_info.overwrite[overwrite],
+        info.describe,
+        info.delete_original[delete_original],
+        info.overwrite[overwrite],
     )
     
     try:
-        compress_to_zst_files(directory_path, delete_original=delete_original, overwrite=overwrite)
+        compress_to_zst_files(target_path, delete_original=delete_original, overwrite=overwrite)
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
         log.error("An error occurred while compressing zstd files.")
@@ -191,18 +224,22 @@ def ensure_only_allowed_parameters(command_name: str, args: list[str], allowed_p
     for arg in args[1:]:
         
         if arg not in allowed_parameters:
-            log.error(f"\nUnknown parameter '{arg}' provided to command '{args[0]}'.\n")
+            log.error(f"\nUnknown parameter `{arg}` provided to command `{command_name}`.\n")
             any_bad_params = True
+            log.info("Allowed parameters are:")
+            for param in sorted(PARAMETERS_BY_COMMAND[command_name]):
+                log.info(f"\t{param}")
     
     if any_bad_params:
         exit(1)
 
 
+# functions to tell you that this is a developer mistake, not a user mistake.
 def _confirm_arg_matches_name(command_name: str, args: list[str]):
     """ Ensure the first argument matches the command name. """
     if command_name != args[0]:
         raise InternalError(
-            f"'{command_name}' does not match first arg '{args[0]}' passed to argument validation"
+            f"'{command_name}' does not match first arg '{command_name}' passed to argument validation"
         )
 
 
