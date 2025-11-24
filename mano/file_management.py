@@ -144,17 +144,30 @@ def decompress_one_zstd_file(full_path: str, delete_zsts: bool = False, overwrit
 
 
 def compress_to_zst_files(
-    directory_path: str, delete_original: bool = False, overwrite: bool = False
+    directory_path: str,
+    delete_original: bool = False,
+    overwrite: bool = False,
+    compression_level: int = 2,
 ):
     """ Compress all files in a directory to .zst """
     
     if check_is_valid_beiwe_data_file(directory_path):
-        compress_one_zstd_file(directory_path, delete_original=delete_original, overwrite=overwrite)
+        compress_one_zstd_file(
+            directory_path,
+            delete_original=delete_original,
+            overwrite=overwrite,
+            compression_level=compression_level,
+        )
         return
     
     # TODO: multithread this using physical core count
     for full_path in iterate_beiwe_data_files_recursively(directory_path):
-        compress_one_zstd_file(full_path, delete_original=delete_original, overwrite=overwrite)
+        compress_one_zstd_file(
+            full_path,
+            delete_original=delete_original,
+            overwrite=overwrite,
+            compression_level=compression_level,
+        )
 
 
 def compress_one_zstd_file(

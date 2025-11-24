@@ -308,6 +308,11 @@ def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
     return mocker.patch("mano.mano_cli.decompress_zstd_files")
 
 
+#
+# compress tests
+#
+
+
 def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
     mano_cli.compress([
@@ -319,6 +324,7 @@ def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
         str(tmp_path),
         delete_original=True,
         overwrite=True,
+        compression_level=2,
     )
 
 
@@ -330,6 +336,7 @@ def test_mano_cli_compress_no_delete_no_overwrite(tmp_path: Path, mocker: Mocker
     mock_compress_to_zst_files.assert_called_once_with(
         str(tmp_path),
         delete_original=False,
+        compression_level=2,
         overwrite=False,
     )
 
@@ -344,6 +351,7 @@ def test_mano_cli_compress_only_delete(tmp_path: Path, mocker: MockerFixture):
         str(tmp_path),
         delete_original=True,
         overwrite=False,
+        compression_level=2,
     )
 
 
@@ -357,8 +365,26 @@ def test_mano_cli_compress_only_overwrite(tmp_path: Path, mocker: MockerFixture)
         str(tmp_path),
         delete_original=False,
         overwrite=True,
+        compression_level=2,
     )
 
+
+def test_compress_with_custom_level(tmp_path: Path, mocker: MockerFixture):
+    mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
+    mano_cli.compress([
+        str(tmp_path),
+        "-19",
+    ])
+    mock_compress_to_zst_files.assert_called_once_with(
+        str(tmp_path),
+        delete_original=False,
+        overwrite=False,
+        compression_level=19,
+    )
+
+#
+# decompress tests
+#
 
 def test_mano_cli_decompress_all(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
@@ -410,3 +436,20 @@ def test_mano_cli_decompress_only_overwrite(tmp_path: Path, mocker: MockerFixtur
         delete_zsts=False,
         overwrite=True,
     )
+
+
+# test cli helpers
+
+
+def test_confirm_command_doesnt_block_when_it_shouldnt(mocker: MockerFixture):
+    global_settings = mocker.patch("mano.mano_cli.GlobalSettings")
+    global_settings.skip_user_interaction = False
+    mock_input = mocker.patch("mano.mano_cli.input")
+    mock_input.return_value = "y"
+    mano_cli.confirm_command(*[""])
+    mock_input.assert_called_once()
+    mock_input = mocker.patch("mano.mano_cli.input")
+    mock_input.return_value = "y"
+    global_settings.skip_user_interaction = True
+    mano_cli.confirm_command(*[""])
+    mock_input.assert_not_called()

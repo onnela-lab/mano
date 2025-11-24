@@ -7,7 +7,8 @@ from sys import argv as command_line_args
 
 from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
-    decompress_zstd_files, validate_is_a_folder_or_valid_beiwe_data_file, validate_is_a_folder_or_zst_file)
+    decompress_zstd_files, validate_is_a_folder_or_valid_beiwe_data_file,
+    validate_is_a_folder_or_zst_file)
 
 
 log.setLevel(logging.DEBUG)
@@ -27,6 +28,28 @@ PARAMETERS_BY_COMMAND = {
     COMPRESS: [DELETE_ORIGINAL, OVERWRITE],
 }
 
+CLI_HELP_MESSAGE = f"""
+mano currently supports 2 commands: decompress and compress.
+  Parameters inside [brackets] are optional.
+  <Parameters in angle brackets> are required.
+
+~File Management~
+
+"mano decompress <directory or file path> [{DELETE_ZST}] [{OVERWRITE}]"
+  This command will decompress all .zst files in the specified directory.
+  (You can specify the current directory with a single dot: `.`)
+
+"mano compress <directory or file path> [-#] [{DELETE_ORIGINAL}] [{OVERWRITE}]"
+  This command will compress all .zst files in the specified directory.
+  You can optionally provide a `-#` (like `-8`) to set a compression level.
+    (Default is 2, maximum is 22, gains can be up to about 30% smaller.
+    High values get very, very slow.)
+
+
+Global Options - you can always provide these with any command:
+  add -y or --yes to skip all user interaction prompts.
+"""  # retain final new line.
+
 
 # Glabal settings should default to values as if they were NOT called from the CLI
 # the main() function will set these values appropriately for CLI usage.
@@ -43,19 +66,8 @@ def main():
     # (when main is called sys.argv[0] should always be the script's name.)
     # Display help on no args, -h, --help
     if len(sys.argv) < 2 or "-h" in sys.argv or "--help" in sys.argv:
-        log.info("\n")
-        log.info("mano currently supports 2 commands: decompress and compress")
-        log.info("\n")
-        log.info(f"decompress <directory_path> [{DELETE_ZST}] [{OVERWRITE}]")
-        log.info("\tThis command will decompress all .zst files in the specified directory.")
-        log.info("\t(You can specify the current directory with a single dot: `.`)")
-        log.info("\n")
-        log.info(f"compress <directory_path> [{DELETE_ORIGINAL}] [{OVERWRITE}]")
-        log.info("\tThis command will compress all .zst files in the specified directory.")
-        log.info("\t(You can specify the current directory with a single dot: `.`)")
-        log.info("\n")
-        log.info("You can provide -y or --yes to skip all user interaction prompts.")
-        log.info("\n")
+        for line in CLI_HELP_MESSAGE.split("\n"):  # do not change to splitlines
+            log.info(line)                         # we want blank lines retained
         return
     
     args = deepcopy(command_line_args[1:])
@@ -95,7 +107,7 @@ def confirm_command(*args: str):
     
     for arg in args:
         if not isinstance(arg, str):  # type: ignore
-            raise InternalError("confirm() only accepts string arguments")
+            raise InternalError("confirm_command() only accepts string arguments")
     
     # display, confirm, exit or proceed.
     log.info("\nPlease confirm you want to:")
@@ -165,6 +177,7 @@ def decompress(args: list[str]):
 
 def compress(args: list[str]):
     ensure_minimum_number_of_args(COMPRESS, args, 1)
+    compression_level = extract_compression_level(args)  # removes -# from args if present
     ensure_only_allowed_parameters(COMPRESS, args, [DELETE_ORIGINAL, OVERWRITE], args[0])
     
     # file path must come before delete_original and overwrite (index 0)
@@ -175,6 +188,7 @@ def compress(args: list[str]):
     validate_is_a_folder_or_valid_beiwe_data_file(target_path)
     
     class info:
+        compression_level: str  # (IDE complains incorrectly without this line)
         describe = \
             f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
                 f"`{abspath(target_path)}` and it's subdirectories."
@@ -197,18 +211,47 @@ def compress(args: list[str]):
                 False: "SKIP if a .zst file already exists"
             }
     
+    info.compression_level = f"using compression level {compression_level}"
+    if compression_level == 2: # default
+        info.compression_level += " (the default)"
+    
     confirm_command(
         info.describe,
         info.delete_original[delete_original],
         info.overwrite[overwrite],
+        info.compression_level,
     )
     
     try:
-        compress_to_zst_files(target_path, delete_original=delete_original, overwrite=overwrite)
+        compress_to_zst_files(
+            target_path,
+            delete_original=delete_original,
+            overwrite=overwrite,
+            compression_level=compression_level,
+        )
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
         log.error("An error occurred while compressing zstd files.")
         exit(2)
+
+
+def extract_compression_level(args: list[str]) -> int:
+    """ look for a -# parameter in args, where # is an integer from 0 to 22. """
+    level_str = "-2"  # default compression level
+    for arg in args:
+        # only digits after a single dash
+        if arg.startswith('-') and len(arg) >= 2 and arg[1:].isdigit():
+            level_str = arg
+            args.remove(arg)  # remove from args only if found
+            break
+    
+    # validate level between 0 and 22
+    level = int(level_str[1:])
+    if not (0 <= level <= 22):
+        log.error(f"Invalid compression level `{level}` provided. Must be between 0 and 22.")
+        exit(1)
+    
+    return level
 
 
 #
