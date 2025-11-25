@@ -8,6 +8,7 @@ dev = [  # development dependencies, pip install with: pip install mano[dev]
     "lxml-stubs",
     "mypy",
     "pytest==8.4.0",
+    "pytest-mock",
     "responses",
     "ruff",
     "twine",
@@ -61,7 +62,7 @@ select = [  # (linting directives to enable)
 ]
 
 ignore = [  # (linting directives to ignore)
-    "E701",  # multiple statements on one line - one line Exception subclasses are great.
+    "E701",  # No. one-liner Exception subclasses are great.
     "W293",  # blank line contains whitespace
 ]
 
@@ -76,8 +77,6 @@ star_first = true
 multi_line_output = 10  # aka HANGING_INDENT_WITH_PARENTHESES
 combine_as_imports = true
 lines_after_imports = 2
-lines_between_types = 0
-# dont_order_by_type = true  # not supported in config file???
 
 known_third_party = [  # Force these libraries to a special spot in import order (second to bottom)
     "forest",
@@ -95,9 +94,9 @@ known_first_party = [  # Force these libraries to a special spot in import order
 [tool.mypy]
 packages = "mano"
 
-[[tool.mypy.overrides]]        # trying to replicate this from the mypy.ini
-module = ["cryptease"]         #   [mypy-cryptease]
-ignore_missing_imports = true  #   ignore_missing_imports = true
+[[tool.mypy.overrides]]
+module = ["cryptease", "coloredlogs"]
+ignore_missing_imports = true
 
 
 #
@@ -154,6 +153,8 @@ classifiers = [
 
 
 dependencies = [  # this is underneath [project] but is about the build / dependencies systems
+    "coloredlogs",
+    "colorama",
     "cryptease",
     "lxml",
     "python-dateutil",
@@ -171,3 +172,6 @@ include = ["mano*"]
 
 [tool.setuptools.package-data]
 "mano" = ["config.json"]
+
+[project.scripts]
+mano = "mano.mano_cli:main"
