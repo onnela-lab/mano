@@ -162,7 +162,6 @@ def decompress_one_zst_file(
     label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
     log_func = log.warning if it_exists else log.info
     log_func(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
-    # return log_func, f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed})."
 
 
 def compress_to_zst_files(

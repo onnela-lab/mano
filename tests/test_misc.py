@@ -254,6 +254,7 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
 
 # full compress/decompress tests
 
+
 def test_full_decompress_decompresses(tmp_path: Path):
     zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
     
@@ -287,7 +288,6 @@ def test_full_decompress_multithread_works(tmp_path: Path):
     
     decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=4)
     
-    # get the .zst files and 
     new_valid_file_paths = set[str]()
     for file in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False):
         path = Path(file)
@@ -378,6 +378,37 @@ def test_full_decompress_overwrites(tmp_path: Path):
         assert uncompressed_path.exists()
         assert uncompressed_path.read_bytes() == decompressed_data
 
+
+def test_full_compress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
+    # simulate an error during compression
+    _compressable_files, _uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
+    mocker.patch("mano.file_management.compress_one_zst_file", side_effect=Exception("Simulated compression error"))
+    with pytest.raises(Exception, match="Simulated compression error"):
+        compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False, multithread_count=1)
+
+
+def test_full_compress_raises_an_error_during_real_execution_2_threads(tmp_path: Path, mocker: MockerFixture):
+    # simulate an error during compression
+    _compressable_files, _uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
+    mocker.patch("mano.file_management.compress_one_zst_file", side_effect=Exception("Simulated compression error"))
+    with pytest.raises(Exception, match="Simulated compression error"):
+        compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False, multithread_count=2)
+
+
+def test_full_decompress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
+    # simulate an error during decompression
+    _zst_files, _non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
+    mocker.patch("mano.file_management.decompress_one_zst_file", side_effect=Exception("Simulated decompression error"))
+    with pytest.raises(Exception, match="Simulated decompression error"):
+        decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=1)
+
+
+def test_full_decompress_raises_an_error_during_real_execution_2_threads(tmp_path: Path, mocker: MockerFixture):
+    # simulate an error during decompression
+    _zst_files, _non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
+    mocker.patch("mano.file_management.decompress_one_zst_file", side_effect=Exception("Simulated decompression error"))
+    with pytest.raises(Exception, match="Simulated decompression error"):
+        decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=2)
 
 #
 # test mano CLI commands
