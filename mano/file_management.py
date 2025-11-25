@@ -106,23 +106,37 @@ def bytes_to_human_filesize(b: bytes) -> str:
 
 
 def decompress_zst_files(
-    directory_path: str,
+    target_path: str,
     delete_zsts: bool = False,
     overwrite: bool = False,
     multithread_count: int = 1,
 ):
-    """ Decompresses all .zst files in a directory. """
+    """
+    Decompresses all .zst files in a directory and it's subdirectories, also works on single files.
+    
+    Args:
+        target_path:
+            Path to a directory containing .zst files, or a single .zst file.
+            For the current working directory provide "."
+        delete_zsts:
+            Delete the original .zst files after decompression. Defaults to False.
+        overwrite:
+            Overwrite existing decompressed files, otherwise skip it. Defaults to False.
+        multithread_count:
+            Number of files to decompress concurrently. Defaults to 1.
+            (ZSTD decompression is extremely fast, test before assuming this will provide benefits.)
+    """
     kwargs = dict(delete_zsts=delete_zsts, overwrite=overwrite)
     
-    if directory_path.endswith('.zst'):  # single file (not a directory)
-        return decompress_one_zst_file(directory_path, **kwargs)
+    if target_path.endswith('.zst'):  # single file (not a directory)
+        return decompress_one_zst_file(target_path, **kwargs)
     
     pool = setup_threadpool(multithread_count, "decompression")
     try:
         # imap_unordered returns results as they complete, not in order of submission.
         for _ in pool.imap_unordered(
             lambda fp: decompress_one_zst_file(fp, **kwargs),  # just hands it the file path
-            iterate_beiwe_data_files_recursively(directory_path, zst_only=True)
+            iterate_beiwe_data_files_recursively(target_path, zst_only=True)
         ):
             pass
     
@@ -171,8 +185,33 @@ def compress_to_zst_files(
     compression_level: int = 2,
     multithread_count: int = 1,
 ):
-    """ Compress all files in a directory to .zst """
-    kwargs = dict[str, Any](  # typing does not like wrapping kwargs like this
+    """
+    Compress all files in a directory and it's subdirectories to individual .zst files.
+        Also works on single files.
+    
+    Args:
+        target_path:
+            Path to a directory containing Beiwe data files, or a single file.
+            Compression is limited to the compressible data file types provided by The Beiwe
+            Platform, .csv and.wav files.
+            For the current working directory provide "."
+        delete_original:
+            Delete the original files after compression. Defaults to False.
+        overwrite:
+            Overwrite existing .zst files if present, otherwise skip it. Defaults to False.
+        compression_level:
+            ZSTD compression level to use, from 0 (fastest) to 22 (best).
+            The default (2) matches the server and was tested and found to be fairly ideal.
+            Default will achieve 18-19% original size at hundreds of MB/s on most computers.
+            Higher values can provide additional compression gains up to about 14-15% original size,
+            but are much slower, often down to single digit MB/s at the maximum level.
+        multithread_count:
+            Number of files to compress concurrently. Defaults to 1.
+            ZSTD compression speed varies widely with compression level, test before assuming this
+            will provide benefits. It is likely that higher compression levels will benefit more.
+    """
+    
+    kwargs = dict[str, Any](  # (type-checking does not like it when you wrap kwargs like this)
         delete_original=delete_original,
         overwrite=overwrite,
         compression_level=compression_level,
@@ -199,9 +238,9 @@ def compress_one_zst_file(
     full_path: str,
     delete_original: bool = False,
     overwrite: bool = False,
-    compression_level: int = 2
+    compression_level: int = 2,
 ):
-    """ Compress a single file to .zst, returns the log function and a message """
+    """ Compress a single file to .zst """
     compressed_path = full_path + '.zst'
     
     it_exists = path_exists(compressed_path)
