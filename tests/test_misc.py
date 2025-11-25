@@ -241,14 +241,14 @@ def test_empty_folder(tmp_path: Path):
 def test_iterate_recursive(tmp_path: Path):
     valid_files, _invalid_files, _bytes = generate_valid_compress_test_files(tmp_path)
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path))}
-    expected_valid_filenames = {f.as_posix() for f in valid_files}
+    expected_valid_filenames = {str(f) for f in valid_files}
     assert found_files == expected_valid_filenames
 
 
 def test_iterate_recursive_zst_only(tmp_path: Path):
     zst_files, _non_zst_files, _uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True)}
-    expected_zst_filenames = {f.as_posix() for f in zst_files}
+    expected_zst_filenames = {str(f) for f in zst_files}
     assert found_files == expected_zst_filenames
 
 
@@ -257,41 +257,30 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
 
 def test_full_decompress_decompresses(tmp_path: Path):
     zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
-    
-    correct_uncompressed_file_paths = {path.as_posix().rsplit(".zst")[0] for path in zst_files}
-    for path in non_zst_files:  # add the valid never-were-compressed files too (iterate picks them up)
-        if path.suffix in [".csv", ".wav"]:
-            correct_uncompressed_file_paths.add(path.as_posix())
-    
     decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False)
-    
-    new_valid_file_paths = set[str]()
-    for file in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False):
-        path = Path(file)
-        new_valid_file_paths.add(path.as_posix())
-        assert path.exists()
-        assert path.suffix != ".zst"
-        assert path.read_bytes() == uncompressed_bytes
-    
-    assert set(new_valid_file_paths) == correct_uncompressed_file_paths
+    common_full_decompress(tmp_path, uncompressed_bytes, zst_files, non_zst_files)
 
 
 def test_full_decompress_multithread_works(tmp_path: Path):
     # as above, but with multithreading
-    
     zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
+    decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=4)
+    common_full_decompress(tmp_path, uncompressed_bytes, zst_files, non_zst_files)
+
+
+def common_full_decompress(
+    tmp_path: Path, uncompressed_bytes: bytes, zst_files: list[Path], non_zst_files: list[Path]
+):
+    correct_uncompressed_file_paths = {str(path).rsplit(".zst")[0] for path in zst_files}
     
-    correct_uncompressed_file_paths = {path.as_posix().rsplit(".zst")[0] for path in zst_files}
     for path in non_zst_files:  # add the valid never-were-compressed files too (iterate picks them up)
         if path.suffix in [".csv", ".wav"]:
-            correct_uncompressed_file_paths.add(path.as_posix())
-    
-    decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=4)
+            correct_uncompressed_file_paths.add(str(path))
     
     new_valid_file_paths = set[str]()
     for file in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False):
         path = Path(file)
-        new_valid_file_paths.add(path.as_posix())
+        new_valid_file_paths.add(str(path))
         assert path.exists()
         assert path.suffix != ".zst"
         assert path.read_bytes() == uncompressed_bytes
@@ -301,33 +290,24 @@ def test_full_decompress_multithread_works(tmp_path: Path):
 
 def test_full_compress_compresses(tmp_path: Path):
     compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
-    correct_compressed_file_paths = {path.as_posix()+".zst" for path in compressable_files}
-    
     compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False)
-    
-    new_valid_file_paths = set[str]()
-    for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
-        path = Path(fp)
-        new_valid_file_paths.add(path.as_posix())
-        assert path.suffix == ".zst"
-        assert path.exists()
-        assert decompress(path.read_bytes()) == original_bytes
-    
-    assert new_valid_file_paths == correct_compressed_file_paths
+    common_full_compress(tmp_path, original_bytes, compressable_files)
 
 
 def test_full_compress_multithread_works(tmp_path: Path):
     # as above, but with multithreading
-    
     compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
-    correct_compressed_file_paths = {path.as_posix()+".zst" for path in compressable_files}
-    
     compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False, multithread_count=4)
+    common_full_compress(tmp_path, original_bytes, compressable_files)
+
+
+def common_full_compress(tmp_path: Path, original_bytes: bytes, compressable_files: list[Path]):
+    correct_compressed_file_paths = {str(path)+".zst" for path in compressable_files}
     
     new_valid_file_paths = set[str]()
     for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
         path = Path(fp)
-        new_valid_file_paths.add(path.as_posix())
+        new_valid_file_paths.add(str(path))
         assert path.suffix == ".zst"
         assert path.exists()
         assert decompress(path.read_bytes()) == original_bytes
@@ -370,7 +350,7 @@ def test_full_decompress_overwrites(tmp_path: Path):
     zst_files, _non_zst_files, decompressed_data = generate_valid_decompress_test_files(tmp_path)
     # create dummy uncompressed files to be overwritten
     for path in zst_files:
-        Path(path.as_posix().rsplit(".zst")[0]).write_bytes(b"super secret data")
+        Path(str(path).rsplit(".zst")[0]).write_bytes(b"super secret data")
     
     decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=True)
     for path in zst_files:
@@ -438,71 +418,41 @@ def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
 
 def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
-    mano_cli.compress([
-        str(tmp_path),
-        "--delete-original",
-        "--overwrite",
-    ])
+    mano_cli.compress([str(tmp_path), "--delete-original", "--overwrite"])
     mock_compress_to_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_original=True,
-        overwrite=True,
-        compression_level=2,
+        str(tmp_path), delete_original=True, overwrite=True, compression_level=2
     )
 
 
 def test_mano_cli_compress_no_delete_no_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
-    mano_cli.compress([
-        str(tmp_path),
-    ])
+    mano_cli.compress([str(tmp_path)])
     mock_compress_to_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_original=False,
-        compression_level=2,
-        overwrite=False,
+        str(tmp_path), delete_original=False, compression_level=2, overwrite=False
     )
 
 
 def test_mano_cli_compress_only_delete(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
-    mano_cli.compress([
-        str(tmp_path),
-        "--delete-original",
-    ])
+    mano_cli.compress([str(tmp_path), "--delete-original"])
     mock_compress_to_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_original=True,
-        overwrite=False,
-        compression_level=2,
+        str(tmp_path), delete_original=True, overwrite=False, compression_level=2
     )
 
 
 def test_mano_cli_compress_only_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
-    mano_cli.compress([
-        str(tmp_path),
-        "--overwrite",
-    ])
+    mano_cli.compress([str(tmp_path), "--overwrite"])
     mock_compress_to_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_original=False,
-        overwrite=True,
-        compression_level=2,
+        str(tmp_path), delete_original=False, overwrite=True, compression_level=2
     )
 
 
 def test_compress_with_custom_level(tmp_path: Path, mocker: MockerFixture):
     mock_compress_to_zst_files = _setup_mock_compress(mocker, tmp_path)
-    mano_cli.compress([
-        str(tmp_path),
-        "-19",
-    ])
+    mano_cli.compress([str(tmp_path), "-19"])
     mock_compress_to_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_original=False,
-        overwrite=False,
-        compression_level=19,
+        str(tmp_path), delete_original=False, overwrite=False, compression_level=19
     )
 
 #
@@ -511,15 +461,9 @@ def test_compress_with_custom_level(tmp_path: Path, mocker: MockerFixture):
 
 def test_mano_cli_decompress_all(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
-    mano_cli.decompress([
-        str(tmp_path),
-        "--delete-zst",
-        "--overwrite",
-    ])
+    mano_cli.decompress([str(tmp_path), "--delete-zst", "--overwrite"])
     mock_decompress_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_zsts=True,
-        overwrite=True,
+        str(tmp_path), delete_zsts=True, overwrite=True
     )
 
 
@@ -529,35 +473,23 @@ def test_mano_cli_decompress_no_delete_no_overwrite(tmp_path: Path, mocker: Mock
         str(tmp_path),
     ])
     mock_decompress_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_zsts=False,
-        overwrite=False,
+        str(tmp_path), delete_zsts=False, overwrite=False
     )
 
 
 def test_mano_cli_decompress_only_delete(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
-    mano_cli.decompress([
-        str(tmp_path),
-        "--delete-zst",
-    ])
+    mano_cli.decompress([str(tmp_path), "--delete-zst"])
     mock_decompress_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_zsts=True,
-        overwrite=False,
+        str(tmp_path), delete_zsts=True, overwrite=False
     )
 
 
 def test_mano_cli_decompress_only_overwrite(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
-    mano_cli.decompress([
-        str(tmp_path),
-        "--overwrite",
-    ])
+    mano_cli.decompress([str(tmp_path), "--overwrite"])
     mock_decompress_zst_files.assert_called_once_with(
-        str(tmp_path),
-        delete_zsts=False,
-        overwrite=True,
+        str(tmp_path), delete_zsts=False, overwrite=True
     )
 
 
