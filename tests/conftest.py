@@ -190,7 +190,7 @@ def mock_users_response():
 # Helper functions for zstd compression tests - require the test uses the tmp_path fixture and pass it in
 #
 
-def generate_uncompressed_zstd_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
+def generate_uncompressed_zst_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
     """
     Basic setup so running compress doesn't error and compresses something.
     """
@@ -201,10 +201,63 @@ def generate_uncompressed_zstd_files(tmp_path: Path) -> tuple[Path, Path, bytes]
     return uncompressed_path, compressed_path, original_bytes
 
 
-def generate_compressed_zstd_file(tmp_path: Path) -> tuple[Path, Path, bytes]:
+def generate_compressed_zst_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
     uncompressed_path = tmp_path / "testzstd.csv"
     compressed_path = tmp_path / "testzstd.csv.zst"
     original_bytes = b"Sample data for compression test." * 20
     compressed_bytes = pyzstd.compress(original_bytes, 2)  # type: ignore
     compressed_path.write_bytes(compressed_bytes)
     return uncompressed_path, compressed_path, original_bytes
+
+
+DECOMPRESSED_BYTES = b"test content"
+COMPRESSED_BYTES: bytes = pyzstd.compress(DECOMPRESSED_BYTES, 2)  # type: ignore
+
+
+def generate_valid_compress_test_files(tmp_path: Path) -> tuple[list[Path], list[Path], bytes]:
+    # create some valid and invalid files in subdirectories
+    (tmp_path / "subdir1").mkdir()
+    (tmp_path / "subdir2").mkdir()
+    
+    compressable_files = [
+        tmp_path / "data1.csv",
+        tmp_path / "subdir1" / "audio.wav",
+    ]
+    uncompressable_files = [
+        tmp_path / "document.txt",
+        tmp_path / "subdir1" / "image.jpg",
+        tmp_path / "subdir2" / "archive.zip",
+        tmp_path / "subdir1" / "script.py"
+    ]
+    # make them exist
+    for filepath in compressable_files + uncompressable_files:
+        filepath.write_bytes(DECOMPRESSED_BYTES)
+    
+    return compressable_files, uncompressable_files, DECOMPRESSED_BYTES
+
+
+def generate_valid_decompress_test_files(tmp_path: Path) -> tuple[list[Path], list[Path], bytes]:
+    # create some valid and invalid files in subdirectories
+    (tmp_path / "subdir1").mkdir()
+    (tmp_path / "subdir2").mkdir()
+    
+    zst_files = [
+        tmp_path / "data1.csv.zst",
+        tmp_path / "subdir1" / "audio.wav.zst",
+    ]
+    non_zst_files = [
+        tmp_path / "document.txt",
+        tmp_path / "subdir1" / "image.jpg",
+        tmp_path / "subdir2" / "archive.zstd",
+        tmp_path / "subdir1" / "script.py",
+        tmp_path / "data3.csv"
+    ]
+    
+    # make them exist
+    for filepath in zst_files:
+        filepath.write_bytes(COMPRESSED_BYTES)
+    
+    for filepath in non_zst_files:
+        filepath.write_bytes(DECOMPRESSED_BYTES)
+    
+    return zst_files, non_zst_files, DECOMPRESSED_BYTES

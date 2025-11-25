@@ -1,7 +1,9 @@
+from multiprocessing.pool import ThreadPool
 from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
     umask as get_umask, walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import pyzstd
 from pyzstd import decompress
@@ -103,19 +105,38 @@ def bytes_to_human_filesize(b: bytes) -> str:
     return f"{count:.2f}{suffixes[index]}"
 
 
-def decompress_zstd_files(directory_path: str, delete_zsts: bool = False, overwrite: bool = False):
-    """ Decompress all .zst files in a directory. """
+def decompress_zst_files(
+    directory_path: str,
+    delete_zsts: bool = False,
+    overwrite: bool = False,
+    multithread_count: int = 1,
+):
+    """ Decompresses all .zst files in a directory. """
+    kwargs = dict(delete_zsts=delete_zsts, overwrite=overwrite)
     
-    if directory_path.endswith('.zst'):
-        decompress_one_zstd_file(directory_path, delete_zsts=delete_zsts, overwrite=overwrite)
-        return
+    if directory_path.endswith('.zst'):  # single file (not a directory)
+        return decompress_one_zst_file(directory_path, **kwargs)
     
-    # todo: multithread this using physical core count
-    for full_path in iterate_beiwe_data_files_recursively(directory_path, zst_only=True):
-        decompress_one_zstd_file(full_path, delete_zsts=delete_zsts, overwrite=overwrite)
+    pool = setup_threadpool(multithread_count, "decompression")
+    try:
+        # imap_unordered returns results as they complete, not in order of submission.
+        for _ in pool.imap_unordered(
+            lambda fp: decompress_one_zst_file(fp, **kwargs),  # just hands it the file path
+            iterate_beiwe_data_files_recursively(directory_path, zst_only=True)
+        ):
+            pass
+    
+    finally:
+        pool.close()
+        pool.join()
+        pool.terminate()
 
 
-def decompress_one_zstd_file(full_path: str, delete_zsts: bool = False, overwrite: bool = False):
+def decompress_one_zst_file(
+    full_path: str,
+    delete_zsts: bool = False,
+    overwrite: bool = False,
+):
     """ Decompress a single .zst file. """
     decompressed_path = full_path[:-4]
     
@@ -132,52 +153,56 @@ def decompress_one_zstd_file(full_path: str, delete_zsts: bool = False, overwrit
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     size_decompressed = bytes_to_human_filesize(decompressed_bytes)
     
-    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
-    _log = log.warning if it_exists else log.info
-    _log(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
-    
     with open(decompressed_path, 'wb') as fo:
         fo.write(decompressed_bytes)
     
     if delete_zsts:
         delete_file(full_path)
+    
+    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
+    log_func = log.warning if it_exists else log.info
+    log_func(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
+    # return log_func, f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed})."
 
 
 def compress_to_zst_files(
-    directory_path: str,
+    target_path: str,
     delete_original: bool = False,
     overwrite: bool = False,
     compression_level: int = 2,
+    multithread_count: int = 1,
 ):
     """ Compress all files in a directory to .zst """
+    kwargs = dict[str, Any](  # typing does not like wrapping kwargs like this
+        delete_original=delete_original,
+        overwrite=overwrite,
+        compression_level=compression_level,
+    )
     
-    if check_is_valid_beiwe_data_file(directory_path):
-        compress_one_zstd_file(
-            directory_path,
-            delete_original=delete_original,
-            overwrite=overwrite,
-            compression_level=compression_level,
-        )
-        return
+    if check_is_valid_beiwe_data_file(target_path):  # single file (not a directory)
+        return compress_one_zst_file(target_path, **kwargs)
     
-    # TODO: multithread this using physical core count
-    for full_path in iterate_beiwe_data_files_recursively(directory_path):
-        compress_one_zstd_file(
-            full_path,
-            delete_original=delete_original,
-            overwrite=overwrite,
-            compression_level=compression_level,
-        )
+    pool = setup_threadpool(multithread_count, "compression")
+    try:
+        # imap_unordered returns results as they complete, not in order of submission.
+        for _ in pool.imap_unordered(
+            lambda fp: compress_one_zst_file(fp, **kwargs),  # just  hands it a file path
+            iterate_beiwe_data_files_recursively(target_path)
+        ):
+            pass
+    finally:
+        pool.close()
+        pool.join()
+        pool.terminate()
 
 
-def compress_one_zstd_file(
+def compress_one_zst_file(
     full_path: str,
     delete_original: bool = False,
     overwrite: bool = False,
     compression_level: int = 2
 ):
-    """ Compress a single file to .zst """
-    
+    """ Compress a single file to .zst, returns the log function and a message """
     compressed_path = full_path + '.zst'
     
     it_exists = path_exists(compressed_path)
@@ -196,15 +221,15 @@ def compress_one_zstd_file(
     size_original = bytes_to_human_filesize(original_bytes)
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     
-    label = "Overwrote:" if it_exists else "Created:  "  # ensure same length prefix
-    _log = log.warning if it_exists else log.info
-    _log(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
-    
     with open(compressed_path, 'wb') as fo:
         fo.write(compressed_bytes)
     
     if delete_original:
         delete_file(full_path)
+    
+    label = "Overwrote:" if it_exists else "Created:  "  # ensure same length prefix
+    log_func = log.warning if it_exists else log.info
+    log_func(f"{label} `{compressed_path}` ({size_original} -> {size_compressed}).")
 
 
 def compress_as_backend(b: bytes) -> bytes:
@@ -281,3 +306,12 @@ def validate_is_a_folder_or_zst_file(path: str):
 def check_is_valid_beiwe_data_file(path: str) -> bool:
     """ Check if a path is a valid Beiwe data file. """
     return any(path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)
+
+
+def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
+    """ Setup a thread pool with logging. """
+    multithread_count = max(1, multithread_count)  # just ignore 0 and negatives
+    pool = ThreadPool(multithread_count)
+    if multithread_count > 1:
+        log.info(f"Using {multithread_count} threads for {name}.")
+    return pool

@@ -9,9 +9,11 @@ from pyzstd import decompress
 import mano
 from mano import mano_cli
 from mano.constants import logger as log, VALID_EXTENSIONS_MESSAGE
-from mano.file_management import (compress_as_backend, compress_general, compress_one_zstd_file,
-    decompress_one_zstd_file, iterate_beiwe_data_files_recursively)
-from tests.conftest import generate_compressed_zstd_file, generate_uncompressed_zstd_files
+from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
+    compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
+    iterate_beiwe_data_files_recursively)
+from tests.conftest import (generate_compressed_zst_files, generate_uncompressed_zst_files,
+    generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
 
 @responses.activate
@@ -119,40 +121,40 @@ def test_compress_general():
 # test compress
 
 
-def test_compress_one_zstd_file_defaults(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
-    compress_one_zstd_file(str(uncompressed_path))
+def test_compress_one_zst_file_defaults(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
+    compress_one_zst_file(str(uncompressed_path))
     assert compressed_path.exists()
     assert uncompressed_path.exists()
     assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
     assert len(compressed_bytes) < len(original_bytes)
 
 
-def test_compress_one_zstd_file_overwrite_fail(tmp_path: Path):
-    uncompressed_path, compressed_path, _original_bytes = generate_uncompressed_zstd_files(tmp_path)
+def test_compress_one_zst_file_overwrite_fail(tmp_path: Path):
+    uncompressed_path, compressed_path, _original_bytes = generate_uncompressed_zst_files(tmp_path)
     compressed_path.write_bytes(b"super secret data")
-    compress_one_zstd_file(str(uncompressed_path), overwrite=False)
+    compress_one_zst_file(str(uncompressed_path), overwrite=False)
     assert compressed_path.read_bytes() == b"super secret data"
 
 
-def test_compress_one_zstd_file_overwrite_success(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
+def test_compress_one_zst_file_overwrite_success(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compressed_path.write_bytes(b"super secret data")
-    compress_one_zstd_file(str(uncompressed_path), overwrite=True)
+    compress_one_zst_file(str(uncompressed_path), overwrite=True)
     assert original_bytes == decompress(compressed_path.read_bytes())
 
 
-def test_compress_one_zstd_file_delete_original(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
-    compress_one_zstd_file(str(uncompressed_path), delete_original=True)
+def test_compress_one_zst_file_delete_original(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
+    compress_one_zst_file(str(uncompressed_path), delete_original=True)
     assert not uncompressed_path.exists()
     assert compressed_path.exists()
     assert original_bytes == decompress(compressed_path.read_bytes())
 
 
-def tesst_compress_one_zstd_file_custom_level(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zstd_files(tmp_path)
-    compress_one_zstd_file(str(uncompressed_path), compression_level=19)  # take it slow
+def tesst_compress_one_zst_file_custom_level(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
+    compress_one_zst_file(str(uncompressed_path), compression_level=19)  # take it slow
     assert compressed_path.exists()
     assert uncompressed_path.exists()
     assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
@@ -162,31 +164,31 @@ def tesst_compress_one_zstd_file_custom_level(tmp_path: Path):
 # test decompress
 
 
-def test_decompress_one_zstd_file_defaults(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
-    decompress_one_zstd_file(str(compressed_path))
+def test_decompress_one_zst_file_defaults(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
+    decompress_one_zst_file(str(compressed_path))
     assert uncompressed_path.exists()
     assert compressed_path.exists()
     assert original_bytes == uncompressed_path.read_bytes()
 
 
-def test_decompress_one_zstd_file_overwrite_fail(tmp_path: Path):
-    uncompressed_path, compressed_path, _original_bytes = generate_compressed_zstd_file(tmp_path)
+def test_decompress_one_zst_file_overwrite_fail(tmp_path: Path):
+    uncompressed_path, compressed_path, _original_bytes = generate_compressed_zst_files(tmp_path)
     uncompressed_path.write_bytes(b"super secret data")
-    decompress_one_zstd_file(str(compressed_path), overwrite=False)
+    decompress_one_zst_file(str(compressed_path), overwrite=False)
     assert uncompressed_path.read_bytes() == b"super secret data"
 
 
-def test_decompress_one_zstd_file_overwrite_success(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
+def test_decompress_one_zst_file_overwrite_success(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     uncompressed_path.write_bytes(b"super secret data")
-    decompress_one_zstd_file(str(compressed_path), overwrite=True)
+    decompress_one_zst_file(str(compressed_path), overwrite=True)
     assert original_bytes == uncompressed_path.read_bytes()
 
 
-def test_decompress_one_zstd_file_delete_zst(tmp_path: Path):
-    uncompressed_path, compressed_path, original_bytes = generate_compressed_zstd_file(tmp_path)
-    decompress_one_zstd_file(str(compressed_path), delete_zsts=True)
+def test_decompress_one_zst_file_delete_zst(tmp_path: Path):
+    uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
+    decompress_one_zst_file(str(compressed_path), delete_zsts=True)
     assert not compressed_path.exists()
     assert uncompressed_path.exists()
     assert original_bytes == uncompressed_path.read_bytes()
@@ -237,54 +239,144 @@ def test_empty_folder(tmp_path: Path):
 
 
 def test_iterate_recursive(tmp_path: Path):
-    # create some valid and invalid files in subdirectories
-    (tmp_path / "subdir1").mkdir()
-    (tmp_path / "subdir2").mkdir()
-    
-    valid_files = [
-        tmp_path / "data1.csv",
-        tmp_path / "subdir1" / "audio.wav",
-    ]
-    invalid_files = [
-        tmp_path / "document.txt",
-        tmp_path / "subdir1" / "image.jpg",
-        tmp_path / "subdir2" / "archive.zip",
-        tmp_path / "subdir1" / "script.py"
-    ]
-    
-    # make them exist
-    for filepath in valid_files + invalid_files:
-        filepath.write_text("test content")
-    
+    valid_files, _invalid_files, _bytes = generate_valid_compress_test_files(tmp_path)
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path))}
     expected_valid_filenames = {f.as_posix() for f in valid_files}
     assert found_files == expected_valid_filenames
 
 
 def test_iterate_recursive_zst_only(tmp_path: Path):
-    # create some valid and invalid files in subdirectories
-    (tmp_path / "subdir1").mkdir()
-    (tmp_path / "subdir2").mkdir()
-    
-    zst_files = [
-        tmp_path / "data1.csv.zst",
-        tmp_path / "subdir1" / "audio.wav.zst",
-    ]
-    non_zst_files = [
-        tmp_path / "document.txt",
-        tmp_path / "subdir1" / "image.jpg",
-        tmp_path / "subdir2" / "archive.zstd",
-        tmp_path / "subdir1" / "script.py",
-        tmp_path / "data3.csv"
-    ]
-    
-    # make them exist
-    for filepath in zst_files + non_zst_files:
-        filepath.write_text("test content")
-    
+    zst_files, _non_zst_files, _uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True)}
     expected_zst_filenames = {f.as_posix() for f in zst_files}
     assert found_files == expected_zst_filenames
+
+
+# full compress/decompress tests
+
+def test_full_decompress_decompresses(tmp_path: Path):
+    zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
+    
+    correct_uncompressed_file_paths = {path.as_posix().rsplit(".zst")[0] for path in zst_files}
+    for path in non_zst_files:  # add the valid never-were-compressed files too (iterate picks them up)
+        if path.suffix in [".csv", ".wav"]:
+            correct_uncompressed_file_paths.add(path.as_posix())
+    
+    decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False)
+    
+    new_valid_file_paths = set[str]()
+    for file in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False):
+        path = Path(file)
+        new_valid_file_paths.add(path.as_posix())
+        assert path.exists()
+        assert path.suffix != ".zst"
+        assert path.read_bytes() == uncompressed_bytes
+    
+    assert set(new_valid_file_paths) == correct_uncompressed_file_paths
+
+
+def test_full_decompress_multithread_works(tmp_path: Path):
+    # as above, but with multithreading
+    
+    zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
+    
+    correct_uncompressed_file_paths = {path.as_posix().rsplit(".zst")[0] for path in zst_files}
+    for path in non_zst_files:  # add the valid never-were-compressed files too (iterate picks them up)
+        if path.suffix in [".csv", ".wav"]:
+            correct_uncompressed_file_paths.add(path.as_posix())
+    
+    decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False, multithread_count=4)
+    
+    # get the .zst files and 
+    new_valid_file_paths = set[str]()
+    for file in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False):
+        path = Path(file)
+        new_valid_file_paths.add(path.as_posix())
+        assert path.exists()
+        assert path.suffix != ".zst"
+        assert path.read_bytes() == uncompressed_bytes
+    
+    assert set(new_valid_file_paths) == correct_uncompressed_file_paths
+
+
+def test_full_compress_compresses(tmp_path: Path):
+    compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
+    correct_compressed_file_paths = {path.as_posix()+".zst" for path in compressable_files}
+    
+    compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False)
+    
+    new_valid_file_paths = set[str]()
+    for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
+        path = Path(fp)
+        new_valid_file_paths.add(path.as_posix())
+        assert path.suffix == ".zst"
+        assert path.exists()
+        assert decompress(path.read_bytes()) == original_bytes
+    
+    assert new_valid_file_paths == correct_compressed_file_paths
+
+
+def test_full_compress_multithread_works(tmp_path: Path):
+    # as above, but with multithreading
+    
+    compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
+    correct_compressed_file_paths = {path.as_posix()+".zst" for path in compressable_files}
+    
+    compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False, multithread_count=4)
+    
+    new_valid_file_paths = set[str]()
+    for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
+        path = Path(fp)
+        new_valid_file_paths.add(path.as_posix())
+        assert path.suffix == ".zst"
+        assert path.exists()
+        assert decompress(path.read_bytes()) == original_bytes
+    
+    assert new_valid_file_paths == correct_compressed_file_paths
+
+
+def test_full_decompress_delete_zst_deletes_zsts(tmp_path: Path):
+    zst_files, non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
+    decompress_zst_files(str(tmp_path), delete_zsts=True, overwrite=False)
+    for path in zst_files:
+        assert not path.exists()
+    for path in non_zst_files:
+        assert path.exists()
+
+
+def test_full_compress_delete_original_deletes_originals(tmp_path: Path):
+    compressable_files, uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
+    compress_to_zst_files(str(tmp_path), delete_original=True, overwrite=False)
+    for path in compressable_files:
+        assert not path.exists()
+    for path in uncompressable_files:
+        assert path.exists()
+
+
+def test_full_compress_overwrites(tmp_path: Path):
+    compressable_files, _uncompressable_files, decompressed_data = generate_valid_compress_test_files(tmp_path)
+    # create dummy .zst files to be overwritten
+    for path in compressable_files:
+        (path.parent / (path.name + ".zst")).write_bytes(b"super secret data")
+    
+    compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=True)
+    for path in compressable_files:
+        compressed_path = path.parent / (path.name + ".zst")
+        assert compressed_path.exists()
+        assert decompress(compressed_path.read_bytes()) == decompressed_data
+
+
+def test_full_decompress_overwrites(tmp_path: Path):
+    zst_files, _non_zst_files, decompressed_data = generate_valid_decompress_test_files(tmp_path)
+    # create dummy uncompressed files to be overwritten
+    for path in zst_files:
+        Path(path.as_posix().rsplit(".zst")[0]).write_bytes(b"super secret data")
+    
+    decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=True)
+    for path in zst_files:
+        uncompressed_path = path.parent / path.name.rsplit(".zst")[0]
+        assert uncompressed_path.exists()
+        assert uncompressed_path.read_bytes() == decompressed_data
 
 
 #
@@ -294,7 +386,7 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
 
 def _setup_mock_compress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
     # mocks the function call and sets up `input` to let us run the function without breaking
-    _, _, _ = generate_uncompressed_zstd_files(tmp_path)
+    _, _, _ = generate_uncompressed_zst_files(tmp_path)
     mock_input = mocker.patch("mano.mano_cli.input")
     mock_input.return_value = "y"
     return mocker.patch("mano.mano_cli.compress_to_zst_files")
@@ -302,10 +394,10 @@ def _setup_mock_compress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
 
 def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
     # mocks the function call and sets up `input` to let us run the function without breaking
-    _, _, _ = generate_compressed_zstd_file(tmp_path)
+    _, _, _ = generate_compressed_zst_files(tmp_path)
     mock_input = mocker.patch("mano.mano_cli.input")
     mock_input.return_value = "y"
-    return mocker.patch("mano.mano_cli.decompress_zstd_files")
+    return mocker.patch("mano.mano_cli.decompress_zst_files")
 
 
 #

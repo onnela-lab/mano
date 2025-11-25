@@ -7,7 +7,7 @@ from sys import argv as command_line_args
 
 from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
-    decompress_zstd_files, validate_is_a_folder_or_valid_beiwe_data_file,
+    decompress_zst_files, validate_is_a_folder_or_valid_beiwe_data_file,
     validate_is_a_folder_or_zst_file)
 
 
@@ -168,7 +168,7 @@ def decompress(args: list[str]):
         info.overwrite[overwrite],
     )
     try:
-        decompress_zstd_files(target_path, delete_zsts=delete_zst, overwrite=overwrite)
+        decompress_zst_files(target_path, delete_zsts=delete_zst, overwrite=overwrite)
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
         log.error("An error occurred while decompressing .zst files.")
