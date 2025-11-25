@@ -227,15 +227,18 @@ def test_empty_folder(tmp_path: Path):
     restricted_dir = tmp_path / "restricted"
     restricted_dir.mkdir()
     
-    # this is the error for when it had nothing with the right extensions
-    with pytest.raises(FileNotFoundError, match=f"{VALID_EXTENSIONS_MESSAGE}: `{str(tmp_path)}`"):
-        for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
-            log.error(f"Unexpected file found while running test 3: {fp}")  # debugging helper
+    base_path_str = str(tmp_path)
+    rgx_compat_path = base_path_str.replace("\\", "\\\\")  # for Windows paths compatibility
     
-    msg2 =f"No `.zst` files found in directory `{str(tmp_path)}` or its subdirectories."
+    # this is the error for when it had nothing with the right extensions
+    with pytest.raises(FileNotFoundError, match=f"{VALID_EXTENSIONS_MESSAGE}: `{rgx_compat_path}`"):
+        for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
+            log.error(f"TEST: Unexpected file found while running test 3: {fp}")  # debugging helper
+    
+    msg2 =f"No `.zst` files found in directory `{rgx_compat_path}` or its subdirectories."
     with pytest.raises(FileNotFoundError, match=msg2):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
-            log.error(f"Unexpected file found while running test 4: {fp}")  # debugging helper
+            log.error(f"TEST: Unexpected file found while running test 4: {fp}")  # debugging helper
 
 
 def test_iterate_recursive(tmp_path: Path):
