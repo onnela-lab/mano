@@ -51,7 +51,7 @@ Global Options - you can always provide these with any command:
 """  # retain final new line.
 
 
-# Glabal settings should default to values as if they were NOT called from the CLI
+# Global settings should default to values as if they were NOT called from the CLI
 # the main() function will set these values appropriately for CLI usage.
 class GlobalSettings:
     skip_user_interaction: bool = True
@@ -142,7 +142,7 @@ def decompress(args: list[str]):
     
     class info:
         describe = \
-            f"Decompress all .zst files in the directory `{abspath(target_path)}` and it's subdirectories."
+            f"Decompress all .zst files in the directory `{abspath(target_path)}` and its subdirectories."
         delete_zst = {
             True: "DELETE the .zst files after decompressing them",
             False: "RETAIN any .zst files after decompressing them"
@@ -159,7 +159,7 @@ def decompress(args: list[str]):
         }
         info.overwrite = {
             True: "OVERWRITE the existing file",
-            False: "SKIP it if a file already exist-"
+            False: "SKIP it if a file already exists"
         }
     
     confirm_command(
@@ -171,6 +171,7 @@ def decompress(args: list[str]):
         decompress_zst_files(target_path, delete_zsts=delete_zst, overwrite=overwrite)
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
+        # TODO: improve logging of exceptions
         log.error("An error occurred while decompressing .zst files.")
         exit(2)
 
@@ -191,7 +192,7 @@ def compress(args: list[str]):
         compression_level: str  # (IDE complains incorrectly without this line)
         describe = \
             f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
-                f"`{abspath(target_path)}` and it's subdirectories."
+                f"`{abspath(target_path)}` and its subdirectories."
         delete_original = {
             True: "DELETE the original files after compressing them",
             False: "RETAIN the original files after compressing them"
@@ -231,6 +232,7 @@ def compress(args: list[str]):
         )
     except Exception:
         # simple statement of what failed, details should be printed in the called functions.
+        # TODO: improve logging of exceptions
         log.error("An error occurred while compressing zstd files.")
         exit(2)
 

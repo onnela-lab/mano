@@ -152,7 +152,7 @@ def test_compress_one_zst_file_delete_original(tmp_path: Path):
     assert original_bytes == decompress(compressed_path.read_bytes())
 
 
-def tesst_compress_one_zst_file_custom_level(tmp_path: Path):
+def test_compress_one_zst_file_custom_level(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_one_zst_file(str(uncompressed_path), compression_level=19)  # take it slow
     assert compressed_path.exists()

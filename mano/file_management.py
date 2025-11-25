@@ -112,7 +112,7 @@ def decompress_zst_files(
     multithread_count: int = 1,
 ):
     """
-    Decompresses all .zst files in a directory and it's subdirectories, also works on single files.
+    Decompresses all .zst files in a directory and its subdirectories, also works on single files.
     
     Args:
         target_path:
@@ -186,14 +186,14 @@ def compress_to_zst_files(
     multithread_count: int = 1,
 ):
     """
-    Compress all files in a directory and it's subdirectories to individual .zst files.
+    Compress all files in a directory and its subdirectories to individual .zst files.
         Also works on single files.
     
     Args:
         target_path:
             Path to a directory containing Beiwe data files, or a single file.
             Compression is limited to the compressible data file types provided by The Beiwe
-            Platform, .csv and.wav files.
+            Platform, .csv and .wav files.
             For the current working directory provide "."
         delete_original:
             Delete the original files after compression. Defaults to False.
@@ -224,7 +224,7 @@ def compress_to_zst_files(
     try:
         # imap_unordered returns results as they complete, not in order of submission.
         for _ in pool.imap_unordered(
-            lambda fp: compress_one_zst_file(fp, **kwargs),  # just  hands it a file path
+            lambda fp: compress_one_zst_file(fp, **kwargs),  # just hands it a file path
             iterate_beiwe_data_files_recursively(target_path)
         ):
             pass

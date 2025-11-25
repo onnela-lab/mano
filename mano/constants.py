@@ -34,7 +34,7 @@ EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 BACKFILL_WINDOW = 5
 BACKFILL_INTERVAL_SLEEP = 3
 
-# pyzstd custom paramaters
+# pyzstd custom parameters
 # Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
 BACKEND_PYZSTD_PARAMS = {
     pyzstd.CParameter.compressionLevel: 2,
