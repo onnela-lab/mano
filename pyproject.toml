@@ -8,6 +8,7 @@ dev = [  # development dependencies, pip install with: pip install mano[dev]
     "lxml-stubs",
     "mypy",
     "pytest==8.4.0",
+    "pytest-mock",
     "responses",
     "ruff",
     "twine",
