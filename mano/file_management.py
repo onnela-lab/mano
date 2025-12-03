@@ -1,3 +1,7 @@
+import json
+import locale
+import re
+import zipfile
 from multiprocessing.pool import ThreadPool
 from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
     umask as get_umask, walk as walk_directory)
@@ -5,11 +9,12 @@ from os.path import dirname, exists as path_exists, expanduser, isdir, join as p
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+import cryptease as crypt
 import pyzstd
 from pyzstd import decompress
 
-from mano.constants import (BACKEND_PYZSTD_PARAMS, logger as log, VALID_BEIWE_FILE_EXTENSIONS,
-    VALID_EXTENSIONS_MESSAGE, WriteError)
+from mano.constants import (BACKEND_PYZSTD_PARAMS, ParseError, SaveError, log, BEIWE_FILE_EXTENSIONS,
+    BEIWE_EXTENSIONS_MESSAGE, WriteError)
 
 
 def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
@@ -73,7 +78,7 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
         raise
     
     if not anything_at_all:  # walk doesn't error on empty dirs.
-        log.error(msg:= f"No such directory: `{directory_path}`")
+        log.error(msg := f"No such directory: `{directory_path}`")
         raise FileNotFoundError(msg)
     
     if not any_valid_files:
@@ -81,7 +86,7 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
         if zst_only:
             msg = f"No `.zst` files found in directory `{directory_path}` or its subdirectories."
         else:
-            msg = f"{VALID_EXTENSIONS_MESSAGE}: `{directory_path}` or its subdirectories."
+            msg = f"{BEIWE_EXTENSIONS_MESSAGE}: `{directory_path}` or its subdirectories."
         log.error(msg)
         raise FileNotFoundError(msg)
 
@@ -173,7 +178,7 @@ def decompress_one_zst_file(
     if delete_zsts:
         delete_file(full_path)
     
-    label = "Overwrote:" if it_exists else "Created:::"  # ensure same length prefix
+    label = "Overwrote:" if it_exists else "Created:  "  # ensure same length prefix
     log_func = log.warning if it_exists else log.info
     log_func(f"{label} `{decompressed_path}` ({size_compressed} -> {size_decompressed}).")
 
@@ -283,7 +288,7 @@ def compress_as_backend(b: bytes) -> bytes:
 
 
 def compress_general(b: bytes, level: int) -> bytes:
-    return pyzstd.compress(b, {pyzstd.CParameter.compressionLevel: level}) # type: ignore
+    return pyzstd.compress(b, {pyzstd.CParameter.compressionLevel: level})  # type: ignore
 
 
 #
@@ -343,7 +348,7 @@ def validate_is_a_folder_or_zst_file(path: str):
 # does not exit on failure, just returns a boolean
 def check_is_valid_beiwe_data_file(path: str) -> bool:
     """ Check if a path is a valid Beiwe data file. """
-    return any(path.endswith(ext) for ext in VALID_BEIWE_FILE_EXTENSIONS)
+    return any(path.endswith(ext) for ext in BEIWE_FILE_EXTENSIONS)
 
 
 def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
@@ -353,3 +358,115 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
     if multithread_count > 1:
         log.info(f"Using {multithread_count} threads for {name}.")
     return pool
+
+#
+# File Encryption
+#
+
+#TODO: actually review what this does and confirm this rename is correct
+#TODO: document this
+def save_encrypted(
+    archive: zipfile.ZipFile | None,
+    user_id: str,
+    output_dir: str,
+    lock: list[str] | None = None,
+    passphrase: str | None = None,
+) -> int:
+    """
+    The order of operations here is important to ensure the ability to reach a state of consistency:
+        1. Save the file
+        2. Update the local registry
+    """
+    
+    num_saved = 0
+    if not archive:
+        return num_saved
+    encoding = locale.getpreferredencoding()
+    if not lock:
+        lock = list()
+    else:
+        if not passphrase:
+            raise SaveError('if you wish to lock a data type, you need a passphrase')
+    
+    # open registry file in downloaded archive
+    log.debug('reading registry file from beiwe archive')
+    with archive.open('registry', 'r') as fo:
+        registry = json.loads(fo.read().decode('utf-8'))
+    
+    # if archive registry contains any entries, process them
+    if registry:
+        # iterate over archive members
+        for member in archive.namelist():
+            if process_one_archive_file(member, output_dir, archive, user_id, passphrase, lock):
+                num_saved += 1
+        
+        # update local registry file to avoid re-downloading these files
+        local_registry = dict[str, str]()
+        local_registry_file = path_join(output_dir, user_id, '.registry')
+        
+        if path_exists(local_registry_file):
+            with open(local_registry_file) as fo:
+                local_registry = json.load(fo)
+        
+        local_registry.update(registry)
+        local_registry_str = json.dumps(local_registry, indent=2)
+        atomic_write(local_registry_file, local_registry_str.encode(encoding))
+    
+    # return the number of saved files
+    return num_saved
+
+
+def process_one_archive_file(
+    file_name: str,
+    output_dir: str,
+    archive: zipfile.ZipFile,
+    user_id: str,
+    passphrase: str | None,
+    lock: list[str],
+) -> bool:
+    """ Handle one file from inside a ZipFile Archive """
+    
+    if file_name == 'registry':  # skip the registry file
+        return False
+    
+    # info = archive.getinfo(member)  # debugging, get information about the current archive member
+    
+    # parse the data type determine if it should be encrypted
+    encrypt = _parse_datatype(file_name, user_id) in lock
+    log.debug(f'processing archive member: {file_name} (lock={encrypt})')
+    
+    output_filename = f'{file_name}.lock' if encrypt else file_name  # lock extension if we need it
+    
+    # detect if target exists, create the directory
+    if path_exists(target_abs := path_join(output_dir, output_filename)):
+        delete_file(target_abs)
+    if not path_exists(target_dir := dirname(target_abs)):
+        make_directories(target_dir, umask=0o5022)
+    
+    # read archive member content and encrypt it if necessary
+    file_content = archive.open(file_name)
+    
+    if encrypt:
+        key = crypt.kdf(passphrase)  # type: ignore
+        crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)  # type: ignore
+    else:
+        # write content to persistent storage
+        atomic_write(target_abs, file_content.read())
+    
+    return True
+
+
+def _parse_datatype(member: str, user_id: str):
+    """
+    Parse data type from a Beiwe archive member name.
+    """
+    expr = f'^{user_id}/([a-zA-Z_]+)/.*$'  # (the curly braces are not part of the regex)
+    match = re.search(expr, member)
+    if not match:
+        raise ParseError(f'no match: regex="{expr}", string="{member}"')
+    numgroups = len(match.groups())
+    if numgroups != 1:
+        raise ParseError(
+            f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
+        )
+    return match.group(1)

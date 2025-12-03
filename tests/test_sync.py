@@ -1,6 +1,3 @@
-"""
-Tests for sync module download functionality.
-"""
 import zipfile
 
 import pytest
@@ -11,6 +8,7 @@ from responses import RequestsMock
 
 from mano import sync
 from mano.constants import APIError
+from mano.messages import NOT_200_OK_MSG
 
 
 def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
@@ -298,12 +296,12 @@ def test_download_http_error(keyring: dict[str, str]):
         # Test 500 Internal Server Error
         rsps.add(
             responses.POST,
-            'https://studies.beiwe.org/get-data/v1',
+            url := 'https://studies.beiwe.org/get-data/v1',
             status=500,
             body="Internal Server Error"
         )
         
-        with pytest.raises(APIError, match="response not ok \\(500\\)"):
+        with pytest.raises(APIError, match=NOT_200_OK_MSG(500, url)):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',

@@ -1,27 +1,180 @@
-import io
-import json
+import itertools
 import locale
-import os
-import re
-import sys
+import logging
 import zipfile
 from datetime import datetime, timedelta
-from os.path import dirname, exists as path_exists, join as path_join
+from io import BytesIO
+from os import fsync
+from os.path import exists as path_exists, join as path_join
+from pprint import pformat
+from sys import stdout
 from tempfile import NamedTemporaryFile
-from time import sleep
+from time import perf_counter, sleep
 
-import cryptease as crypt
 import dateutil
 import requests
+from dateutil.tz import UTC
+from requests.models import Response
 
 import mano
-from mano.constants import (BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT,
-    EARLIEST_POSSIBLE_DATA_STR, logger, spinner, TIME_FORMAT, URL_COMPRESSED, URL_UNCOMPRESSED)
-from mano.file_management import atomic_write, make_directories
+from mano.constants import (ALL_DATA_STREAMS, BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW,
+    BadTimezoneError, EARLIEST_POSSIBLE_DATA_STR, log, TIME_FORMAT, URL_COMPRESSED,
+    URL_UNCOMPRESSED)
+from mano.file_management import atomic_write, make_directories, save_encrypted
+from mano.messages import (NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_MSG,
+    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
+    TIME_PARSED_MSG, USER_IDS_DEPRECATION_MSG)
 
 
 # historical namespace items
-from mano.constants import APIError, DownloadError, ParseError, SaveError, WriteError  # noqa
+from mano.constants import APIError, DownloadError, ParseError, SaveError, WriteError;  # noqa
+
+
+# very verbose type hint(s)
+RequestPayload = dict[str, str | list[str] | dict[str, str]]
+
+
+#TODO: make sure the time validation logic matches the documentation below.
+#TODO: implement registry file generation and other management tools.
+#TODO: implement warnings for deprecated parameters.
+#TODO: Fix tests, something has changed from the data download refactor.
+#TODO: Aggressively hook in the registry? Aggressively regenerate the registry? Always regenerate it?
+#TODO: does the spinner need to be intrinsicly dependant on stdout?
+#TODO: Backfill.
+
+
+def download(
+    Keyring: dict[str, str],                   # Your loaded credentials (see documentation).
+    study_id: str,                             # The target Study ID.
+    
+    # Data Filters
+    participant_ids: list[str] | None = None,  # List of participant IDs to target.
+    data_streams: list[str] | None = None,     # List of data streams to target.
+    time_start: str | datetime | None = None,  # Limit to only data AFTER this time.
+    time_end: str | datetime | None = None,    # Limit to only data BEFORE this time.
+    
+    # Behavior
+    registry: dict[str, str] | None = None,    # A special dictionary to avoid re-downloading files.
+    compressed: bool = False,                  # Download compressed data. (DEFAULT WILL CHANGE.)
+    
+    # Deprecated
+    # Deprecated parameters will be removed in future releases of Mano, they will emit warnings.
+    progress: int = 0,                         # Show the progress every N bytes.
+    user_ids: list[str] | None = None,         # alias of participant_ids.
+) -> zipfile.ZipFile:
+    """
+    Download Beiwe Platform Study Data from the Data Access API.
+    :returns: A [standard library] ZipFile object containing the downloaded data.
+    
+    #
+    # Required parameters
+    #
+    
+    :param `Keyring`: Credentials dictionary - See documentation for details on how to safely store
+        and load your Beiwe API credentials.
+    
+    :param `study_id`: The Study ID to download data from - The API requires that a data download
+        request specify a Study ID.
+    
+    #
+    # Recommended Parameters
+    #
+    
+    :param `compressed`: A boolean to indicate whether to download compressed data.
+        
+        We highly recommend downloading compressed data.
+        
+        Compressed data uses ZSTD ("zee-standard"), which has virtually no downsides.
+            At the settings we use is roughly 1/5th the size of uncompressed data.
+            It downloads faster.
+            It helps us out with server load and bandwidth costs.
+            ZSTD is FAST. At our settings hundreds of MB/s, even on hardware from ~2013.
+        
+        Mano includes tools (including a Command Line Interface) for managing compressed data.
+            Type `mano` on the command line (make sure to activate the Python environment first)
+            (Graphical tools and OSes are catching up, adding ZSTD support all the time.)
+        
+            The API is unchanged, it still encapsulates files (now ending in ".zst") in a Zip file.
+        
+        Other Notes:
+            Servers running old versions of The Beiwe Platform may not support compressed downloads.
+            The default value of this parameter WILL CHANGE TO TRUE in a future release of Mano.
+    
+    :param registry: A dictionary mapping Beiwe file identifiers to file content hashes.
+        (A hash is a small "fingerprint" that can be calculated from the binary content of a file.)
+        
+        We highly recommend including a registry file
+        
+        This "registry" file is provided by Mano and The Beiwe Platform, it serves a few purposes.
+            You can provide it in the request, and the backend will inspect it.
+            It will then only provide you with files that have non-matching (updated) hashes.
+                E.g. only download data that is new or updated.
+            You can use the hash information to validate that your downloaded files are correct.
+            Even if you delete your registry, you can easily generate a registry file from  your
+                current downloaded data - even on compressed data this process is quick.
+            (We use an SHA1 hash, which is extremely fast and sufficiently collision-resistant)
+    
+    #
+    # Data Filters
+    #
+    
+    :param participant_ids: A list of participant ("user") IDs to limit data to.
+        None means "all participants".
+    
+    :param data_streams: A list of data streams to limit data to. None means "all data streams".
+    
+    :param time_start: A datetime or string representing the earliest time to download data from.
+        None means "no start time filter".
+        
+        -Data on The Beiwe Platform is recorded in UTC time.
+        -Date/Time _strings_ provided to Mano will be interpreted as UTC times.
+        -Python datetime _objects_ with non-UTC timezones will be converted to UTC via the
+            `datetime.astimezone(UTC)` datetime standard library function.
+        -Timezone-Naive datetime objects (those lacking a tzinfo attribute) will be treated as UTC.
+    
+    :param time_end: A datetime or string representing the latest time to download data from.
+        None means "no end time filter".
+        (see detailed notes above for the `time_start` parameter)
+    
+    #
+    # Other
+    #
+    
+    :param progress: (DEPRECATED)
+        Formerly: "Show a progress indicator every N bytes downloaded."
+        This parameter may be ignored.
+        This parameter is deprecated, use `debug_level` to control output instead.
+        The spinner is shown at INFO and DEBUG levels.
+        The spinner now advances (roughly) every time a component file is received from the server,
+            depending on system, network, and server conditions.
+    """
+    
+    # this function is just a wrapper to handle deprecated parameter names, and provide documentation
+    # for usage of Mano's raison d'être functionality closer to the top of a file.
+    
+    # handle deprecated parameter `user_ids`
+    if user_ids:
+        log.warning(USER_IDS_DEPRECATION_MSG)
+    if user_ids and participant_ids:
+        log.error(PICK_USER_PARTICIPANT_MSG)
+        raise ValueError(PICK_USER_PARTICIPANT_MSG)
+    if user_ids and not participant_ids:
+        participant_ids = user_ids
+    
+    # handle deprecated parameter `progress`
+    if progress:
+        log.warning(PROGRESS_DEPRECATION_MSG)
+    
+    return _download(
+        Keyring,
+        study_id,
+        compressed=compressed,
+        data_streams=data_streams,
+        registry=registry,
+        time_end=time_end,
+        time_start=time_start,
+        participant_ids=participant_ids,
+    )
 
 
 def backfill(
@@ -54,27 +207,27 @@ def backfill(
             make_directories(user_dir)
         backfill_file = path_join(user_dir, '.backfill')
         
-        logger.info(f'reading backfill file {backfill_file}')
+        log.info(f'reading backfill file {backfill_file}')
         
         with open(backfill_file, 'a+') as fo:
             fo.seek(0)
             timestamp = fo.read().strip()
         if timestamp:
-            logger.debug(f'backfill file contains string: {timestamp}')
+            log.debug(f'backfill file contains string: {timestamp}')
         
         # return immediately if backfill state file contains string COMPLETE
         if timestamp == 'COMPLETE':
-            logger.debug('no backfill is necessary')
+            log.debug('no backfill is necessary')
             return
         
         # if there is no backfill state, default to start_date
         if not timestamp:
             timestamp = start_date
-            logger.debug(f'no backfill timestamp found, using: {timestamp}')
+            log.debug(f'no backfill timestamp found, using: {timestamp}')
         
         # get download window and next resume point
         start, stop, resume = _window(timestamp, BACKFILL_WINDOW)
-        logger.info(f'processing window is [{start}, {stop}]')
+        log.info(f'processing window is [{start}, {stop}]')
         
         # download window of data
         archive = download(
@@ -82,137 +235,146 @@ def backfill(
             study_id,
             [user_id],
             data_streams,
-            progress=3*1024,
             time_start=start,
             time_end=stop
         )
         
         # save data
         num_saved = save(archive, user_id, output_dir, lock, passphrase)
-        logger.info(f'saved {num_saved} files')
+        log.info(f'saved {num_saved} files')
         
         # wite the new resume point to the backfill file
         if resume:
             atomic_write(backfill_file, resume.encode(encoding))
-            logger.debug('waiting for next backfill interval')
+            log.debug('waiting for next backfill interval')
             sleep(BACKFILL_INTERVAL_SLEEP)
         else:
             atomic_write(backfill_file, 'COMPLETE'.encode(encoding))
-            logger.info('backfill is complete')
+            log.info('backfill is complete')
 
 
-def download(
+def _download(
     Keyring: dict[str, str],
     study_id: str,
-    user_ids: list[str],
-    data_streams: list[str] | None = None,
-    time_start: str | datetime | None = None,
-    time_end: str | datetime | None = None,
-    registry: dict[str, str] | None = None,
-    progress: int = 0,
     compressed: bool = False,
-) -> zipfile.ZipFile | None:
+    data_streams: list[str] | None = None,
+    registry: dict[str, str] | None = None,
+    time_end: str | datetime | None = None,
+    time_start: str | datetime | None = None,
+    participant_ids: list[str] | None = None,
+) -> zipfile.ZipFile:
     """
-    Request data archive from Beiwe API
-    
-    :param progress: Progress indicator (in bytes)
-    :type progress: int
-    :returns: Zip archive object
-    :rtype: zipfile.ZipFile
+    Internal function to handle download logic, do not call directly.
     """
     
-    if not registry:
-        registry = dict()
-    if not user_ids:
-        user_ids = list()
-    if not data_streams:
-        data_streams = list()
+    registry = registry or dict[str, str]()  # (shorthand to convert Nones to containers)
+    participant_ids = participant_ids or list[str]()
+    data_streams = data_streams or list[str]()
     
     # base url for beiwe instance
-    url = Keyring['URL']
+    url = normalize_url(Keyring['URL']) + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
     
-    # process start_time
-    if time_start:
-        if isinstance(time_start, str):
-            time_start = dateutil.parser.parse(time_start)
-    else:
-        time_start = EARLIEST_POSSIBLE_DATA_DT
-    
-    # process end_time
-    if time_end:
-        if isinstance(time_end, str):
-            time_end = dateutil.parser.parse(time_end)
-    else:
-        time_end = datetime.today()
-    
-    assert isinstance(time_start, datetime)  # mypy can get confused here
-    assert isinstance(time_end, datetime)
+    time_start = handle_one_time_input(time_start, "time_start")
+    time_end = handle_one_time_input(time_end, "time_end")
     
     # sanity check start and end times
-    if time_start > time_end:
-        raise DownloadError(f'start time {time_start} is after end time {time_end}')
+    if time_start and time_end and time_start > time_end:
+        raise DownloadError(f"The provided start_time {time_start} is after end_time {time_end}")
+    
+    validate_data_streams(data_streams)
     
     # setup request payload
-    url = url.rstrip('/') + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
-    payload = {
-        'access_key': Keyring['ACCESS_KEY'],
-        'secret_key': Keyring['SECRET_KEY'],
-        'study_id': study_id,
-        'user_ids': user_ids,
-        'data_streams': data_streams,
-        'time_start': time_start.strftime(TIME_FORMAT),
-        'time_end': time_end.strftime(TIME_FORMAT),
-        'registry': registry,
+    payload: RequestPayload = {
+        "access_key": Keyring["ACCESS_KEY"],
+        "secret_key": Keyring["SECRET_KEY"],
+        "study_id": study_id,  # required
     }
+    if data_streams:
+        payload["data_streams"] = data_streams
+    if participant_ids:
+        payload["user_ids"] = participant_ids
+    if time_start:
+        payload["time_start"] = time_start.strftime(TIME_FORMAT)
+    if time_end:
+        payload["time_end"] = time_end.strftime(TIME_FORMAT)
+    if registry:
+        payload["registry"] = registry
     
-    # logs
-    logger.debug('payload contains')
-    logger.debug(f'study_id={study_id}')
-    logger.debug(f'user_ids={user_ids}')
-    logger.debug(f'data_streams={data_streams}')
-    logger.debug(f'time_start={time_start.strftime(TIME_FORMAT)}')
-    logger.debug(f'time_end={time_end.strftime(TIME_FORMAT)}')
+    # don't log sensitive information
+    dummy_payload = {k: v for k, v in payload.items() if k not in ("access_key", "secret_key")}
+    log.debug(f"download parameters: {pformat(dummy_payload, width=20000)}")
+    
+    return _do_download(url, payload)
+
+
+def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
+    """ Internal function to handle download logic, do not call directly. """
+    
+    show_progress = log.getEffectiveLevel() >= logging.INFO
+    content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
     
     # submit download request
     resp = requests.post(url, data=payload, stream=True)
-    if resp.status_code == requests.codes.NOT_FOUND:
-        return None
-    elif resp.status_code != requests.codes.OK:
-        raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
+    if resp.status_code != requests.codes.OK:
+        log.error(err_msg := NOT_200_OK_MSG(resp.status_code, resp.url))
+        raise APIError(err_msg)
     
-    # read response in chunks
-    if progress:
-        print('reading response data: ', end='', flush=True)
-    meter = 0
-    
-    chunk_size = 1024 * 64
-    content = io.BytesIO()  # temporary storage for response content, required to use ZipFile
-    
-    # chunk_size may not be respected, at least in more recent versions of requests.
-    for chunk in resp.iter_content(chunk_size=chunk_size):
-        if progress and meter >= progress:
-            sys.stdout.write(next(spinner))
-            sys.stdout.flush()
-            sys.stdout.write('\b')  # backspace, not flushed
-            meter = 0
-        content.write(chunk)
-        meter += chunk_size
-    
-    # shut down progress indicator
-    if progress:
-        print('done.')
+    log.info('Server responded, reading zip data... ')
+    size, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
+    log.info('Download finished.')
+    MBps = (size / 1024 / 1024) / (t_end - t_start)
+    log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s)')
     
     # load response content into a zipfile object
     try:
-        zf = zipfile.ZipFile(content)
+        return zipfile.ZipFile(content)
     except zipfile.BadZipfile as e:
+        # TODO: stick in a helper
         with NamedTemporaryFile(dir='.', prefix='beiwe', suffix='.zip', delete=False) as fo:
             content.seek(0)
             fo.write(content.read())
             fo.flush()
-            os.fsync(fo.fileno())
+            fsync(fo.fileno())
+            log.warning(f'A bad zip file written to `{fo.name}` for debugging')
         raise DownloadError(f'bad zip file written to {fo.name}') from e
-    return zf
+
+
+def iterate_with_spinner(
+    resp: Response, bytesio: BytesIO, show_progress: bool
+) -> tuple[int, float, float]:
+    spinner = itertools.cycle(['-', '/', '|', '\\'])
+    
+    t_start = perf_counter()  # hard to disentangle log statements from time measurement...
+    
+    # chunk_size of None reads in the existing buffer, of whatever size buffer was as determined by
+    # the IO system (or implementation detail of the requests library). This should tend to
+    # correlate with individual _files as they are sent by the server, which pulls in data as it
+    # arrives, file by file. (TCP and OS details probably also influence this.)
+    threshold = 1024 * 1024 * 2  # 2 MB chunks
+    loop_progress = 0
+    size = 0
+    
+    # download loop, get the bytes
+    for chunk in resp.iter_content(chunk_size=None):
+        bytesio.write(chunk)
+        size += len(chunk)
+        loop_progress += len(chunk)
+        
+        # rotate spinner
+        if show_progress and loop_progress >= threshold:
+            out = f"{next(spinner)} ({(size / 1024 / 1024):.2f} MB)"
+            stdout.write(out)
+            stdout.flush()
+            stdout.write('\b' * len(out))  # backspaces, not flushed
+            loop_progress = 0
+    
+    # spinner cleanup
+    if show_progress:
+        stdout.write("\r\n")
+        stdout.flush()
+    
+    t_end = perf_counter()
+    return size, t_start, t_end
 
 
 def save(
@@ -222,109 +384,13 @@ def save(
     lock: list[str] | None = None,
     passphrase: str | None = None,
 ) -> int:
-    """
-    The order of operations here is important to ensure the ability to reach a state of consistency:
-        1. Save the file
-        2. Update the local registry
-    """
-    
-    num_saved = 0
-    if not archive:
-        return num_saved
-    encoding = locale.getpreferredencoding()
-    if not lock:
-        lock = list()
-    else:
-        if not passphrase:
-            raise SaveError('if you wish to lock a data type, you need a passphrase')
-    
-    # open registry file in downloaded archive
-    logger.debug('reading registry file from beiwe archive')
-    with archive.open('registry', 'r') as fo:
-        registry = json.loads(fo.read().decode('utf-8'))
-    
-    # if archive registry contains any entries, process them
-    if registry:
-        # iterate over archive members
-        for member in archive.namelist():
-            if process_one_archive_file(member, output_dir, archive, user_id, passphrase, lock):
-                num_saved += 1
-        
-        # update local registry file to avoid re-downloading these files
-        local_registry = dict[str, str]()
-        local_registry_file = path_join(output_dir, user_id, '.registry')
-        
-        if path_exists(local_registry_file):
-            with open(local_registry_file) as fo:
-                local_registry = json.load(fo)
-        
-        local_registry.update(registry)
-        local_registry_str = json.dumps(local_registry, indent=2)
-        atomic_write(local_registry_file, local_registry_str.encode(encoding))
-    
-    # return the number of saved files
-    return num_saved
+    log.warning(SYNC_SAVE_DEPRECATION_MSG)
+    return save_encrypted(archive, user_id, output_dir, lock, passphrase)
 
 
-def process_one_archive_file(
-    file_name: str,
-    output_dir: str,
-    archive: zipfile.ZipFile,
-    user_id: str,
-    passphrase: str | None,
-    lock: list[str],
-) -> bool:
-    """
-    Handle one file from inside a ZipFile Archive
-    """
-    
-    if file_name == 'registry':  # skip the registry file
-        return False
-    
-    # info = archive.getinfo(member)  # debugging get information about the current archive member
-    
-    # parse the data type determine if it should be encrypted
-    encrypt = _parse_datatype(file_name, user_id) in lock
-    logger.debug(f'processing archive member: {file_name} (lock={encrypt})')
-    
-    output_filename = f'{file_name}.lock' if encrypt else file_name  # lock extension if we need it
-    
-    # detect if target exists, create the directory
-    if path_exists(target_abs:= path_join(output_dir, output_filename)):
-        os.remove(target_abs)
-    if not path_exists(target_dir:= dirname(target_abs)):
-        make_directories(target_dir, umask=0o5022)
-    
-    # read archive member content and encrypt it if necessary
-    file_content = archive.open(file_name)
-    
-    if encrypt:
-        key = crypt.kdf(passphrase)
-        crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)
-    else:
-        # write content to persistent storage
-        atomic_write(target_abs, file_content.read())
-    
-    return True
-
-
-## Helper functions
-
-
-def _parse_datatype(member: str, user_id: str):
-    """
-    Parse data type from a Beiwe archive member name.
-    """
-    expr = f'^{user_id}/([a-zA-Z_]+)/.*$'  # (the curly braces are not part of the regex)
-    match = re.search(expr, member)
-    if not match:
-        raise ParseError(f'no match: regex="{expr}", string="{member}"')
-    numgroups = len(match.groups())
-    if numgroups != 1:
-        raise ParseError(
-            f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
-        )
-    return match.group(1)
+#
+# Helper functions
+#
 
 
 def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
@@ -353,3 +419,62 @@ def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
     resume_str = resume.strftime(TIME_FORMAT) if resume else None
     
     return win_start_str, win_stop_str, resume_str
+
+
+def normalize_url(url: str) -> str:
+    """ Ensure URL is https and has no trailing slashes. """
+    url = url.strip()
+    
+    if url == '':
+        raise ValueError('An empty URL provided')
+    
+    if url.startswith('http://'):  # force https
+        url = 'https://' + url[7:]
+    
+    if not url.startswith('https://'):  # add https
+        url = 'https://' + url
+    
+    return url.rstrip('/')  # strip [any number of] trailing slashes
+
+
+def handle_one_time_input(
+    dt: str | datetime | None, name: str, ignore_tz: bool = True
+) -> datetime | None:
+    """ Process one time input parameter - a returned value of None indicates no time filter. """
+    
+    # empty string and None
+    if dt is None or not dt:
+        log.debug(NO_TIME_MSG(name))
+        return None
+    
+    # string input
+    if isinstance(dt, str):
+        time_str = dt
+        dt = dateutil.parser.parse(dt)
+        log.debug(TIME_PARSED_MSG(name, time_str, dt))
+    
+    # naive datetime
+    if dt.tzinfo is None:
+        log.debug(TIME_NAIVE_MSG(name))
+        dt = dt.astimezone(UTC)
+    
+    # non-UTC timezone
+    if dt.tzinfo != UTC:
+        if not ignore_tz:
+            raise BadTimezoneError(TIME_NOT_UTC_MSG(name, dt, "is invalid."))
+        
+        dt = dt.astimezone(UTC)
+        log.warning(TIME_NOT_UTC_MSG(name, dt, "has been converted to UTC."))
+    
+    return dt
+
+
+def validate_data_streams(data_streams: list[str]) -> None:
+    """ Validate data streams against known Beiwe data streams. """
+    invalid_streams = sorted([ds for ds in data_streams if ds not in ALL_DATA_STREAMS])
+    
+    for stream in invalid_streams:
+        log.error(f'Invalid data stream: {stream}')
+    
+    if invalid_streams:
+        raise ValueError(f'invalid data streams: {", ".join(invalid_streams)}')

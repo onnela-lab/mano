@@ -8,7 +8,7 @@ from pyzstd import decompress
 
 import mano
 from mano import mano_cli
-from mano.constants import logger as log, VALID_EXTENSIONS_MESSAGE
+from mano.constants import logger as log, BEIWE_EXTENSIONS_MESSAGE
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
@@ -231,7 +231,7 @@ def test_empty_folder(tmp_path: Path):
     rgx_compat_path = base_path_str.replace("\\", "\\\\")  # for Windows paths compatibility
     
     # this is the error for when it had nothing with the right extensions
-    with pytest.raises(FileNotFoundError, match=f"{VALID_EXTENSIONS_MESSAGE}: `{rgx_compat_path}`"):
+    with pytest.raises(FileNotFoundError, match=f"{BEIWE_EXTENSIONS_MESSAGE}: `{rgx_compat_path}`"):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
             log.error(f"TEST: Unexpected file found while running test 3: {fp}")  # debugging helper
     

@@ -1,9 +1,9 @@
-import itertools
 import json
 import locale
 import logging
 import os
 from datetime import datetime
+
 import coloredlogs
 import pyzstd
 from dateutil.tz import UTC
@@ -13,19 +13,45 @@ from dateutil.tz import UTC
 URL_UNCOMPRESSED = '/get-data/v1'
 URL_COMPRESSED = '/get-data/v2'
 
-
 # read configuration file
+# TODO: document the config file / configuration options (at all).
 Config = os.path.join(os.path.dirname(__file__), 'config.json')
 with open(Config, 'rb') as fo:
     Config = json.load(fo)
 
-DATA_STREAMS = Config['data_streams']
-TIME_FORMAT = Config['time_format']
-LOCALE = str(Config['locale'])
 
+# TODO: source this locale from the system
+LOCALE = str(Config['locale'])
 locale.setlocale(locale.LC_ALL, LOCALE)
 
-spinner = itertools.cycle(['-', '/', '|', '\\'])
+DATA_STREAMS = Config['data_streams']  # Warning, historical variable name, cannot/do not change
+ALL_DATA_STREAMS = {
+    "accel",
+    "ambientAudio",
+    "bluetoothLog",
+    "callLog",
+    "devicemotion",
+    "gps",
+    "gyro",
+    "identifiers",
+    "ios_log",
+    "logFile",
+    "magnetometer",
+    "powerState",
+    "proximity",
+    "reachability",
+    "surveyAnswers",
+    "surveyTimings",
+    "textsLog",
+    "voiceRecording",
+    "wifiLog",
+}
+
+#
+# Anything Related to Time
+#
+FULL_DT_FORMAT = "%Y-%m-%d %H:%M:%S (%Z)"
+TIME_FORMAT = Config['time_format']  # TODO: where do we use this?
 
 # this is the earliest possible date for data out of any Beiwe study
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
@@ -43,18 +69,21 @@ BACKEND_PYZSTD_PARAMS = {
 }
 
 #
-# valid Beiwe data file extensions
+# Valid Beiwe data file extensions
 #
-_VBDTE = VALID_BEIWE_FILE_EXTENSIONS = [
+# We provide a tool that de/compresses/deletes files, JSON and MP4 files are likely to exist on
+# users' devices, so we need to at the very least default to skipping them.
+#TODO: add more protections and "intelligence" to determine if a file is a beiwe data file.
+BEIWE_FILE_EXTENSIONS = [
     '.csv',
-    # '.json',  # this is too broad
     '.wav',
-    # '.mp4',  # these should not be double compressed
+    # '.json',  # The platform provides some json data, but it is too dangerous to include.
+    # '.mp4',   # Mp4 files are already compressed... that's their gorram purpose.
 ]
-
-VALID_EXTENSIONS_ANDED = ", ".join(_VBDTE[:-1]) + f", and {_VBDTE[-1]}"
-VALID_EXTENSIONS_ORED = ", ".join(_VBDTE[:-1]) + f", or {_VBDTE[-1]}"
-VALID_EXTENSIONS_MESSAGE = f"No files ending in {VALID_EXTENSIONS_ORED} found in directory"
+# Yeah we COULD just type out these two-item lists, but instead we will dynamically generate them.
+BEIWE_EXTENSIONS_ANDED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, and {BEIWE_FILE_EXTENSIONS[-1]}'
+BEIWE_EXTENSIONS_ORED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, or {BEIWE_FILE_EXTENSIONS[-1]}'
+BEIWE_EXTENSIONS_MESSAGE = f"No files ending in {BEIWE_EXTENSIONS_ORED} found in directory"
 
 
 #
@@ -80,11 +109,19 @@ class StudyIDError(Exception): pass  # noqa
 class StudyNameError(Exception): pass  # noqa
 class StudySettingsError(Exception): pass  # noqa
 
-
+# new!
+class BadTimezoneError(Exception): pass  # noqa
 
 # configure colored logging
 # coloredlogs.install(fmt="%(levelname)s %(name)s: %(message)s")
-coloredlogs.install(fmt="%(message)s")
-coloredlogs.auto_install()
+# coloredlogs.install(fmt="%(message)s")
+
+coloredlogs.install(
+    fmt="%(asctime)s %(name)s: %(message)s",
+    programname="mano",
+    level=logging.INFO,  # our default is going to be info (blue label, regular text color message)
+    datefmt="%H:%M:%S",  # cutting out the date for brevity
+)
+
 # The logger
-logger = logging.getLogger("mano")
+log = logger = logging.getLogger("mano")

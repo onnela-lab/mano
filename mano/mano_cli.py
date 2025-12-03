@@ -5,7 +5,7 @@ from os import name
 from os.path import abspath
 from sys import argv as command_line_args
 
-from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
+from mano.constants import InternalError, logger as log, BEIWE_EXTENSIONS_ANDED
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
     decompress_zst_files, validate_is_a_folder_or_valid_beiwe_data_file,
     validate_is_a_folder_or_zst_file)
@@ -191,7 +191,7 @@ def compress(args: list[str]):
     class info:
         compression_level: str  # (IDE complains incorrectly without this line)
         describe = \
-            f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
+            f"Compress all {BEIWE_EXTENSIONS_ANDED} files in the directory " \
                 f"`{abspath(target_path)}` and its subdirectories."
         delete_original = {
             True: "DELETE the original files after compressing them",
