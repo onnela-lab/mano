@@ -152,7 +152,7 @@ def download(
     # this function is just a wrapper to handle deprecated parameter names, and provide documentation
     # for usage of Mano's raison d'être functionality closer to the top of a file.
     
-    # handle deprecated parameter `user_ids`
+    # handle deprecated parameter `user_ids` - this parameter is misnamed in the API.
     if user_ids:
         log.warning(USER_IDS_DEPRECATION_MSG)
     if user_ids and participant_ids:
@@ -292,6 +292,7 @@ def _download(
     if data_streams:
         payload["data_streams"] = data_streams
     if participant_ids:
+        # changed to participant_ids in newer backends, user_ids is backwards compatible but misnamed
         payload["user_ids"] = participant_ids
     if time_start:
         payload["time_start"] = time_start.strftime(TIME_FORMAT)

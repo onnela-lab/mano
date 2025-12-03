@@ -1,4 +1,4 @@
-import zipfile
+from zipfile import ZipFile
 
 import pytest
 import requests
@@ -17,14 +17,27 @@ def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: d
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
     )
     
     # Check that we got a ZipFile object
-    assert isinstance(zf, zipfile.ZipFile)
+    assert isinstance(zf, ZipFile)
+
+
+def test_download_user_ids_alias(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
+    """ Ensure the deprecated user_ids alias works as expected. """
+    # Just test that it doesn't crash, if we later have further infratructure duplicate a separate test
+    sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        user_ids=['USER_ID'],
+        data_streams=['identifiers', 'gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00'
+    )
 
 
 def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
@@ -33,14 +46,14 @@ def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[s
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
     )
     
     # Get the list of files in the zip (excluding directory entries)
-    assert isinstance(zf, zipfile.ZipFile)
+    assert isinstance(zf, ZipFile)
     file_names = [zinfo.filename for zinfo in zf.infolist() if not zinfo.filename.endswith('/')]
     
     # Verify we have the expected total number of files
@@ -58,14 +71,14 @@ def test_download_v1_contains_expected_files_with_correct_crcs(
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
     )
     
     # Get the actual files and their CRC values from the zip
-    assert isinstance(zf, zipfile.ZipFile)
+    assert isinstance(zf, ZipFile)
     actual_files = {(zinfo.filename, zinfo.CRC) for zinfo in zf.infolist()}
     
     # Filter actual files to only include expected ones (excludes directories)
@@ -88,7 +101,7 @@ def test_download_v2_contains_expected_files_with_correct_crcs(
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00',
@@ -96,7 +109,7 @@ def test_download_v2_contains_expected_files_with_correct_crcs(
     )
     
     # Get the actual files and their CRC values from the zip
-    assert isinstance(zf, zipfile.ZipFile)
+    assert isinstance(zf, ZipFile)
     actual_files = {(zinfo.filename, zinfo.CRC) for zinfo in zf.infolist()}
     
     # Filter actual files to only include expected ones (excludes directories)
@@ -126,7 +139,7 @@ def test_download_v1_and_v2_have_same_underlying_data(
     zf1 = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
@@ -134,15 +147,15 @@ def test_download_v1_and_v2_have_same_underlying_data(
     zf2 = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00',
         compressed=True,
     )
     
-    assert isinstance(zf1, zipfile.ZipFile)
-    assert isinstance(zf2, zipfile.ZipFile)
+    assert isinstance(zf1, ZipFile)
+    assert isinstance(zf2, ZipFile)
     
     names.remove("registry")
     for name in names:
@@ -153,20 +166,21 @@ def test_download_v1_and_v2_have_same_underlying_data(
     
     assert zf1.read("registry") == zf2.read("registry")
 
+
 def test_download_gps_files(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that download contains the expected GPS files."""
     # Call the download function
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
     )
     
     # Get the list of files in the zip (excluding directory entries)
-    assert isinstance(zf, zipfile.ZipFile)
+    assert isinstance(zf, ZipFile)
     file_names = [zinfo.filename for zinfo in zf.infolist() if not zinfo.filename.endswith('/')]
     
     # Verify GPS files are present - should have 29 GPS files
@@ -184,7 +198,7 @@ def test_download_v1_api_request(mock_download_v1_api: RequestsMock, keyring: di
     sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00'
@@ -199,6 +213,8 @@ def test_download_v1_api_request(mock_download_v1_api: RequestsMock, keyring: di
     assert 'access_key=ACCESS_KEY' in request.body
     assert 'secret_key=SECRET_KEY' in request.body
     assert 'study_id=STUDY_ID' in request.body
+    # the api's user_ids parameter is misnamed, it has been changed to participant_ids in newer
+    # backends, but user_ids will not be deprecated on the backend for compatibility.
     assert 'user_ids=USER_ID' in request.body
 
 
@@ -208,7 +224,7 @@ def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: di
     sync.download(
         keyring,
         study_id='STUDY_ID',
-        user_ids=['USER_ID'],
+        participant_ids=['USER_ID'],
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00',
@@ -224,6 +240,8 @@ def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: di
     assert 'access_key=ACCESS_KEY' in request.body
     assert 'secret_key=SECRET_KEY' in request.body
     assert 'study_id=STUDY_ID' in request.body
+    # the api's user_ids parameter is misnamed, it has been changed to participant_ids in newer
+    # backends, but user_ids will not be deprecated on the backend for compatibility.
     assert 'user_ids=USER_ID' in request.body
 
 
@@ -241,7 +259,7 @@ def test_download_network_error_during_streaming(keyring: dict[str, str]):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
-                user_ids=['USER_ID'],
+                participant_ids=['USER_ID'],
                 data_streams=['identifiers', 'gps'],
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
@@ -262,7 +280,7 @@ def test_download_timeout_error(keyring: dict[str, str]):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
-                user_ids=['USER_ID'],
+                participant_ids=['USER_ID'],
                 data_streams=['identifiers', 'gps'],
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
@@ -283,7 +301,7 @@ def test_download_partial_content_then_error(keyring: dict[str, str]):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
-                user_ids=['USER_ID'],
+                participant_ids=['USER_ID'],
                 data_streams=['identifiers', 'gps'],
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
@@ -305,7 +323,7 @@ def test_download_http_error(keyring: dict[str, str]):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
-                user_ids=['USER_ID'],
+                participant_ids=['USER_ID'],
                 data_streams=['identifiers', 'gps'],
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
@@ -326,7 +344,7 @@ def test_download_connection_error(keyring: dict[str, str]):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
-                user_ids=['USER_ID'],
+                participant_ids=['USER_ID'],
                 data_streams=['identifiers', 'gps'],
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
