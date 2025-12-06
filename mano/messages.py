@@ -34,18 +34,49 @@ def NOT_200_OK_MSG(status_code: int, url: str):
     return f"Did not receive HTTP 200 OK. Received status code: `{status_code}` - {url}"
 
 
-# Deprecation warnings
+def PARSE_ERROR_NO_MATCH_MSG(expr: str, path: str):
+    return f'Did not find a data type in zip archive file path: regex="{expr}", string="{path}"'
 
+
+def PARSE_ERROR_TOO_MANY_MATCHES_MSG(regexpr: str, file_path: str, numgroups: int):
+    return "Unexpectedly found the too many matches for the data type in a zip file path. " \
+            f'(expected 1 match, found {numgroups}, regex="{regexpr}", string="{file_path})"'
+
+
+def DATA_STREAM_FOLDER_MSG(funcname: str, folder_path: str):
+    return f"{funcname} received a folder path: `{folder_path}`, provide only file paths."
+
+
+def DATA_STREAM_REGISTRY_MSG(funcname: str, registry_path: str):
+    return f"{funcname} received a registry file path: `{registry_path}`, which is not a data stream."
+
+
+def DATA_STREAM_NOT_PARTICIPANT_MSG(funcname: str, file_path: str, participant_id: str):
+    return f"{funcname} received the file path, `{file_path}`, which does not start with the " \
+           f"specified participant id, `{participant_id}`. These paths are expected to start." \
+           f"with the participant id."
+
+
+#
+# Deprecation warnings
+#
 
 PROGRESS_DEPRECATION_MSG = \
     "The `progress` parameter is deprecated and will be removed in a future release, use `debug_level` instead"
+
+USER_ID_KEYWORD_DEPRECATION_MSG = \
+    "You provided `user_id` as a keyword argument. `user_id` is a deprecated alias of " \
+    "`participant_id`, and will be removed in a future release. Use `participant_id` instead."
 
 USER_IDS_DEPRECATION_MSG = \
     "`user_ids` is a deprecated alias of `participant_ids` and will be removed in a future " \
     "release, use `participant_ids` instead."
 
-PICK_USER_PARTICIPANT_MSG = \
+PICK_USER_PARTICIPANT_PLURAL_MSG = \
     "`user_ids` is a deprecated alias of `participant_ids`, you cannot provide both."
+
+PICK_USER_PARTICIPANT_SINGLE_MSG = \
+    "`user_id` is a deprecated alias of `participant_id`, you cannot provide both."
 
 SYNC_SAVE_DEPRECATION_MSG = \
     "[mano.sync].save() is a deprecated alias of [mano.file_management].save_encrypted() and " \

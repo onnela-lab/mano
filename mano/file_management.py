@@ -1,27 +1,30 @@
+import hashlib
 import json
-import locale
 import re
-import zipfile
+from base64 import encodebytes as base64_encodebytes
 from multiprocessing.pool import ThreadPool
 from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
     umask as get_umask, walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
 from typing import Any
+from zipfile import ZipFile
 
 import cryptease as crypt
 import pyzstd
 from pyzstd import decompress
 
-from mano.constants import (BACKEND_PYZSTD_PARAMS, ParseError, SaveError, log, BEIWE_FILE_EXTENSIONS,
-    BEIWE_EXTENSIONS_MESSAGE, WriteError)
+from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
+    log, ParseError, SaveError, WriteError)
+from mano.messages import (DATA_STREAM_FOLDER_MSG, DATA_STREAM_NOT_PARTICIPANT_MSG,
+    DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
 def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
     """
     Create directories recursively with a temporary umask
     """
-    
+    # TODO: document what the umask is doing here
     old_umask = None
     if umask is not None:
         old_umask = get_umask(umask)
@@ -365,9 +368,9 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
 
 #TODO: actually review what this does and confirm this rename is correct
 #TODO: document this
-def save_encrypted(
-    archive: zipfile.ZipFile | None,
-    user_id: str,
+def save_archive_with_registry(
+    archive: ZipFile,
+    participant_id: str,
     output_dir: str,
     lock: list[str] | None = None,
     passphrase: str | None = None,
@@ -377,65 +380,67 @@ def save_encrypted(
         1. Save the file
         2. Update the local registry
     """
+    if archive is None or not isinstance(archive, ZipFile):
+        raise SaveError('Saving output data requires you provide a ZipFile object')
     
-    num_saved = 0
-    if not archive:
-        return num_saved
-    encoding = locale.getpreferredencoding()
-    if not lock:
-        lock = list()
-    else:
-        if not passphrase:
-            raise SaveError('if you wish to lock a data type, you need a passphrase')
+    lock = lock or []
+    if lock and not passphrase:
+        raise SaveError('Encrypting data requires a passphrase.')
     
     # open registry file in downloaded archive
     log.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
-        registry = json.loads(fo.read().decode('utf-8'))
+        registry = json.loads(fo.read().decode().strip())
+    
+    if not registry:
+        raise SaveError('Registry file in beiwe archive is empty or invalid.')
     
     # if archive registry contains any entries, process them
+    num_saved = 0
     if registry:
         # iterate over archive members
         for member in archive.namelist():
-            if process_one_archive_file(member, output_dir, archive, user_id, passphrase, lock):
+            if process_one_archive_file(member, output_dir, archive, participant_id, passphrase, lock):
                 num_saved += 1
         
-        # update local registry file to avoid re-downloading these files
+        # update participant's registry file to avoid re-downloading these files
         local_registry = dict[str, str]()
-        local_registry_file = path_join(output_dir, user_id, '.registry')
+        participant_registry_path = path_join(output_dir, participant_id, '.registry')
         
-        if path_exists(local_registry_file):
-            with open(local_registry_file) as fo:
+        # load existing local registry if it exists
+        if path_exists(participant_registry_path):
+            with open(participant_registry_path) as fo:
                 local_registry = json.load(fo)
+                log.debug(f'loaded existing local registry file for participant {participant_id}')
         
         local_registry.update(registry)
         local_registry_str = json.dumps(local_registry, indent=2)
-        atomic_write(local_registry_file, local_registry_str.encode(encoding))
+        atomic_write(participant_registry_path, local_registry_str.encode())
     
     # return the number of saved files
     return num_saved
 
 
 def process_one_archive_file(
-    file_name: str,
+    file_path: str,
     output_dir: str,
-    archive: zipfile.ZipFile,
+    archive: ZipFile,
     user_id: str,
     passphrase: str | None,
     lock: list[str],
 ) -> bool:
     """ Handle one file from inside a ZipFile Archive """
     
-    if file_name == 'registry':  # skip the registry file
+    # skip the registry files and directories - (not sure how fast/slow getinfo is)
+    if file_path == 'registry' or archive.getinfo(file_path).is_dir():
         return False
     
-    # info = archive.getinfo(member)  # debugging, get information about the current archive member
-    
     # parse the data type determine if it should be encrypted
-    encrypt = _parse_datatype(file_name, user_id) in lock
-    log.debug(f'processing archive member: {file_name} (lock={encrypt})')
+    encrypt = zipped_file_path_to_data_stream(file_path, user_id) in lock
+    output_filename = f'{file_path}.lock' if encrypt else file_path  # lock extension if we need it
     
-    output_filename = f'{file_name}.lock' if encrypt else file_name  # lock extension if we need it
+    # its too verbose.
+    # log.debug(f'processing archive file: `{file_path}` (lock={encrypt})')
     
     # detect if target exists, create the directory
     if path_exists(target_abs := path_join(output_dir, output_filename)):
@@ -443,8 +448,7 @@ def process_one_archive_file(
     if not path_exists(target_dir := dirname(target_abs)):
         make_directories(target_dir, umask=0o5022)
     
-    # read archive member content and encrypt it if necessary
-    file_content = archive.open(file_name)
+    file_content = archive.open(file_path)  # read archive member content and encrypt it if necessary
     
     if encrypt:
         key = crypt.kdf(passphrase)  # type: ignore
@@ -456,17 +460,38 @@ def process_one_archive_file(
     return True
 
 
-def _parse_datatype(member: str, user_id: str):
-    """
-    Parse data type from a Beiwe archive member name.
-    """
-    expr = f'^{user_id}/([a-zA-Z_]+)/.*$'  # (the curly braces are not part of the regex)
-    match = re.search(expr, member)
+def zipped_file_path_to_data_stream(file_path: str, participant_id: str):
+    """ Parse data type from a Beiwe archive member name. """
+    funcname = "zipped_file_path_to_data_stream"  # make sure this matches the function name
+    
+    # special error messages for common mistakes
+    if file_path.endswith('/'):
+        log.error(msg := DATA_STREAM_FOLDER_MSG(funcname, file_path))
+        raise ParseError(msg)
+    if "registry" in file_path:
+        log.error(msg := DATA_STREAM_REGISTRY_MSG(funcname, file_path))
+        raise ParseError(msg)
+    if not file_path.startswith(participant_id):
+        log.error(msg := DATA_STREAM_NOT_PARTICIPANT_MSG(funcname, file_path, participant_id))
+        raise ParseError(msg)
+    
+    regexpr = f'^{participant_id}/([a-zA-Z_]+)/.*$'  # (the curly braces are not part of the regex)
+    match = re.search(regexpr, file_path)
+    
     if not match:
-        raise ParseError(f'no match: regex="{expr}", string="{member}"')
+        log.error(msg := PARSE_ERROR_NO_MATCH_MSG(regexpr, file_path))
+        raise ParseError(msg)
+    
+    # (this will never happen)
     numgroups = len(match.groups())
     if numgroups != 1:
-        raise ParseError(
-            f'expecting 1 capture group, found {numgroups}: regex="{expr}", string="{member}"'
-        )
+        log.error(msg := PARSE_ERROR_TOO_MANY_MATCHES_MSG(regexpr, file_path, numgroups))
+        raise ParseError(msg)
+    
     return match.group(1)
+
+
+#TODO: not used yet
+def generate_base64_sha1_hash(data: bytes) -> bytes:
+    # for some reason it has a new line at the end
+    return base64_encodebytes(hashlib.sha1(data).digest()).strip()

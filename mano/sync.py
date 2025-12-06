@@ -1,29 +1,28 @@
 import itertools
-import locale
 import logging
 import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
 from os import fsync
-from os.path import exists as path_exists, join as path_join
+from os.path import join as path_join
 from pprint import pformat
 from sys import stdout
 from tempfile import NamedTemporaryFile
 from time import perf_counter, sleep
 
-import dateutil
 import requests
+from dateutil.parser import parse as dateutil_parse
 from dateutil.tz import UTC
 from requests.models import Response
 
-import mano
 from mano.constants import (ALL_DATA_STREAMS, BACKFILL_INTERVAL_SLEEP, BACKFILL_WINDOW,
-    BadTimezoneError, EARLIEST_POSSIBLE_DATA_STR, log, TIME_FORMAT, URL_COMPRESSED,
+    BadTimezoneError, DATA_STREAMS, EARLIEST_POSSIBLE_DATA_STR, log, TIME_FORMAT, URL_COMPRESSED,
     URL_UNCOMPRESSED)
-from mano.file_management import atomic_write, make_directories, save_encrypted
-from mano.messages import (NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_MSG,
-    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
-    TIME_PARSED_MSG, USER_IDS_DEPRECATION_MSG)
+from mano.file_management import atomic_write, make_directories, save_archive_with_registry
+from mano.messages import (NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG,
+    PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG,
+    TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG,
+    USER_IDS_DEPRECATION_MSG)
 
 
 # historical namespace items
@@ -156,8 +155,8 @@ def download(
     if user_ids:
         log.warning(USER_IDS_DEPRECATION_MSG)
     if user_ids and participant_ids:
-        log.error(PICK_USER_PARTICIPANT_MSG)
-        raise ValueError(PICK_USER_PARTICIPANT_MSG)
+        log.error(PICK_USER_PARTICIPANT_PLURAL_MSG)
+        raise ValueError(PICK_USER_PARTICIPANT_PLURAL_MSG)
     if user_ids and not participant_ids:
         participant_ids = user_ids
     
@@ -178,79 +177,30 @@ def download(
 
 
 def backfill(
-    Keyring: dict[str, str],
-    study_id: str,
-    user_id: str,
-    output_dir: str,
-    start_date: str = EARLIEST_POSSIBLE_DATA_STR,
-    data_streams: list[str] | None = None,
-    lock: list[str] | None = None,
-    passphrase: str | None = None,
+    Keyring: dict[str, str],                        # Your loaded credentials (see documentation).
+    study_id: str,                                  # The target Study ID.
+    participant_id: str,                            # The target participant's ID.
+    output_dir: str,                                # Directory to save downloaded data.
+    start_date: str = EARLIEST_POSSIBLE_DATA_STR,   # Date to start backfill from.
+    data_streams: list[str] | None = None,          # List of data streams to backfill.
+    lock: list[str] | None = None,                  # List of files to lock during backfill.
+    passphrase: str | None = None,                  # Passphrase for encryption.
+    user_id: str | None = None,                     # The target User ID.
 ) -> None:
-    """
-    Backfill a user (participant)
-    """
+    if user_id:
+        log.warning(USER_ID_KEYWORD_DEPRECATION_MSG)
     
-    encoding = locale.getpreferredencoding()
+    if user_id and participant_id:
+        log.error(PICK_USER_PARTICIPANT_SINGLE_MSG)
+        raise ValueError(PICK_USER_PARTICIPANT_SINGLE_MSG)
     
-    if not data_streams:
-        data_streams = mano.DATA_STREAMS
+    if user_id and not participant_id:
+        participant_id = user_id
     
-    if not path_exists(output_dir):
-        make_directories(output_dir, umask=0o077)
-    
-    # backfill continuously until this function finally returns
-    while True:
-        # read backfill state from file
-        user_dir = path_join(output_dir, user_id)
-        if not path_exists(user_dir):
-            make_directories(user_dir)
-        backfill_file = path_join(user_dir, '.backfill')
-        
-        log.info(f'reading backfill file {backfill_file}')
-        
-        with open(backfill_file, 'a+') as fo:
-            fo.seek(0)
-            timestamp = fo.read().strip()
-        if timestamp:
-            log.debug(f'backfill file contains string: {timestamp}')
-        
-        # return immediately if backfill state file contains string COMPLETE
-        if timestamp == 'COMPLETE':
-            log.debug('no backfill is necessary')
-            return
-        
-        # if there is no backfill state, default to start_date
-        if not timestamp:
-            timestamp = start_date
-            log.debug(f'no backfill timestamp found, using: {timestamp}')
-        
-        # get download window and next resume point
-        start, stop, resume = _window(timestamp, BACKFILL_WINDOW)
-        log.info(f'processing window is [{start}, {stop}]')
-        
-        # download window of data
-        archive = download(
-            Keyring,
-            study_id,
-            [user_id],
-            data_streams,
-            time_start=start,
-            time_end=stop
-        )
-        
-        # save data
-        num_saved = save(archive, user_id, output_dir, lock, passphrase)
-        log.info(f'saved {num_saved} files')
-        
-        # wite the new resume point to the backfill file
-        if resume:
-            atomic_write(backfill_file, resume.encode(encoding))
-            log.debug('waiting for next backfill interval')
-            sleep(BACKFILL_INTERVAL_SLEEP)
-        else:
-            atomic_write(backfill_file, 'COMPLETE'.encode(encoding))
-            log.info('backfill is complete')
+    # this is just a this wrapper to provide documentation for usage of Mano's backfill functionality
+    _backfill_participant(
+        Keyring, study_id, participant_id, output_dir, start_date, data_streams, lock, passphrase,
+    )
 
 
 def _download(
@@ -273,7 +223,7 @@ def _download(
     
     # base url for beiwe instance
     url = normalize_url(Keyring['URL']) + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
-    
+    log.debug(f'download URL: {url}')
     time_start = handle_one_time_input(time_start, "time_start")
     time_end = handle_one_time_input(time_end, "time_end")
     
@@ -379,14 +329,84 @@ def iterate_with_spinner(
 
 
 def save(
-    archive: zipfile.ZipFile | None,
-    user_id: str,
+    archive: zipfile.ZipFile,
+    participant_id: str,
     output_dir: str,
     lock: list[str] | None = None,
     passphrase: str | None = None,
+    user_id: str | None = None,
 ) -> int:
     log.warning(SYNC_SAVE_DEPRECATION_MSG)
-    return save_encrypted(archive, user_id, output_dir, lock, passphrase)
+    
+    if user_id:
+        log.warning(USER_ID_KEYWORD_DEPRECATION_MSG)
+    
+    if user_id and participant_id:
+        log.error(PICK_USER_PARTICIPANT_SINGLE_MSG)
+        raise ValueError(PICK_USER_PARTICIPANT_SINGLE_MSG)
+    
+    if user_id and not participant_id:
+        participant_id = user_id
+    
+    return save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
+
+
+def _backfill_participant(
+    Keyring: dict[str, str],
+    study_id: str,
+    participant_id: str,
+    output_dir: str,
+    start_date: str = EARLIEST_POSSIBLE_DATA_STR,
+    data_streams: list[str] | None = None,
+    lock: list[str] | None = None,
+    passphrase: str | None = None,
+) -> None:
+    """
+    Backfill a user (participant)
+    """
+    data_streams = data_streams or DATA_STREAMS
+    
+    user_dir = path_join(output_dir, participant_id)
+    backfill_file_path = path_join(user_dir, '.backfill')
+    
+    # TODO: document what this umask is doing
+    make_directories(output_dir, umask=0o077)  # defaults to exist_ok=True
+    make_directories(user_dir)
+    
+    log.info(f'Starting backfill, starting timestamp: {start_date}')
+    current_timestamp = start_date
+    while True:
+        
+        # get the backfill state from the backfill file (except on first iteration)
+        if current_timestamp is not start_date:
+            with open(backfill_file_path) as fo:
+                current_timestamp = fo.read().strip()
+            log.debug(f'backfill file contains string `{current_timestamp}`')
+        
+        # get [next] download window and resume point, and download
+        start, stop, resume = _get_next_backfill_window(current_timestamp, BACKFILL_WINDOW)
+        log.info(f'processing window is {start} - {stop}')
+        
+        archive = download(
+            Keyring, study_id, [participant_id], data_streams, time_start=start, time_end=stop
+        )
+        
+        # save data
+        num_saved = save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
+        log.info(f'saved {num_saved} files')
+        
+        # end condition
+        if resume is None:
+            atomic_write(backfill_file_path, b'COMPLETE')
+            log.info(f'backfill is complete for participant `{participant_id}`')
+            return
+        
+        # wite the new resume point to the backfill file, sleep, repeat
+        atomic_write(backfill_file_path, resume.encode())
+        log.info(f'next backfill for participant `{participant_id}` will resume from `{resume}`')
+        sleep(BACKFILL_INTERVAL_SLEEP)
+        
+        current_timestamp = resume
 
 
 #
@@ -394,32 +414,31 @@ def save(
 #
 
 
-def _window(timestamp: str, window: int | float) -> tuple[str, str, str | None]:
+def _get_next_backfill_window(timestamp: str, window: int) -> tuple[str, str, str | None]:
     """
-    Generate a backfill window (start, stop, and resume)
+    Generate a "backfill window"
+    given a timestamp and number of days (the "window") return the [next?]
+    start, stop, and resume timestamps for the next iteration of backfill.
+    When the window is exhausted, the return will be a tuple[start, stop, None].
     """
     
-    # parse the input timestamp into a datetime object
-    win_start = dateutil.parser.parse(timestamp)
+    # TODO: why are we parsing a string here?
+    log.debug(f'calculating next backfill window from timestamp `{timestamp}`')
+    window_start = dateutil_parse(timestamp)  # parse the timestamp str to a datetime
     
     # by default, the download window will *stop* at `win_start` + `window`,
-    # and the next *resume* point will be the same...
-    window_stop = win_start + timedelta(days=window)
-    resume: datetime | None = window_stop  # mypy wants this explicit type hint
+    # and the next *resume* point will be the same.
+    window_stop = window_start + timedelta(days=window)
+    resume = window_stop
     
     # ...unless the next projected window stop point extends into the future, in which case the
     # window stop point will be set to the present time, but and next resume time will be null
-    now = datetime.today()
-    if window_stop > now:
-        window_stop = now
-        resume = None
-    
+    TF = TIME_FORMAT
+    if window_stop > datetime.today():
+        return window_start.strftime(TF), window_stop.strftime(TF), None
     # convert all timestamps to string representation before returning
-    win_start_str = win_start.strftime(TIME_FORMAT)
-    win_stop_str = window_stop.strftime(TIME_FORMAT)
-    resume_str = resume.strftime(TIME_FORMAT) if resume else None
-    
-    return win_start_str, win_stop_str, resume_str
+    # TODO: why are we A) converting to strings here, B) localizing inside an automation codepath...
+    return window_start.strftime(TF), window_stop.strftime(TF), resume.strftime(TF)
 
 
 def normalize_url(url: str) -> str:
@@ -451,7 +470,7 @@ def handle_one_time_input(
     # string input
     if isinstance(dt, str):
         time_str = dt
-        dt = dateutil.parser.parse(dt)
+        dt = dateutil_parse(dt)
         log.debug(TIME_PARSED_MSG(name, time_str, dt))
     
     # naive datetime

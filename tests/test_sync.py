@@ -1,8 +1,12 @@
+from datetime import datetime, timedelta
+from io import BytesIO
+from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
 import requests
 import responses
+from pytest_mock import MockerFixture
 from pyzstd import decompress
 from responses import RequestsMock
 
@@ -349,3 +353,50 @@ def test_download_connection_error(keyring: dict[str, str]):
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
             )
+
+
+#
+# test backfill function
+#
+
+
+def test_backfill_calls_download(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    # mock_download_v1_api: RequestsMock,  # we don't
+    tmp_path: Path,
+    mock_zip_data_uncompressed: bytes,
+):
+    """ Test that backfill_participant calls download with correct paraeters. """
+    
+    mock_download = mocker.patch(
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+    )
+    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
+    
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterdt = today - timedelta(days=1)
+    yesterdate = yesterdt.date()
+    
+    backfill_file = tmp_path / '.backfill'
+    backfill_file.write_text(today.date().isoformat())
+    
+    sync.backfill(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        participant_id='6y6s1w4g',
+        output_dir=str(tmp_path),
+        start_date=yesterdate.isoformat(),
+        data_streams=['gps'],
+        lock=[],
+        passphrase=None,
+    )
+    
+    mock_download.assert_called_once_with(
+        keyring,
+        'STUDY_ID',
+        ['6y6s1w4g'],
+        ['gps'],
+        time_start=yesterdt.isoformat(),
+        time_end=(yesterdt+timedelta(days=5)).isoformat(),
+    )
