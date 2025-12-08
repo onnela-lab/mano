@@ -363,12 +363,11 @@ def test_download_connection_error(keyring: dict[str, str]):
 def test_backfill_calls_download(
     mocker: MockerFixture,
     keyring: dict[str, str],
-    # mock_download_v1_api: RequestsMock,  # we don't
     tmp_path: Path,
     mock_zip_data_uncompressed: bytes,
 ):
     """ Test that backfill_participant calls download with correct paraeters. """
-    
+    backfill_file = tmp_path / '.backfill'
     mock_download = mocker.patch(
         'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
     )
@@ -376,22 +375,20 @@ def test_backfill_calls_download(
     
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterdt = today - timedelta(days=1)
-    yesterdate = yesterdt.date()
     
-    backfill_file = tmp_path / '.backfill'
+    # one call to yesterday, so the next call will be the default backfill time plus five days, so
+    # into the future, which should trigger the finish logic
     backfill_file.write_text(today.date().isoformat())
-    
     sync.backfill(
         Keyring=keyring,
         study_id='STUDY_ID',
         participant_id='6y6s1w4g',
         output_dir=str(tmp_path),
-        start_date=yesterdate.isoformat(),
+        start_date=yesterdt.date().isoformat(),
         data_streams=['gps'],
         lock=[],
         passphrase=None,
     )
-    
     mock_download.assert_called_once_with(
         keyring,
         'STUDY_ID',
@@ -399,4 +396,52 @@ def test_backfill_calls_download(
         ['gps'],
         time_start=yesterdt.isoformat(),
         time_end=(yesterdt+timedelta(days=5)).isoformat(),
+    )
+
+
+def test_backfill_called_twice(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    mock_zip_data_uncompressed: bytes,
+):
+    """ Test that backfill_participant calls download twice when needed. """
+    backfill_file = tmp_path / '.backfill'
+    mock_download = mocker.patch(
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+    )
+    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
+    
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    five_days_ago_dt = today - timedelta(days=5)
+    
+    # set it to 5 days ago so two calls are needed to catch up to today
+    backfill_file.write_text(five_days_ago_dt.date().isoformat())
+    sync.backfill(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        participant_id='6y6s1w4g',
+        output_dir=str(tmp_path),
+        start_date=five_days_ago_dt.date().isoformat(),
+        data_streams=['gps'],
+        lock=[],
+        passphrase=None,
+    )
+    
+    assert mock_download.call_count == 2
+    mock_download.assert_any_call(
+        keyring,
+        'STUDY_ID',
+        ['6y6s1w4g'],
+        ['gps'],
+        time_start=five_days_ago_dt.isoformat(),
+        time_end=(five_days_ago_dt+timedelta(days=5)).isoformat(),
+    )
+    mock_download.assert_any_call(
+        keyring,
+        'STUDY_ID',
+        ['6y6s1w4g'],
+        ['gps'],
+        time_start=(five_days_ago_dt+timedelta(days=5)).isoformat(),
+        time_end=(five_days_ago_dt+timedelta(days=10)).isoformat(),
     )

@@ -357,10 +357,9 @@ def check_is_valid_beiwe_data_file(path: str) -> bool:
 def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
     """ Setup a thread pool with logging. """
     multithread_count = max(1, multithread_count)  # just ignore 0 and negatives
-    pool = ThreadPool(multithread_count)
     if multithread_count > 1:
         log.info(f"Using {multithread_count} threads for {name}.")
-    return pool
+    return ThreadPool(multithread_count)
 
 #
 # File Encryption
