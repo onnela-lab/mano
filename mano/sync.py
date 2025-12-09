@@ -383,8 +383,7 @@ def _backfill_participant(
         log.warning(BACKFILL_FILE_EXISTS_MSG(backfill_file_path))
     
     # Setup
-    # TODO: document what this umask is doing
-    make_directories(output_dir, umask=0o077)  # defaults to exist_ok=True
+    make_directories(output_dir)  # defaults to exist_ok=True
     make_directories(user_dir)
     
     log.info(f'Starting backfill, starting timestamp: {start_date}')

@@ -2,9 +2,10 @@ import hashlib
 import json
 import re
 from base64 import encodebytes as base64_encodebytes
+from collections.abc import Generator
 from multiprocessing.pool import ThreadPool
 from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
-    umask as get_umask, walk as walk_directory)
+    walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -20,19 +21,9 @@ from mano.messages import (DATA_STREAM_FOLDER_MSG, DATA_STREAM_NOT_PARTICIPANT_M
     DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
-def make_directories(path: str, umask: int | None = None, exist_ok: bool = True):
-    """
-    Create directories recursively with a temporary umask
-    """
-    # TODO: document what the umask is doing here
-    old_umask = None
-    if umask is not None:
-        old_umask = get_umask(umask)
-    try:
-        _make_directories(path, exist_ok=exist_ok)
-    finally:
-        if old_umask is not None:
-            get_umask(old_umask)
+def make_directories(path: str, exist_ok: bool = True):
+    """ Run create directories with exists defaulting to True """
+    _make_directories(path, exist_ok=exist_ok)
 
 
 def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
@@ -50,11 +41,12 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
     with NamedTemporaryFile(dir=folder_name, prefix='.', delete=False) as tmp:
         tmp.write(content)
     
+    # TODO: the value of mimicking the cyptease.encrypt permissions is questionable.
     chmod(tmp.name, permissions)
     rename(tmp.name, filename)
 
 
-def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False):
+def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False) -> Generator[str, None, None]:
     """
     Generator for all file paths in a directory tree
     """
@@ -445,7 +437,7 @@ def process_one_archive_file(
     if path_exists(target_abs := path_join(output_dir, output_filename)):
         delete_file(target_abs)
     if not path_exists(target_dir := dirname(target_abs)):
-        make_directories(target_dir, umask=0o5022)
+        make_directories(target_dir)
     
     file_content = archive.open(file_path)  # read archive member content and encrypt it if necessary
     
