@@ -59,7 +59,7 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
             for file_path in files:
                 
                 if zst_only:
-                    is_valid = file_path.endswith('.zst')
+                    is_valid = file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
                 else:
                     is_valid = check_is_valid_beiwe_data_file(file_path)
                 
