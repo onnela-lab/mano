@@ -4,14 +4,14 @@ import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
 from os import fsync
-from os.path import join as path_join
+from os.path import exists as path_exists, join as path_join
 from pprint import pformat
 from sys import stdout
 from tempfile import NamedTemporaryFile
 from time import perf_counter, sleep
 
 import requests
-from dateutil.parser import parse as dateutil_parse
+from dateutil.parser import parse as dateutil_parse, ParserError
 from dateutil.tz import UTC
 from requests.models import Response
 
@@ -19,7 +19,8 @@ from mano.constants import (ALL_DATA_STREAMS, BACKFILL_INTERVAL_SLEEP, BACKFILL_
     BadTimezoneError, DATA_STREAMS, EARLIEST_POSSIBLE_DATA_STR, log, TIME_FORMAT, URL_COMPRESSED,
     URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories, save_archive_with_registry
-from mano.messages import (NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG,
+from mano.messages import (BACKFILL_FILE_EXISTS_MSG, BACKFILL_START_DATE_FUTURE_MSG,
+    BACKFILL_UNPARSABLE_DATE_MSG, NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG,
     PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG,
     TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG,
     USER_IDS_DEPRECATION_MSG)
@@ -364,11 +365,24 @@ def _backfill_participant(
     """
     Backfill a user (participant)
     """
-    data_streams = data_streams or DATA_STREAMS
+    data_streams = data_streams or DATA_STREAMS  # all data streams if none specified
+    
+    # Validation
+    try:
+        if dateutil_parse(start_date) > datetime.now():
+            log.error(BACKFILL_START_DATE_FUTURE_MSG(start_date))
+            return
+    except ParserError as e:
+        log.error(msg := BACKFILL_UNPARSABLE_DATE_MSG(start_date))
+        raise ValueError(msg) from e
     
     user_dir = path_join(output_dir, participant_id)
     backfill_file_path = path_join(user_dir, '.backfill')
     
+    if path_exists(backfill_file_path):  # existing backfill tracking files are ignored
+        log.warning(BACKFILL_FILE_EXISTS_MSG(backfill_file_path))
+    
+    # Setup
     # TODO: document what this umask is doing
     make_directories(output_dir, umask=0o077)  # defaults to exist_ok=True
     make_directories(user_dir)

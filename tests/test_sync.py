@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from io import BytesIO
+from os import makedirs
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -406,7 +407,6 @@ def test_backfill_called_twice(
     mock_zip_data_uncompressed: bytes,
 ):
     """ Test that backfill_participant calls download twice when needed. """
-    backfill_file = tmp_path / '.backfill'
     mock_download = mocker.patch(
         'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
     )
@@ -416,7 +416,8 @@ def test_backfill_called_twice(
     five_days_ago_dt = today - timedelta(days=5)
     
     # set it to 5 days ago so two calls are needed to catch up to today
-    backfill_file.write_text(five_days_ago_dt.date().isoformat())
+    # backfill_file.write_text(five_days_ago_dt.date().isoformat())
+    
     sync.backfill(
         Keyring=keyring,
         study_id='STUDY_ID',
@@ -428,6 +429,7 @@ def test_backfill_called_twice(
         passphrase=None,
     )
     
+    # assert hits to download look good
     assert mock_download.call_count == 2
     mock_download.assert_any_call(
         keyring,
@@ -435,7 +437,7 @@ def test_backfill_called_twice(
         ['6y6s1w4g'],
         ['gps'],
         time_start=five_days_ago_dt.isoformat(),
-        time_end=(five_days_ago_dt+timedelta(days=5)).isoformat(),
+        time_end=(five_days_ago_dt + timedelta(days=5)).isoformat(),
     )
     mock_download.assert_any_call(
         keyring,
@@ -445,3 +447,71 @@ def test_backfill_called_twice(
         time_start=(five_days_ago_dt+timedelta(days=5)).isoformat(),
         time_end=(five_days_ago_dt+timedelta(days=10)).isoformat(),
     )
+    
+    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
+    assert backfill_file.read_text() == "COMPLETE"
+
+
+def test_backfill_makes_no_download_calls_when_up_to_date(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+):
+    """ Test that backfill_participant makes no download calls when up to date. """
+    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
+    mock_download = mocker.patch('mano.sync.download')  # intentionally missing a return_value so it errors.
+    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
+    tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    
+    # set it to today so no calls are needed
+    sync.backfill(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        participant_id='6y6s1w4g',
+        output_dir=str(tmp_path),
+        start_date=tomorrow.date().isoformat(),
+        data_streams=['gps'],
+        lock=[],
+        passphrase=None,
+    )
+    mock_download.assert_not_called()
+    assert not backfill_file.exists()
+
+
+def test_backfill_does_not_crash_when_there_is_a_backfill_file(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    mock_zip_data_uncompressed: bytes,
+):
+    """ Test that backfill_participant works when there is no .backfill file. """
+    mock_download = mocker.patch(
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+    )
+    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
+    yesterdt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    
+    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
+    makedirs(backfill_file.parent, exist_ok=True)
+    backfill_file.write_text('some invalid date')
+    
+    # no backfill file, so it should use the start_date parameter
+    sync.backfill(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        participant_id='6y6s1w4g',
+        output_dir=str(tmp_path),
+        start_date=yesterdt.date().isoformat(),
+        data_streams=['gps'],
+        lock=[],
+        passphrase=None,
+    )
+    mock_download.assert_called_once_with(
+        keyring,
+        'STUDY_ID',
+        ['6y6s1w4g'],
+        ['gps'],
+        time_start=yesterdt.isoformat(),
+        time_end=(yesterdt+timedelta(days=5)).isoformat(),
+    )
+    assert backfill_file.read_text() == "COMPLETE"

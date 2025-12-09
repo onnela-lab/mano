@@ -57,6 +57,18 @@ def DATA_STREAM_NOT_PARTICIPANT_MSG(funcname: str, file_path: str, participant_i
            f"with the participant id."
 
 
+def BACKFILL_START_DATE_FUTURE_MSG(start_date: str):
+    return f'Backfill received the value "{start_date}" for `start_date`, which is in the future.'
+
+
+def BACKFILL_UNPARSABLE_DATE_MSG(start_date: str):
+    return f'Backfill received the value "{start_date}" for `start_date`, which it could not parse.'
+
+
+def BACKFILL_FILE_EXISTS_MSG(file_path: str):
+    return f'A backfill timestamp file already exists at `{file_path}`, it will be overwritten.'
+
+
 #
 # Deprecation warnings
 #
