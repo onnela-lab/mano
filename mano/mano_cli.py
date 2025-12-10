@@ -189,7 +189,7 @@ def compress(args: list[str]):
     validate_is_a_folder_or_valid_beiwe_data_file(target_path)
     
     class info:
-        compression_level: str  # (IDE complains incorrectly without this line)
+        compression_level: str  # (type annotation for attritbute, checker complains without this line)
         describe = \
             f"Compress all {BEIWE_EXTENSIONS_ANDED} files in the folder " \
                 f"`{abspath(target_path)}` and its subfolders."
@@ -213,7 +213,7 @@ def compress(args: list[str]):
             }
     
     info.compression_level = f"using compression level {compression_level}"
-    if compression_level == 2: # default
+    if compression_level == 2:  # default
         info.compression_level += " (the default)"
     
     confirm_command(

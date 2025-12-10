@@ -98,6 +98,13 @@ packages = "mano"
 module = ["cryptease", "coloredlogs"]
 ignore_missing_imports = true
 
+#
+# Pyright - Type checking in the IDE
+#
+[tool.pyright]
+ignore = [
+    "reportUnnecessaryIsInstance",  # we have custom type checking messages
+]
 
 #
 ## Mano Project Information
