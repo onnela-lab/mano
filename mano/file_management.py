@@ -48,7 +48,9 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
 
 def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False) -> Generator[str, None, None]:
     """
-    Generator for all file paths in a directory tree
+    Generator that yields full paths for all file paths in a directory tree that are valid Beiwe
+    data files.  constants.BEIWE_FILE_EXTENSIONS for valid extensions.
+    The zst_only flag will switch to only yielding .zst files.
     """
     any_valid_files = False  # two error cases we want to have separate messages for
     anything_at_all = False
