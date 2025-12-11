@@ -76,9 +76,9 @@ def download(
         and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
     
     :param study_id: The Study ID to download data from
-        - The Beiwe Data Access API requires that a data download request specify a Study ID.
-        - A Study ID is a 24 character long string that uniquely identifies your study.
-        - The Study ID can be found on your Beiwe Platform website directly on your Study's page.
+        The Beiwe Data Access API requires that a data download request specify a Study ID.
+        A Study ID is a 24 character long string that uniquely identifies your study.
+        The Study ID can be found on your Beiwe Platform website directly on your Study's page.
     
     #
     # Recommended Parameters
@@ -216,31 +216,31 @@ def backfill(
         and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
     
     :param study_id: The Study ID to download data from
-        - The Beiwe Data Access API requires that a data download request specify a Study ID.
-        - A Study ID is a 24 character long string that uniquely identifies your study.
-        - The Study ID can be found on your Beiwe Platform website directly on your Study's page.
+        The Beiwe Data Access API requires that a data download request specify a Study ID.
+        A Study ID is a 24 character long string that uniquely identifies your study.
+        The Study ID can be found on your Beiwe Platform website directly on your Study's page.
     
     :param participant_id: The participant on your study to run backfill for.
-        - A participant ID is an 8 character string that identifies a participant in your study.
+        A participant ID is an 8 character string that identifies a participant in your study.
     
     :param output_dir: the folder in which to save downloaded data.
-        - A subfolder with the participant ID will be created if it does not already exist.
+        A subfolder with the participant ID will be created if it does not already exist.
         
     :param start_date: The date from which to start backfilling data.
-        - This can be a datetime object or a string parseable by dateutil.parser.
-        - The default value is September 1, 2015, the earliest possible date for any data that
+        This can be a datetime object or a string parseable by dateutil.parser.
+        The default value is September 1, 2015, the earliest possible date for any data that
           any Beiwe study could possibly have.
-        - If the provided date is in the future, backfill will exit without doing anything.
+        If the provided date is in the future, backfill will exit without doing anything.
     
     :param data_streams: A list of the data streams to download.
-        - If None or an empty list is provided all data streams will be downloaded.
+        If None or an empty list is provided all data streams will be downloaded.
     
     :param lock: A list of data streams to "lock" (encrypt) during backfill.
-        - If None or an empty list is provided no data streams will be encrypted.
+        If None or an empty list is provided no data streams will be encrypted.
     
     :param passphrase: The encryption key _for your Keyring_ to then access the decryption keys.
-        - If None is provided no encryption will be performed.
-        - Must be paired with a non-empty `lock` parameter.
+        If None is provided no encryption will be performed.
+        Must be paired with a non-empty `lock` parameter.
     
     :param user_id: (DEPRECATED) An alias of `participant_id`.
     """
