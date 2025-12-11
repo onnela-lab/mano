@@ -104,6 +104,9 @@ def BACKFILL_RESTARTING_WARNING(participant_id: str):
         "backfill operation did not complete. Backfill will resume from the last recorded timestamp."
 
 
+def BACKFILL_LOCK_AND_PASSPHRASE_MSG(parametername: str):
+    return "Backfill's `{parametername}` parameter cannot be empty if `passphrase` is provided."
+
 #
 # Deprecation warnings
 #

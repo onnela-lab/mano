@@ -19,12 +19,12 @@ from mano.constants import (ALL_DATA_STREAMS, BACKFILL_INTERVAL_SLEEP, BACKFILL_
     BadTimezoneError, DATA_STREAMS, EARLIEST_POSSIBLE_DATA_DT, log, TIME_FORMAT, URL_COMPRESSED,
     URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories, save_archive_with_registry
-from mano.messages import (BACKFILL_RESTARTING_WARNING, BACKFILL_START_DATE_FUTURE_MSG,
-    BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG, full_dt_format, NO_TIME_MSG,
-    NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
-    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
-    TIME_PARSED_MSG, TIME_REQUIRED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_MSG)
+from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_MSG, BACKFILL_RESTARTING_WARNING,
+    BACKFILL_START_DATE_FUTURE_MSG, BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG,
+    full_dt_format, NO_TIME_MSG, NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG,
+    PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG,
+    TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, TIME_REQUIRED_MSG,
+    USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG, X_IS_NOT_A_Y_MSG)
 
 
 # historical namespace items
@@ -65,24 +65,26 @@ def download(
     user_ids: list[str] | None = None,         # alias of participant_ids.
 ) -> zipfile.ZipFile:
     """
-    Download Beiwe Platform Study Data from the Data Access API.
+    A simple function to download Beiwe Platform Study Data from the Beiwe Data Access API.
     :returns: A [standard library] ZipFile object containing the downloaded data.
     
     #
     # Required parameters
     #
     
-    :param `Keyring`: Credentials dictionary - See documentation for details on how to safely store
-        and load your Beiwe API credentials.
+    :param Keyring: Credentials dictionary - See documentation for details on how to safely store
+        and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
     
-    :param `study_id`: The Study ID to download data from - The API requires that a data download
-        request specify a Study ID.
+    :param study_id: The Study ID to download data from
+        - The Beiwe Data Access API requires that a data download request specify a Study ID.
+        - A Study ID is a 24 character long string that uniquely identifies your study.
+        - The Study ID can be found on your Beiwe Platform website directly on your Study's page.
     
     #
     # Recommended Parameters
     #
     
-    :param `compressed`: A boolean to indicate whether to download compressed data.
+    :param compressed: A boolean to indicate whether to download compressed data.
         
         We highly recommend downloading compressed data.
         
@@ -127,17 +129,17 @@ def download(
         None or an empty list means "all data streams".
     
     :param time_start: A datetime or string representing the earliest time to download data from.
-        None means "no start time filter".
-        
-        -Data on The Beiwe Platform is recorded and handled in UTC time.
-        -Date/Time _strings_ provided to Mano will be interpreted as UTC times.
-        -Python datetime _objects_ with non-UTC timezones will be TIME SHIFTED to UTC via the
-            `datetime.astimezone(UTC)` datetime standard library function.
-        -Timezone-Naive datetime objects (those lacking a tzinfo attribute) will be treated as UTC.
+        None string means "no start time filter".
+        Notes about timezones:
+        - Data on The Beiwe Platform is recorded and handled in UTC time.
+        - Python datetime _objects_ with timezones WILL BE TIME-SHIFTED to UTC.
+        - Timezone-Naive datetime objects (without tzinfo) will be treated as UTC.
+        - Date/Time _strings_ provided to Mano will usually be interpreted as UTC times, but if they
+            are parsed to include a timezone they will be time-shifted to UTC time.
     
     :param time_end: A datetime or string representing the latest time to download data from.
         None means "no end time filter".
-        (see detailed notes above for the `time_start` parameter)
+        (please see detailed notes above about timezones)
     
     #
     # Other
@@ -145,8 +147,7 @@ def download(
     
     :param progress: (DEPRECATED)
         Formerly: "Show a progress indicator every N bytes downloaded."
-        This parameter may be ignored.
-        This parameter is deprecated, use `debug_level` to control output instead.
+        This parameter is deprecated and will be ignored, use `debug_level` to control output instead.
         The spinner is shown at INFO and DEBUG levels.
         The spinner now advances (roughly) every time a component file is received from the server,
             depending on system, network, and server conditions.
@@ -191,6 +192,58 @@ def backfill(
     passphrase: str | None = None,                  # Passphrase for encryption.
     user_id: str | None = None,                     # The target User ID.
 ) -> None:
+    """
+    Backfill is a somewhat more robust data download mechanism than the simple download function,
+    and we encourage users to try it out.
+    
+    Backfill downloads data in smaller chunks for a participant, starting from a specified date.
+    By splitting up the requests we can address some common real-world difficulties:
+    - Data on the Beiwe platform may be uploaded late for any number of real-world reasons.
+      Backfill automates the built-in "registry" feature of the Beiwe Data Access API to avoid
+      re-downloading data you already have.
+    - The quantity of data produced by participants may be large and take time, so they may be
+      interrupted. For instance [and Onnela Lab has confirmed a few cases where] downloads can get
+      cut off by overenthusiastic campus firewalls or intrusion detection systems, perfect wifi is
+      a myth, rural internet is always problematic, etc.
+    
+    This function helps to "backfill" data that arrives late.
+    
+    #
+    # Required parameters
+    #
+    
+    :param Keyring: Credentials dictionary - See documentation for details on how to safely store
+        and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
+    
+    :param study_id: The Study ID to download data from
+        - The Beiwe Data Access API requires that a data download request specify a Study ID.
+        - A Study ID is a 24 character long string that uniquely identifies your study.
+        - The Study ID can be found on your Beiwe Platform website directly on your Study's page.
+    
+    :param participant_id: The participant on your study to run backfill for.
+        - A participant ID is an 8 character string that identifies a participant in your study.
+    
+    :param output_dir: the folder in which to save downloaded data.
+        - A subfolder with the participant ID will be created if it does not already exist.
+        
+    :param start_date: The date from which to start backfilling data.
+        - This can be a datetime object or a string parseable by dateutil.parser.
+        - The default value is September 1, 2015, the earliest possible date for any data that
+          any Beiwe study could possibly have.
+        - If the provided date is in the future, backfill will exit without doing anything.
+    
+    :param data_streams: A list of the data streams to download.
+        - If None or an empty list is provided all data streams will be downloaded.
+    
+    :param lock: A list of data streams to "lock" (encrypt) during backfill.
+        - If None or an empty list is provided no data streams will be encrypted.
+    
+    :param passphrase: The encryption key _for your Keyring_ to then access the decryption keys.
+        - If None is provided no encryption will be performed.
+        - Must be paired with a non-empty `lock` parameter.
+    
+    :param user_id: (DEPRECATED) An alias of `participant_id`.
+    """
     # do all the user_id -> participant_id handling first, including its type checking
     if user_id is not None:
         log.warning(USER_ID_KEYWORD_DEPRECATION_MSG)
@@ -242,7 +295,18 @@ def backfill(
     # and then if they are still None convert them to empty lists
     data_streams = data_streams or []
     lock = lock or []
+    passphrase = passphrase or None  # normalize empty string to None
     
+    # require both lock and passphrase if either is provided
+    if len(lock) + int(bool(passphrase)) == 1:
+        if not lock:
+            log.error(msg := BACKFILL_LOCK_AND_PASSPHRASE_MSG("lock"))
+            raise ValueError(msg)
+        if not passphrase:
+            log.error(msg := BACKFILL_LOCK_AND_PASSPHRASE_MSG("passphrase"))
+            raise ValueError(msg)
+    
+    # start date cannot be an empty string
     if start_date == "":
         raise ValueError("Backfill's `start_date` parameter cannot be an empty string.")
     

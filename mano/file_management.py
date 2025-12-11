@@ -424,7 +424,9 @@ def process_one_archive_file(
     passphrase: str | None,
     lock: list[str],
 ) -> bool:
-    """ Handle one file from inside a ZipFile Archive """
+    """ Handle one file from inside a ZipFile Archive
+    Lock is a list of data streams, if provided, those data streams will be encrypted.
+    """
     
     # skip the registry files and directories - (not sure how fast/slow getinfo is)
     if file_path == 'registry' or archive.getinfo(file_path).is_dir():
@@ -443,8 +445,9 @@ def process_one_archive_file(
     if not path_exists(target_dir := dirname(target_abs)):
         make_directories(target_dir)
     
-    file_content = archive.open(file_path)  # read archive member content and encrypt it if necessary
+    file_content = archive.open(file_path)  # read archive member content
     
+    # encrypt it if necessary
     if encrypt:
         key = crypt.kdf(passphrase)  # type: ignore
         crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)  # type: ignore
