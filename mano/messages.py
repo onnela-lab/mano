@@ -4,12 +4,19 @@
 from datetime import datetime
 from typing import Any
 
-from mano.constants import FULL_DT_FORMAT
+from mano.constants import BASE_24HR_TIME_FORMAT, FULL_DT_FORMAT, FULL_DT_FORMAT_NO_TZ
 
-
+from mano.constants import log
 # helpers22
 def full_dt_format(dt: datetime) -> str:
-    return dt.strftime(FULL_DT_FORMAT)
+    # if the time zone is not a _name_, just an offset, %Z will be empty, then we use %z.
+    tz_str = dt.strftime("%Z")
+    if not tz_str:
+        tz_str = dt.strftime("%z")
+    dt_str = dt.strftime(BASE_24HR_TIME_FORMAT)
+    if tz_str:
+        return f"{dt_str} ({tz_str})"
+    return dt_str
 
 
 #
@@ -33,7 +40,8 @@ def TIME_REQUIRED_MSG(prefix: str):
 
 
 def TIME_PARSED_MSG(prefix: str, time_str: str, dt: datetime):
-    return f"{prefix} - parsed time string `{time_str}` as `{full_dt_format(dt)}`"
+    dt_str = full_dt_format(dt)
+    return f"{prefix} - parsed time string `{time_str}` as `{dt_str}`"
 
 
 def COULD_NOT_PARSE_TIME_MSG(prefix: str, dt: datetime | str | None):

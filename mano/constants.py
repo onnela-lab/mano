@@ -50,7 +50,11 @@ ALL_DATA_STREAMS = {
 #
 # Anything Related to Time
 #
-FULL_DT_FORMAT = "%Y-%m-%d %H:%M:%S (%Z)"
+
+BASE_24HR_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # isoformat but with space instead of T
+FULL_DT_FORMAT = "%Y-%m-%d %H:%M:%S (%Z)"  # with timezone _name_
+FULL_DT_FORMAT_NO_TZ = "%Y-%m-%d %H:%M:%S"
+
 TIME_FORMAT = Config['time_format']  # TODO: where do we use this?
 
 # this is the earliest possible date for data out of any Beiwe study

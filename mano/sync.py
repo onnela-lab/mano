@@ -20,10 +20,11 @@ from mano.constants import (ALL_DATA_STREAMS, BACKFILL_INTERVAL_SLEEP, BACKFILL_
     URL_UNCOMPRESSED)
 from mano.file_management import atomic_write, make_directories, save_archive_with_registry
 from mano.messages import (BACKFILL_RESTARTING_WARNING, BACKFILL_START_DATE_FUTURE_MSG,
-    BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG, NO_TIME_MSG, NOT_200_OK_MSG,
-    PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG,
-    SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, TIME_REQUIRED_MSG,
-    USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG, X_IS_NOT_A_Y_MSG)
+    BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG, full_dt_format, NO_TIME_MSG,
+    NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
+    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
+    TIME_PARSED_MSG, TIME_REQUIRED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
+    X_IS_NOT_A_Y_MSG)
 
 
 # historical namespace items
@@ -40,7 +41,8 @@ RequestPayload = dict[str, str | list[str] | dict[str, str]]
 #TODO: Fix tests, something has changed from the data download refactor.
 #TODO: Aggressively hook in the registry? Aggressively regenerate the registry? Always regenerate it?
 #TODO: does the spinner need to be intrinsicly dependant on stdout?
-#TODO: Backfill.
+#TODO: manual type checking on download
+#todo: document backfill function.
 
 
 def download(
@@ -118,17 +120,18 @@ def download(
     # Data Filters
     #
     
-    :param participant_ids: A list of participant ("user") IDs to limit data to.
-        None means "all participants".
+    :param participant_ids: A list of participant ("user") IDs to download data for.
+        None or an empty list means "all participants".
     
-    :param data_streams: A list of data streams to limit data to. None means "all data streams".
+    :param data_streams: A list of data streams to download.
+        None or an empty list means "all data streams".
     
     :param time_start: A datetime or string representing the earliest time to download data from.
         None means "no start time filter".
         
-        -Data on The Beiwe Platform is recorded in UTC time.
+        -Data on The Beiwe Platform is recorded and handled in UTC time.
         -Date/Time _strings_ provided to Mano will be interpreted as UTC times.
-        -Python datetime _objects_ with non-UTC timezones will be converted to UTC via the
+        -Python datetime _objects_ with non-UTC timezones will be TIME SHIFTED to UTC via the
             `datetime.astimezone(UTC)` datetime standard library function.
         -Timezone-Naive datetime objects (those lacking a tzinfo attribute) will be treated as UTC.
     
@@ -549,8 +552,9 @@ def validate_datetime(
         if not ignore_tz:
             raise BadTimezoneError(TIME_NOT_UTC_MSG(name, dt, "is invalid."))
         
-        dt = dt.astimezone(UTC)
-        log.warning(TIME_NOT_UTC_MSG(name, dt, "has been time-shifted to the equivalent UTC time."))
+        new_dt = dt.astimezone(UTC)
+        log.warning(TIME_NOT_UTC_MSG(name, dt, f"has been time-shifted to `{full_dt_format(new_dt)}`."))
+        dt = new_dt
     
     return dt
 

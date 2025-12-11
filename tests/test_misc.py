@@ -116,6 +116,20 @@ def test_validate_datetime_timezone_UTC_required():
     assert validate_datetime(dt_wo_tz, "_", ignore_tz=True) == dt_w_utc
 
 
+def test_validate_datetime_with_timezone_timeshifts():
+    dt_ny = datetime(2023, 1, 1, 0, 0, 0, tzinfo=gettz("America/New_York"))
+    dt_expected = datetime(2023, 1, 1, 5, 0, 0, tzinfo=UTC)  # shifted to UTC
+    dt_should_be_utc_0_0_0 = validate_datetime(dt_ny, "_", ignore_tz=True)
+    assert dt_should_be_utc_0_0_0 == dt_expected
+
+
+def test_validate_datetime_string_with_timezone_timeshifts():
+    dt_from_str = "2023-01-01T05:00:00+05:00"  # UTC-5
+    dt_expected = datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC)  # shifted to UTC
+    dt_should_be_utc_0_0_0 = validate_datetime(dt_from_str, "_", ignore_tz=True)
+    assert dt_should_be_utc_0_0_0 == dt_expected
+
+
 # def test_validate_datetime_timezone_ignored():
 #     # with pytest.raises(BadTimezoneError, match=TIME_NOT_UTC_MSG("_", datetime(2023, 1, 1), "is invalid")):
 #     err = re.escape(TIME_NOT_UTC_MSG("halp", dt_w_tz, "is invalid."))
@@ -123,7 +137,6 @@ def test_validate_datetime_timezone_UTC_required():
 #     with pytest.raises(BadTimezoneError, match=err):
 #         validate_datetime(dt_w_tz, "halp", ignore_tz=False)
 #         validate_datetime(datetime(2023, 1, 1, tzinfo=None), "_", ignore_tz=True)
-
 
 
 
