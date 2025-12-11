@@ -2,6 +2,7 @@
 # Place that code here.
 
 from datetime import datetime
+from typing import Any
 
 from mano.constants import FULL_DT_FORMAT
 
@@ -11,23 +12,44 @@ def full_dt_format(dt: datetime) -> str:
     return dt.strftime(FULL_DT_FORMAT)
 
 
-# formatting functions
-
-def NO_TIME_MSG(name: str):
-    return f"{name} - no time was provided, filter will not be applied."
-
-
-def TIME_PARSED_MSG(name: str, time_str: str, dt: datetime):
-    return f"{name} - parsed time string `{time_str}` as `{full_dt_format(dt)}`"
+#
+# GENERIC formatting functions
+#
 
 
-def TIME_NAIVE_MSG(name: str):
-    return f"{name} - Mano received a timezone-naive datetime, proceeding assuming UTC"
+def X_IS_NOT_A_Y_MSG(x: str, y: type | str, the_object: Any, source_name: str):
+    if isinstance(y, type):
+        y = y.__name__
+    found = type(the_object)
+    return f"The `{x}` parameter passed to {source_name} must be a `{y}`, encountered `{found}`."
 
 
-def TIME_NOT_UTC_MSG(name: str, dt: datetime, ending: str):
+def NO_TIME_MSG(prefix: str):
+    return f"{prefix} - no datetime was provided, filter will not be applied."
+
+
+def TIME_REQUIRED_MSG(prefix: str):
+    return f"{prefix} - a required date and time parameter was not provided."
+
+
+def TIME_PARSED_MSG(prefix: str, time_str: str, dt: datetime):
+    return f"{prefix} - parsed time string `{time_str}` as `{full_dt_format(dt)}`"
+
+
+def COULD_NOT_PARSE_TIME_MSG(prefix: str, dt: datetime | str | None):
+    return f"{prefix} - could not parse time string `{dt}`"
+
+
+def TIME_NAIVE_MSG(prefix: str):
+    return f"{prefix} - Mano received a timezone-naive datetime, proceeding assuming UTC"
+
+
+def TIME_NOT_UTC_MSG(prefix: str, dt: datetime, ending: str):
     dt_str = full_dt_format(dt)
-    return f"{name} - The Beiwe platform expects times to be in the UTC timezone `{dt_str}` {ending}"
+    return f"{prefix} - The Beiwe platform expects times to be in the UTC timezone `{dt_str}` {ending}"
+
+
+# SPECIFIC formatting functions
 
 
 def NOT_200_OK_MSG(status_code: int, url: str):
@@ -57,11 +79,11 @@ def DATA_STREAM_NOT_PARTICIPANT_MSG(funcname: str, file_path: str, participant_i
            f"with the participant id."
 
 
-def BACKFILL_START_DATE_FUTURE_MSG(start_date: str):
+def BACKFILL_START_DATE_FUTURE_MSG(start_date: datetime):
     return f'Backfill received the value "{start_date}" for `start_date`, which is in the future.'
 
 
-def BACKFILL_UNPARSABLE_DATE_MSG(start_date: str):
+def BACKFILL_UNPARSABLE_DATE_MSG(start_date: str | datetime):
     return f'Backfill received the value "{start_date}" for `start_date`, which it could not parse.'
 
 
@@ -69,9 +91,15 @@ def BACKFILL_FILE_EXISTS_MSG(file_path: str):
     return f'A backfill timestamp file already exists at `{file_path}`, it will be overwritten.'
 
 
+def BACKFILL_RESTARTING_WARNING(participant_id: str):
+    return f"The backfill tracking file for participant `{participant_id}` indicates a prior " \
+        "backfill operation did not complete. Backfill will resume from the last recorded timestamp."
+
+
 #
 # Deprecation warnings
 #
+
 
 PROGRESS_DEPRECATION_MSG = \
     "The `progress` parameter is deprecated and will be removed in a future release, use `debug_level` instead"

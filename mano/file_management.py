@@ -355,9 +355,11 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
         log.info(f"Using {multithread_count} threads for {name}.")
     return ThreadPool(multithread_count)
 
+
 #
 # File Encryption
 #
+
 
 #TODO: actually review what this does and confirm this rename is correct
 #TODO: document this

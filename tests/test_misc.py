@@ -1,17 +1,22 @@
+import re
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 import responses
+from dateutil.tz import gettz
 from pytest_mock import MockerFixture
 from pyzstd import decompress
 
 import mano
 from mano import mano_cli
-from mano.constants import logger as log, BEIWE_EXTENSIONS_MESSAGE
+from mano.constants import BadTimezoneError, BEIWE_EXTENSIONS_MESSAGE, logger as log, UTC
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
+from mano.messages import TIME_REQUIRED_MSG
+from mano.sync import TIME_NOT_UTC_MSG, validate_datetime, validate_required_datetime
 from tests.conftest import (generate_compressed_zst_files, generate_uncompressed_zst_files,
     generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
@@ -73,6 +78,60 @@ def test_device_settings():
     """
 
 
+#
+# Beiwe platform specific datetime validation tests
+#
+
+
+def test_datetime_validation():
+    # test very basic string match - we aren't testing the breadth of dateutil here
+    assert validate_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
+    assert validate_datetime("2023-01-01 00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
+    assert validate_required_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
+    assert validate_required_datetime("2023-01-01 00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
+
+
+def test_require_datetime_errors_on_none():
+    with pytest.raises(ValueError, match=TIME_REQUIRED_MSG("_")):
+        validate_required_datetime(None, "_")
+    with pytest.raises(ValueError, match=TIME_REQUIRED_MSG("_")):
+        validate_required_datetime("", "_")
+
+
+def test_validate_datetime_no_error_on_none():
+    assert validate_datetime(None, "_") is None
+    assert validate_datetime("", "_") is None
+
+
+def test_validate_datetime_timezone_UTC_required():
+    dt_w_tz = datetime(2023, 1, 1, tzinfo=gettz("America/New_York"))
+    dt_wo_tz = datetime(2023, 1, 1, tzinfo=None)
+    dt_w_utc = datetime(2023, 1, 1, tzinfo=UTC)
+    
+    err = re.escape(TIME_NOT_UTC_MSG("halp", dt_w_tz, "is invalid."))
+    with pytest.raises(BadTimezoneError, match=err):
+        validate_datetime(dt_w_tz, "halp", ignore_tz=False)
+    
+    # but we do silently convert naive to UTC for the user, because the backend is in UTC
+    assert validate_datetime(dt_wo_tz, "_", ignore_tz=True) == dt_w_utc
+
+
+# def test_validate_datetime_timezone_ignored():
+#     # with pytest.raises(BadTimezoneError, match=TIME_NOT_UTC_MSG("_", datetime(2023, 1, 1), "is invalid")):
+#     err = re.escape(TIME_NOT_UTC_MSG("halp", dt_w_tz, "is invalid."))
+    
+#     with pytest.raises(BadTimezoneError, match=err):
+#         validate_datetime(dt_w_tz, "halp", ignore_tz=False)
+#         validate_datetime(datetime(2023, 1, 1, tzinfo=None), "_", ignore_tz=True)
+
+
+
+
+#
+# Very miscellaneous
+#
+
+
 def test_interval():
     assert mano.interval("10s") == 10
     assert mano.interval("5m") == 300
@@ -126,7 +185,7 @@ def test_compress_one_zst_file_defaults(tmp_path: Path):
     compress_one_zst_file(str(uncompressed_path))
     assert compressed_path.exists()
     assert uncompressed_path.exists()
-    assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
+    assert original_bytes == decompress(compressed_bytes := compressed_path.read_bytes())
     assert len(compressed_bytes) < len(original_bytes)
 
 
@@ -157,7 +216,7 @@ def test_compress_one_zst_file_custom_level(tmp_path: Path):
     compress_one_zst_file(str(uncompressed_path), compression_level=19)  # take it slow
     assert compressed_path.exists()
     assert uncompressed_path.exists()
-    assert original_bytes == decompress(compressed_bytes:=compressed_path.read_bytes())
+    assert original_bytes == decompress(compressed_bytes := compressed_path.read_bytes())
     assert len(compressed_bytes) < len(original_bytes)
 
 
