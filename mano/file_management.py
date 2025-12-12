@@ -4,8 +4,8 @@ import re
 from base64 import encodebytes as base64_encodebytes
 from collections.abc import Generator
 from multiprocessing.pool import ThreadPool
-from os import (chmod, makedirs as _make_directories, remove as delete_file, rename,
-    walk as walk_directory)
+from os import (chmod, makedirs as _make_directories, remove as delete_file,
+    replace as replace_file, walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -21,9 +21,9 @@ from mano.messages import (DATA_STREAM_FOLDER_MSG, DATA_STREAM_NOT_PARTICIPANT_M
     DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
-def make_directories(path: str, exist_ok: bool = True):
+def make_directories(path: str):
     """ Run create directories with exists defaulting to True """
-    _make_directories(path, exist_ok=exist_ok)
+    _make_directories(path, exist_ok=True)
 
 
 def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissions: int = 0o0644):
@@ -43,7 +43,8 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
     
     # TODO: the value of mimicking the cyptease.encrypt permissions is questionable.
     chmod(tmp.name, permissions)
-    rename(tmp.name, filename)
+    # on wandows rename will fail if target exists with a FileExistsError if we use os.rename
+    replace_file(tmp.name, filename)
 
 
 def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False) -> Generator[str, None, None]:
