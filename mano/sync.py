@@ -37,7 +37,7 @@ RequestPayload = dict[str, str | list[str] | dict[str, str]]
 
 #TODO: implement registry file generation and other management tools.
 #TODO: Aggressively hook in the registry? Aggressively regenerate the registry? Always regenerate it?
-#TODO: does the spinner need to be intrinsicly dependant on stdout?
+#TODO: does the spinner need to be intrinsically dependant on stdout?
 
 
 def download(
@@ -213,11 +213,6 @@ def download(
     participant_ids = participant_ids or []
     data_streams = data_streams or []
     
-    # handle time validation
-    # if isinstance(time_start, str) and not check_can_parse_to_datetime(time_start):
-    #     raise ValueError(COULD_NOT_PARSE_TIME_MSG("download - time_start", time_start))
-    # if isinstance(time_end, str) and not check_can_parse_to_datetime(time_end):
-    #     raise ValueError(COULD_NOT_PARSE_TIME_MSG("download - time_end", time_end))
     time_start = validate_datetime(time_start, "time_start")
     time_end = validate_datetime(time_end, "time_end")
     

@@ -7,7 +7,7 @@ from typing import Any
 from mano.constants import BASE_24HR_TIME_FORMAT
 
 
-# helpers22
+# helpers
 def full_dt_format(dt: datetime) -> str:
     # if the time zone is not a _name_, just an offset, %Z will be empty, then we use %z.
     tz_str = dt.strftime("%Z")

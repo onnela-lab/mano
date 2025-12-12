@@ -34,7 +34,7 @@ def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: d
 
 def test_download_user_ids_alias(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """ Ensure the deprecated user_ids alias works as expected. """
-    # Just test that it doesn't crash, if we later have further infratructure duplicate a separate test
+    # Just test that it doesn't crash, if we later have further infrastructure duplicate a separate test
     sync.download(
         keyring,
         study_id='STUDY_ID',
@@ -383,7 +383,7 @@ def test_backfill_calls_download(
     tmp_path: Path,
     mock_zip_data_uncompressed: bytes,
 ):
-    """ Test that backfill_participant calls download with correct paraeters. """
+    """ Test that backfill_participant calls download with correct parameters. """
     mock_download = mocker.patch(
         'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
     )
