@@ -4,9 +4,9 @@
 from datetime import datetime
 from typing import Any
 
-from mano.constants import BASE_24HR_TIME_FORMAT, FULL_DT_FORMAT, FULL_DT_FORMAT_NO_TZ
+from mano.constants import BASE_24HR_TIME_FORMAT
 
-from mano.constants import log
+
 # helpers22
 def full_dt_format(dt: datetime) -> str:
     # if the time zone is not a _name_, just an offset, %Z will be empty, then we use %z.
@@ -87,6 +87,10 @@ def DATA_STREAM_NOT_PARTICIPANT_MSG(funcname: str, file_path: str, participant_i
            f"with the participant id."
 
 
+def INVALID_DATA_STREAMS_MSG(invalid_streams: list[str], prefix: str):
+    return f'{prefix} - invalid data streams: {", ".join(invalid_streams)}'
+
+
 def BACKFILL_START_DATE_FUTURE_MSG(start_date: datetime):
     return f'Backfill received the value "{start_date}" for `start_date`, which is in the future.'
 
@@ -104,8 +108,8 @@ def BACKFILL_RESTARTING_WARNING(participant_id: str):
         "backfill operation did not complete. Backfill will resume from the last recorded timestamp."
 
 
-def BACKFILL_LOCK_AND_PASSPHRASE_MSG(parametername: str):
-    return "Backfill's `{parametername}` parameter cannot be empty if `passphrase` is provided."
+def BACKFILL_LOCK_AND_PASSPHRASE_MSG(parameter_a: str, parameter_b: str):
+    return f"Backfill's `{parameter_a}` parameter cannot be empty if `{parameter_b}` is provided."
 
 #
 # Deprecation warnings

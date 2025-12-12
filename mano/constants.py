@@ -26,25 +26,24 @@ locale.setlocale(locale.LC_ALL, LOCALE)
 
 DATA_STREAMS = Config['data_streams']  # Warning, historical variable name, cannot/do not change
 ALL_DATA_STREAMS = {
-    "accel",
-    "ambientAudio",
-    "bluetoothLog",
-    "callLog",
+    "accelerometer",
+    "audio_recordings",
+    "app_log",
+    "bluetooth",
+    "calls",
     "devicemotion",
     "gps",
     "gyro",
     "identifiers",
     "ios_log",
-    "logFile",
     "magnetometer",
-    "powerState",
+    "power_state",
     "proximity",
     "reachability",
-    "surveyAnswers",
-    "surveyTimings",
-    "textsLog",
-    "voiceRecording",
-    "wifiLog",
+    "survey_answers",
+    "survey_timings",
+    "texts",
+    "wifi",
 }
 
 #
@@ -55,7 +54,8 @@ BASE_24HR_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # isoformat but with space instead 
 FULL_DT_FORMAT = "%Y-%m-%d %H:%M:%S (%Z)"  # with timezone _name_
 FULL_DT_FORMAT_NO_TZ = "%Y-%m-%d %H:%M:%S"
 
-TIME_FORMAT = Config['time_format']  # TODO: where do we use this?
+TIME_FORMAT = Config['time_format']  # This will probably get removed because we always want isoformat
+API_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"  # isoformat without timezone, YYYY-MM-DDThh:mm:ss
 
 # this is the earliest possible date for data out of any Beiwe study
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
@@ -114,12 +114,10 @@ class StudyNameError(Exception): pass  # noqa
 class StudySettingsError(Exception): pass  # noqa
 
 # new!
-class BadTimezoneError(Exception): pass  # noqa
+class UnParsableTimeError(ValueError): pass  # noqa
 
-# configure colored logging
-# coloredlogs.install(fmt="%(levelname)s %(name)s: %(message)s")
-# coloredlogs.install(fmt="%(message)s")
 
+# configure colored logging - currently this is our best spot for this
 coloredlogs.install(
     fmt="%(asctime)s %(name)s: %(message)s",
     programname="mano",

@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -11,12 +10,12 @@ from pyzstd import decompress
 
 import mano
 from mano import mano_cli
-from mano.constants import BadTimezoneError, BEIWE_EXTENSIONS_MESSAGE, logger as log, UTC
+from mano.constants import BEIWE_EXTENSIONS_MESSAGE, logger as log, UTC
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
 from mano.messages import TIME_REQUIRED_MSG
-from mano.sync import TIME_NOT_UTC_MSG, validate_datetime, validate_required_datetime
+from mano.sync import validate_datetime, validate_required_datetime
 from tests.conftest import (generate_compressed_zst_files, generate_uncompressed_zst_files,
     generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
@@ -104,40 +103,24 @@ def test_validate_datetime_no_error_on_none():
 
 
 def test_validate_datetime_timezone_UTC_required():
-    dt_w_tz = datetime(2023, 1, 1, tzinfo=gettz("America/New_York"))
     dt_wo_tz = datetime(2023, 1, 1, tzinfo=None)
     dt_w_utc = datetime(2023, 1, 1, tzinfo=UTC)
-    
-    err = re.escape(TIME_NOT_UTC_MSG("halp", dt_w_tz, "is invalid."))
-    with pytest.raises(BadTimezoneError, match=err):
-        validate_datetime(dt_w_tz, "halp", ignore_tz=False)
-    
-    # but we do silently convert naive to UTC for the user, because the backend is in UTC
-    assert validate_datetime(dt_wo_tz, "_", ignore_tz=True) == dt_w_utc
+    # we do silently convert naive to UTC for the user, because the backend is in UTC
+    assert validate_datetime(dt_wo_tz, "_") == dt_w_utc
 
 
 def test_validate_datetime_with_timezone_timeshifts():
     dt_ny = datetime(2023, 1, 1, 0, 0, 0, tzinfo=gettz("America/New_York"))
     dt_expected = datetime(2023, 1, 1, 5, 0, 0, tzinfo=UTC)  # shifted to UTC
-    dt_should_be_utc_0_0_0 = validate_datetime(dt_ny, "_", ignore_tz=True)
+    dt_should_be_utc_0_0_0 = validate_datetime(dt_ny, "_")
     assert dt_should_be_utc_0_0_0 == dt_expected
 
 
 def test_validate_datetime_string_with_timezone_timeshifts():
     dt_from_str = "2023-01-01T05:00:00+05:00"  # UTC-5
     dt_expected = datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC)  # shifted to UTC
-    dt_should_be_utc_0_0_0 = validate_datetime(dt_from_str, "_", ignore_tz=True)
+    dt_should_be_utc_0_0_0 = validate_datetime(dt_from_str, "_")
     assert dt_should_be_utc_0_0_0 == dt_expected
-
-
-# def test_validate_datetime_timezone_ignored():
-#     # with pytest.raises(BadTimezoneError, match=TIME_NOT_UTC_MSG("_", datetime(2023, 1, 1), "is invalid")):
-#     err = re.escape(TIME_NOT_UTC_MSG("halp", dt_w_tz, "is invalid."))
-    
-#     with pytest.raises(BadTimezoneError, match=err):
-#         validate_datetime(dt_w_tz, "halp", ignore_tz=False)
-#         validate_datetime(datetime(2023, 1, 1, tzinfo=None), "_", ignore_tz=True)
-
 
 
 #
@@ -307,7 +290,7 @@ def test_empty_folder(tmp_path: Path):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
             log.error(f"TEST: Unexpected file found while running test 3: {fp}")  # debugging helper
     
-    msg2 =f"No `.zst` files found in directory `{rgx_compat_path}` or its subdirectories."
+    msg2 = f"No `.zst` files found in directory `{rgx_compat_path}` or its subdirectories."
     with pytest.raises(FileNotFoundError, match=msg2):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
             log.error(f"TEST: Unexpected file found while running test 4: {fp}")  # debugging helper

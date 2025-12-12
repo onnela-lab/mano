@@ -12,7 +12,7 @@ from pyzstd import decompress
 from responses import RequestsMock
 
 from mano import sync
-from mano.constants import APIError, UTC
+from mano.constants import APIError, UnParsableTimeError, UTC
 from mano.messages import NOT_200_OK_MSG
 
 
@@ -551,3 +551,353 @@ def test_parseable_backfill_overrides(
     
     assert backfill_file.exists()
     assert backfill_file.read_text() == "COMPLETE"
+
+
+#
+# Test Type Validation for download
+#
+
+# Keyring: dict[str, str]
+# study_id: str
+# participant_ids: list[str] | None = None
+# data_streams: list[str] | None = None
+# time_start: str | datetime | None = None
+# time_end: str | datetime | None = None
+# registry: dict[str, str] | None = None
+# compressed: bool = False
+# progress: int = 0
+# user_ids: list[str] | None = None
+
+def test_download_type_validation_raises_on_bad_types(keyring: dict[str, str]):
+    with pytest.raises(TypeError, match=".*Keyring.*dict.*"):
+        sync.download(
+            Keyring='not a dict',  # type: ignore
+            study_id='STUDY_ID',
+        )
+    with pytest.raises(TypeError, match=".*study_id.*str.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*participant_ids.*list.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids='not a list',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*data_streams.*list.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            data_streams='not a list',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*time_start.*datetime.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            time_start=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*time_end.*datetime.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            time_end=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*registry.*dict.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            registry='not a dict',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*compressed.*bool.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            compressed='not a bool',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*progress.*int.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            progress='not an int',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*user_ids.*list.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            user_ids='not a list',  # type: ignore
+        )
+
+
+def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture):
+    mocker.patch('mano.sync._download')  # prevent actual download
+    
+    # should not raise
+    sync.download(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        participant_ids=['USER_ID'],
+        data_streams=['gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        registry={'some_file': 'some_hash'},
+        compressed=True,
+        progress=1,
+        # user_ids=['USER_ID'],
+    )
+    # can't have both participant_ids and user_ids
+    sync.download(
+        Keyring=keyring,
+        study_id='STUDY_ID',
+        # participant_ids=['USER_ID'],
+        data_streams=['gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        registry={'some_file': 'some_hash'},
+        compressed=True,
+        progress=1,
+        user_ids=['USER_ID'],
+    )
+
+
+def test_download_non_type_error_validation(keyring: dict[str, str]):
+    
+    # can't have both participant_ids and user_ids
+    with pytest.raises(ValueError, match=".*you cannot provide both\\.$"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            user_ids=['USER_ID'],
+        )
+    
+    # bad data stream
+    with pytest.raises(ValueError, match=".*invalid.*random_stream.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            data_streams=['gps', 'random_stream'],
+        )
+    
+    # end time before start time
+    with pytest.raises(sync.DownloadError, match=".*is after end_time.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_start='2018-06-17T00:00:00',
+            time_end='2018-06-15T00:00:00',
+        )
+    
+    # unparsable time_start
+    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_start='not a date',
+        )
+    # unparsable time_end
+    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
+        sync.download(
+            Keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_end='not a date',
+        )
+
+
+# Keyring: dict[str, str]
+# study_id: str
+# participant_id: str
+# output_dir: str
+# start_date: str | datetime = EARLIEST_POSSIBLE_DATA_DT
+# data_streams: list[str] | None = None
+# lock: list[str] | None = None
+# passphrase: str | None = None
+# user_id: str | None = None
+
+
+def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
+    mocker.patch('mano.sync._download')  # prevent actual download
+    
+    with pytest.raises(TypeError, match=".*Keyring.*dict.*"):
+        sync.backfill(
+            Keyring="not a dict",  # type: ignore
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+        )
+    with pytest.raises(TypeError, match=".*study_id.*str.*"):
+        sync.backfill(
+            Keyring={},
+            study_id=12345,  # type: ignore
+            participant_id="USER_ID",
+            output_dir="/tmp",
+        )
+    with pytest.raises(TypeError, match=".*participant_id.*str.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id=12345,  # type: ignore
+            output_dir="/tmp",
+        )
+    with pytest.raises(TypeError, match=".*output_dir.*str.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*start_date.*datetime.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            start_date=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*data_streams.*list.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            data_streams="not a list",  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*lock.*list.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            lock="not a list",  # type: ignore
+            passphrase="aoeustaoeu"  # passphrase is required if lock is used
+        )
+    with pytest.raises(TypeError, match=".*passphrase.*str.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            passphrase=12345,  # type: ignore
+            lock=["gps"]  # lock is required if passphrase is used
+        )
+    with pytest.raises(TypeError, match=".*user_id.*str.*"):
+        sync.backfill(
+            Keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            user_id=12345,  # type: ignore
+        )
+
+
+def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path):
+    mocker.patch("mano.sync._backfill_participant")  # prevent actual download
+    
+    # should not raise
+    sync.backfill(
+        Keyring=keyring,
+        study_id="STUDY_ID",
+        participant_id="USER_ID",
+        output_dir=str(tmp_path),
+        start_date="2018-06-15T00:00:00",
+        data_streams=["gps"],
+        lock=["gps"],
+        passphrase="some_passphrase",
+        # user_id="USER_ID",
+    )
+    # cannot have both participant_id and user_id
+    sync.backfill(
+        Keyring=keyring,
+        study_id="STUDY_ID",
+        participant_id=None,  # type: ignore #      have to set to None, it is a positional arg
+        output_dir=str(tmp_path),
+        start_date="2018-06-15T00:00:00",
+        data_streams=["gps"],
+        lock=["gps"],
+        passphrase="some_passphrase",
+        user_id="USER_ID",
+    )
+
+
+def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: Path):
+    
+    # cannot have both participant_id and user_id
+    with pytest.raises(ValueError, match=".*you cannot provide both\\.$"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            user_id="USER_ID",
+        )
+    
+    # passphrase without lock
+    with pytest.raises(ValueError, match=".*parameter cannot be empty if `passphrase`.*"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            passphrase="some_passphrase",
+        )
+    
+    # lock without passphrase
+    with pytest.raises(ValueError, match=".*parameter cannot be empty if `lock`.*"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            lock=["gps"],
+        )
+    
+    # invalid data stream in lock
+    with pytest.raises(ValueError, match="backfill - `lock` - invalid data streams:.*random_stream.*"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            lock=["gps", "random_stream"],
+            passphrase="some_passphrase",
+        )
+    
+    # invalid data stream in data_streams
+    with pytest.raises(ValueError, match="backfill - `data_streams` - invalid data streams:.*random_stream.*"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            data_streams=["gps", "random_stream"],
+        )
+    
+    # empty start_date string
+    with pytest.raises(ValueError, match=".`start_date` parameter cannot be an empty.*"):
+        sync.backfill(
+            Keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date="",
+        )
+
+
+def test_backfill__future_does_not_call_backfill_participant(
+    mocker: MockerFixture, tmp_path: Path, keyring: dict[str, str]
+):
+    """ Test that backfill_participant makes no download calls when start_date is in the future. """
+    mock_backfill_participant = mocker.patch('mano.sync._backfill_participant')  # prevent actual download
+    tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=5)
+    sync.backfill(
+        Keyring=keyring,
+        study_id="STUDY_ID",
+        participant_id="USER_ID",
+        output_dir=str(tmp_path),
+        start_date=tomorrow,
+    )
+    mock_backfill_participant.assert_not_called()
