@@ -568,7 +568,12 @@ def test_parseable_backfill_overrides(
 # progress: int = 0
 # user_ids: list[str] | None = None
 
-def test_download_type_validation_raises_on_bad_types(keyring: dict[str, str]):
+
+def test_download_type_validation_raises_on_bad_types(
+    keyring: dict[str, str], mocker: MockerFixture
+):
+    mocker.patch('mano.sync._download')  # prevent actual download
+    
     with pytest.raises(TypeError, match=".*Keyring.*dict.*"):
         sync.download(
             Keyring='not a dict',  # type: ignore
@@ -583,7 +588,7 @@ def test_download_type_validation_raises_on_bad_types(keyring: dict[str, str]):
         sync.download(
             Keyring=keyring,
             study_id='STUDY_ID',
-            participant_ids='not a list',  # type: ignore
+            participant_ids=12345,  # type: ignore
         )
     with pytest.raises(TypeError, match=".*data_streams.*list.*"):
         sync.download(
@@ -625,7 +630,7 @@ def test_download_type_validation_raises_on_bad_types(keyring: dict[str, str]):
         sync.download(
             Keyring=keyring,
             study_id='STUDY_ID',
-            user_ids='not a list',  # type: ignore
+            user_ids=12345,  # type: ignore
         )
 
 
@@ -657,6 +662,52 @@ def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], 
         compressed=True,
         progress=1,
         user_ids=['USER_ID'],
+    )
+
+
+def test_download_single_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
+    """Test that download works when a single participant ID string is provided."""
+    dl = mocker.patch("mano.sync._download")
+    # Call the download function with a single string participant ID
+    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
+    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
+    zf = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        participant_ids='USER_ID',
+        data_streams=['identifiers', 'gps'],
+        time_start=time_start,
+        time_end=time_end,
+    )
+    
+    dl.assert_called_once_with(
+        keyring, 'STUDY_ID', False, ['identifiers', 'gps'], {}, time_start, time_end, ['USER_ID']
+    )
+
+
+def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
+    """Test that download works when a single participant ID string is provided."""
+    dl = mocker.patch("mano.sync._download")
+    # Call the download function with a single string participant ID
+    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
+    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
+    zf = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        participant_ids='USER_ID,user_id',
+        data_streams=['identifiers', 'gps'],
+        time_start=time_start,
+        time_end=time_end
+    )
+    dl.assert_called_once_with(
+        keyring,
+        'STUDY_ID',
+        False,
+        ['identifiers', 'gps'],
+        {},
+        time_start,
+        time_end,
+        ['USER_ID', 'user_id'],
     )
 
 

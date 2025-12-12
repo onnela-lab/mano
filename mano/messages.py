@@ -137,6 +137,8 @@ SYNC_SAVE_DEPRECATION_MSG = \
     "[mano.sync].save() is a deprecated alias of [mano.file_management].save_encrypted() and " \
     "will be removed in a future release, use mano.file_management.save_encrypted"
 
+DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
+    "`participant_ids` was provided as a comma-separated string. This usage has been deprecated."
 
 # TODO: finish documenting all the error codes for the data access API
 

@@ -21,10 +21,11 @@ from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_INTERVAL
 from mano.file_management import atomic_write, make_directories, save_archive_with_registry
 from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_MSG, BACKFILL_RESTARTING_WARNING,
     BACKFILL_START_DATE_FUTURE_MSG, BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG,
-    full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG, NOT_200_OK_MSG,
-    PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG,
-    SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, TIME_REQUIRED_MSG,
-    USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG, X_IS_NOT_A_Y_MSG)
+    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG,
+    NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
+    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
+    TIME_PARSED_MSG, TIME_REQUIRED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
+    X_IS_NOT_A_Y_MSG)
 
 
 # historical namespace items
@@ -45,7 +46,7 @@ def download(
     study_id: str,                             # The target Study ID.
     
     # Data Filters
-    participant_ids: list[str] | None = None,  # List of participant IDs to target.
+    participant_ids: str | list[str] | None = None,  # List of participant IDs to target.
     data_streams: list[str] | None = None,     # List of data streams to target.
     time_start: str | datetime | None = None,  # Limit to only data AFTER this time.
     time_end: str | datetime | None = None,    # Limit to only data BEFORE this time.
@@ -57,7 +58,7 @@ def download(
     # Deprecated
     # Deprecated parameters will be removed in future releases of Mano, they will emit warnings.
     progress: int = 0,                         # Show the progress every N bytes.
-    user_ids: list[str] | None = None,         # alias of participant_ids.
+    user_ids: str | list[str] | None = None,         # alias of participant_ids.
 ) -> zipfile.ZipFile:
     """
     A simple function to download Beiwe Platform Study Data from the Beiwe Data Access API.
@@ -155,10 +156,10 @@ def download(
     if user_ids:
         log.warning(USER_IDS_DEPRECATION_MSG)
         # raise type error early
-        if not isinstance(user_ids, (list, type(None))):
+        if not isinstance(user_ids, (list, type(None), str)):
             log.error(
                 msg :=  # worst formatting ever...
-                X_IS_NOT_A_Y_MSG("user_ids", "list[str] or None", user_ids, "download")
+                X_IS_NOT_A_Y_MSG("user_ids", "str, list[str], or None", user_ids, "download")
             )
             raise TypeError(msg)
     
@@ -177,7 +178,7 @@ def download(
     if not isinstance(study_id, str):
         log.error(msg := X_IS_NOT_A_Y_MSG("study_id", str, study_id, "download"))
         raise TypeError(msg)
-    if not isinstance(participant_ids, (list, type(None))):
+    if not isinstance(participant_ids, (list, type(None), str)):
         log.error(
             msg :=  # worst formatting ever...
             X_IS_NOT_A_Y_MSG("participant_ids", "list[str] or None", participant_ids, "download")
@@ -208,6 +209,17 @@ def download(
         log.error(msg := X_IS_NOT_A_Y_MSG("progress", int, progress, "download"))
         raise TypeError(msg)
     
+    # handle participant_ids as str or list[str]
+    if isinstance(participant_ids, str):
+        if "," in participant_ids:
+            # individually strip whitespace and ignore empty strings
+            # (note: this exists only to support existing, known use-cases, do not document it in
+            # the big documentation section above, this is not a recommended usage pattern.)
+            participant_ids = [p_id.strip() for p_id in participant_ids.split(",") if p_id.strip()]
+            log.warning(DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING)
+        else:
+            participant_ids = [participant_ids.strip()]
+    
     # convert None to empty collections
     registry = registry or {}
     participant_ids = participant_ids or []
@@ -223,7 +235,7 @@ def download(
     validate_data_streams(data_streams, "download - `data_streams`")
     
     return _download(
-        Keyring, study_id, compressed, data_streams, registry, time_end, time_start, participant_ids
+        Keyring, study_id, compressed, data_streams, registry, time_start, time_end, participant_ids
     )
 
 
@@ -418,8 +430,8 @@ def _download(
     compressed: bool,
     data_streams: list[str],
     registry: dict[str, str],
-    time_end: datetime | None,
     time_start: datetime | None,
+    time_end: datetime | None,
     participant_ids: list[str],
 ) -> zipfile.ZipFile:
     """
