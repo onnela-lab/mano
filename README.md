@@ -169,8 +169,8 @@ for study in mano.studies(Keyring):
 
 _, study_id = study  # get the last printed study id
 
-for user_id in mano.users(Keyring, study_id):
-    print(user_id)
+for participant_id in mano.users(Keyring, study_id):
+    print(participant_id)
 
 for setting in mano.device_settings(Keyring, study_id):
     print(setting)
@@ -193,7 +193,7 @@ logging.basicConfig(level=logging.INFO)
 
 output_folder = '/tmp/beiwe-data'  # set this to a real folder location
 
-zf = msync.download(Keyring, study_id, user_id, data_streams=['identifiers'])
+zf = msync.download(Keyring, study_id, participant_id, data_streams=['identifiers'])
 
 zf.extractall(output_folder)
 ```
@@ -218,14 +218,14 @@ You can pass the `ZipFile` object to `msync.save` if you wish to encrypt data st
 ```python
 lock_streams = ['gps', 'audio_recordings']
 
-zf = msync.download(Keyring, study_id, user_id)
+zf: zipfile.ZipFile = msync.download(Keyring, study_id, participant_id)
 
 data_encryption_key = Keyring['SECRETS']['Beiwe Study Omega']  # not the keyring decryption key!
 
 msync.save(
     Keyring,
     zf,
-    user_id,
+    participant_id,
     output_folder,
     lock=lock_streams,
     passphrase=data_encryption_key,
@@ -244,23 +244,22 @@ data_streams = ['accel', 'ios_log', 'gps']
 time_start = '2015-10-01T00:00:00'
 time_end = '2015-12-01T00:00:00'
 
-zf = msync.download(
+
+zf: zipfile.ZipFile = msync.download(
     Keyring,
     study_id,
-    user_id,
+    participant_id,
     data_streams=data_streams,
     time_start=time_start,
     time_end=time_end,
 )
-
-zf.extractall(output_folder)
+zf.extractall(output_folder)  # Does exactly what it says
 ```
 
 > [!Note]
-> The full list of data stream keys is: `accelerometer`, `app_log`, `audio_recordings`,
-> `bluetooth`, `calls`, `devicemotion`, `gps`, `gyro`, `identifiers`, `image_survey`, `ios_log`,
-> `magnetometer`, `power_state`, `proximity`, `reachability`, `survey_answers`, `survey_timings`,
-> `texts`, and `wifi`.
+> The full list of data stream keys is: `accelerometer`, `app_log`, `audio_recordings`, `bluetooth`,
+> `calls`, `devicemotion`, `gps`, `gyro`, `identifiers`, `ios_log`, `magnetometer`, `power_state`,
+> `proximity`, `reachability`, `survey_answers`, `survey_timings`, `texts`, and `wifi`.
 
 Eventually you may find yourself day-dreaming about a `backfill` function that will slide a window
 from some arbitrary starting point to the present time in order to download all of your data in more
@@ -272,7 +271,7 @@ start_date = '2015-01-01T00:00:00'
 msync.backfill(
     Keyring,
     study_id,
-    user_id,
+    participant_id,
     output_folder,
     start_date=start_date,
     lock=lock_streams,

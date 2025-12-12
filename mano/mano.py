@@ -10,12 +10,12 @@ import requests
 from lxml import html
 from lxml.html import HtmlElement
 
-from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError, logger,
-    LoginError, ScrapeError, StudyIDError, StudyNameError, StudySettingsError)
+from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError,
+    logger as log, LoginError, ScrapeError, StudyIDError, StudyNameError, StudySettingsError)
 
 
 # historical namespace items
-from mano.constants import DATA_STREAMS, LOCALE, TIME_FORMAT, Config  # noqa # type: ignore
+from mano.constants import Config, DATA_STREAMS, LOCALE, TIME_FORMAT  # noqa # type: ignore
 
 
 def interval(x: str) -> int:
@@ -105,8 +105,10 @@ def keyring(
     # load, return
     try:
         js = json.loads(content)
-    except ValueError as e:
-        raise KeyringError(f'could not decrypt file {keyring_file} (wrong passphrase perhaps?)') from e
+    except (ValueError, KeyError) as e:
+        msg = f"could not decrypt file `{keyring_file}` (wrong passphrase, perhaps?)"
+        log.error(msg)
+        raise KeyringError(msg) from e
     return js[deployment]
 
 
@@ -140,7 +142,7 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
     if not ids:
-        logger.warning(f'no study was found for study id segment {segment}')
+        log.warning(f'no study was found for study id segment {segment}')
         return None
     elif len(ids) == 1:
         return ids[0]

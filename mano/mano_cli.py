@@ -5,7 +5,7 @@ from os import name
 from os.path import abspath
 from sys import argv as command_line_args
 
-from mano.constants import InternalError, logger as log, VALID_EXTENSIONS_ANDED
+from mano.constants import InternalError, logger as log, BEIWE_EXTENSIONS_ANDED
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
     decompress_zst_files, validate_is_a_folder_or_valid_beiwe_data_file,
     validate_is_a_folder_or_zst_file)
@@ -35,15 +35,15 @@ mano currently supports 2 commands: decompress and compress.
 
 ~File Management~
 
-"mano decompress <directory or file path> [{DELETE_ZST}] [{OVERWRITE}]"
-  This command will decompress all .zst files in the specified directory.
-  (You can specify the current directory with a single dot: `.`)
+"mano decompress <folder or file path> [{DELETE_ZST}] [{OVERWRITE}]"
+  This command will decompress all Beiwe (.csv and .wav) .zst files in the specified folder.
+  (You can specify the current folder with a single dot: `.`)
 
-"mano compress <directory or file path> [-#] [{DELETE_ORIGINAL}] [{OVERWRITE}]"
-  This command will compress all .zst files in the specified directory.
+"mano compress <folder or file path> [-#] [{DELETE_ORIGINAL}] [{OVERWRITE}]"
+  This command will compress all Beiwe (.csv and .wav) files in the specified folder.
   You can optionally provide a `-#` (like `-8`) to set a compression level.
-    (Default is 2, maximum is 22, gains can be up to about 30% smaller.
-    High values get very, very slow.)
+    (Default is 2, downloaded data is 2, maximum is 22, the maximum gains from
+    a higher value can be up to about 30% smaller. High values get very slow.)
 
 
 Global Options - you can always provide these with any command:
@@ -63,14 +63,14 @@ def main():
     
     log.debug(f"mano received the following cli args: {sys.argv}")
     
-    # (when main is called sys.argv[0] should always be the script's name.)
     # Display help on no args, -h, --help
+    # (when main is called sys.argv[0] should always be the script's name.)
     if len(sys.argv) < 2 or "-h" in sys.argv or "--help" in sys.argv:
         for line in CLI_HELP_MESSAGE.split("\n"):  # do not change to splitlines
             log.info(line)                         # we want blank lines retained
         return
     
-    args = deepcopy(command_line_args[1:])
+    args = deepcopy(command_line_args[1:])  # drop the program name from args
     
     # handle global parameters first, remove from args
     if "-y" in args or "--yes" in args:
@@ -142,7 +142,7 @@ def decompress(args: list[str]):
     
     class info:
         describe = \
-            f"Decompress all .zst files in the directory `{abspath(target_path)}` and its subdirectories."
+            f"Decompress all .zst files in the folder `{abspath(target_path)}` and its subfolders."
         delete_zst = {
             True: "DELETE the .zst files after decompressing them",
             False: "RETAIN any .zst files after decompressing them"
@@ -189,10 +189,10 @@ def compress(args: list[str]):
     validate_is_a_folder_or_valid_beiwe_data_file(target_path)
     
     class info:
-        compression_level: str  # (IDE complains incorrectly without this line)
+        compression_level: str  # (type annotation for attribute, checker complains without this line)
         describe = \
-            f"Compress all {VALID_EXTENSIONS_ANDED} files in the directory " \
-                f"`{abspath(target_path)}` and its subdirectories."
+            f"Compress all {BEIWE_EXTENSIONS_ANDED} files in the folder " \
+                f"`{abspath(target_path)}` and its subfolders."
         delete_original = {
             True: "DELETE the original files after compressing them",
             False: "RETAIN the original files after compressing them"
@@ -213,7 +213,7 @@ def compress(args: list[str]):
             }
     
     info.compression_level = f"using compression level {compression_level}"
-    if compression_level == 2: # default
+    if compression_level == 2:  # default
         info.compression_level += " (the default)"
     
     confirm_command(
