@@ -3,29 +3,28 @@ import logging
 import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
-from os import fsync
+from os import fsync, remove as delete_file
 from os.path import exists as file_exists, join as path_join
 from pprint import pformat
 from sys import stdout
 from tempfile import NamedTemporaryFile
-from time import perf_counter, sleep
+from time import perf_counter
 
+import orjson
 import requests
 from dateutil.parser import parse as dateutil_parse, ParserError
 from dateutil.tz import UTC
 from requests.models import Response
 
-from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_INTERVAL_SLEEP,
-    BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT, log, UnParsableTimeError, URL_COMPRESSED,
-    URL_UNCOMPRESSED)
-from mano.file_management import atomic_write, make_directories, save_archive_with_registry
-from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_MSG, BACKFILL_RESTARTING_WARNING,
-    BACKFILL_START_DATE_FUTURE_MSG, BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG,
-    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG,
-    NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
-    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
-    TIME_PARSED_MSG, TIME_REQUIRED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_MSG)
+from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_WINDOW,
+    EARLIEST_POSSIBLE_DATA_DT, log, UnParsableTimeError, URL_COMPRESSED, URL_UNCOMPRESSED)
+from mano.file_management import generate_registry_info, make_directories, save_archive
+from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_MSG, BACKFILL_START_DATE_FUTURE_MSG,
+    BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG, DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING,
+    full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG, NOT_200_OK_MSG,
+    PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG,
+    SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, TIME_REQUIRED_MSG,
+    USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG, X_IS_NOT_A_Y_MSG)
 
 
 # historical namespace items
@@ -248,6 +247,7 @@ def backfill(
     data_streams: list[str] | None = None,          # List of data streams to backfill.
     lock: list[str] | None = None,                  # List of files to lock during backfill.
     passphrase: str | None = None,                  # Passphrase for encryption.
+    compressed: bool = False,                       # Compress downloaded data.
     # Deprecated
     user_id: str | None = None,                     # DEPRECATED alias of participant_id.
 ) -> None:
@@ -337,6 +337,9 @@ def backfill(
     if not isinstance(lock, (type(None), list)):
         log.error(msg := X_IS_NOT_A_Y_MSG("lock", "list of strings or None", lock, "backfill"))
         raise TypeError(msg)
+    if not isinstance(compressed, bool):
+        log.error(msg := X_IS_NOT_A_Y_MSG("compressed", bool, compressed, "backfill"))
+        raise TypeError(msg)
     if not isinstance(passphrase, (type(None), str)):
         log.error(msg := X_IS_NOT_A_Y_MSG("passphrase", "str or None", passphrase, "backfill"))
         raise TypeError(msg)
@@ -392,7 +395,7 @@ def backfill(
     
     # this is just a this wrapper to provide documentation for usage of Mano's backfill functionality
     _backfill_participant(
-        Keyring, study_id, participant_id, output_dir, start_date, data_streams, lock, passphrase,
+        Keyring, study_id, participant_id, output_dir, start_date, data_streams, compressed, lock, passphrase,
     )
 
 
@@ -416,7 +419,7 @@ def save(
     if user_id and not participant_id:
         participant_id = user_id
     
-    return save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
+    return save_archive(archive, participant_id, output_dir, lock, passphrase)
 
 
 #
@@ -457,10 +460,12 @@ def _download(
     if time_end:
         payload["time_end"] = time_end.strftime(API_TIME_FORMAT)
     if registry:
-        payload["registry"] = registry
+        payload["registry"] = orjson.dumps(registry).decode()
     
-    # don't log sensitive information
-    dummy_payload = {k: v for k, v in payload.items() if k not in ("access_key", "secret_key")}
+    # don't log sensitive information, registry may be huuge
+    dummy_payload = {k: v for k, v in payload.items() if k not in ("access_key", "secret_key", "registry")}
+    if registry:
+        dummy_payload["registry"] = "<omitted>"
     log.debug(f"download parameters: {pformat(dummy_payload, width=20000)}")
     
     return _do_download(url, payload)
@@ -478,11 +483,14 @@ def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
         log.error(err_msg := NOT_200_OK_MSG(resp.status_code, resp.url))
         raise APIError(err_msg)
     
-    log.info('Server responded, reading zip data... ')
-    size, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
-    log.info('Download finished.')
-    MBps = (size / 1024 / 1024) / (t_end - t_start)
-    log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s)')
+    log.info('Server responded, downloading zip data... ')
+    MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
+    
+    MBps = MB / (t_end - t_start)
+    if f"{t_end - t_start:.2f}" == "0.00":
+        log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
+    else:
+        log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s) for {MB:.2f} MB.')
     
     # load response content into a zipfile object
     try:
@@ -505,59 +513,68 @@ def _backfill_participant(
     output_dir: str,
     start_time: datetime,
     data_streams: list[str],
+    compressed: bool,
     lock: list[str],
     passphrase: str | None = None,
 ) -> None:
     """
     Business logic for backfilling a participant's data.
+    Do not call this function directly, use `backfill(...)`
     """
-    # do not call this function directly, use `backfill(...)`
+    
     assert start_time.tzinfo is None, "start_time must be timezone-naive"
     
-    backfill_file_path = path_join(output_dir, participant_id, '.backfill')
+    participant_path = path_join(output_dir, participant_id)
+    if file_exists(backfill_file := path_join(participant_path, '.backfill')):
+        log.warning("found old backfill tracking file, deleteing it.")
+        delete_file(backfill_file)
     
     log.info(f'Starting backfill, initial timestamp: {start_time}')
     next_timestamp = start_time
+    tmrrow = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
-    # safely read in the backfill tracking file if it exists, override input start time if present.
-    if file_exists(backfill_file_path):
-        with open(backfill_file_path) as fo:
-            _tmp = fo.read().strip()
-        
-        if _tmp != 'COMPLETE':
-            if check_can_parse_to_datetime(_tmp):
-                next_timestamp = dateutil_parse(_tmp)
-                log.warning(BACKFILL_RESTARTING_WARNING(participant_id))
-                log.info(f'backfill file contains string `{next_timestamp}`')
-            else:
-                log.warning("Backfill tracking file was junk, ignoring.")
+    particpant_registry, local_hash_lookup = generate_registry_info(
+        participant_path, study_id, participant_id
+    )
     
     while True:
-        
         # get [next] download window and resume point, and download
         start, end = _get_next_backfill_window_strings(next_timestamp)
-        log.info(f'Current backfill window is {start} - {end}...')
+        log.info(f'Checking for backfill window {start} - {end}...')
         
         archive = download(
-            Keyring, study_id, [participant_id], data_streams, time_start=start, time_end=end
+            Keyring,
+            study_id,
+            [participant_id],
+            data_streams,
+            time_start=start,
+            time_end=end,
+            compressed=True,
+            registry=particpant_registry
         )
         
         # save data
-        num_saved = save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
-        log.info(f'One download complete, saved {num_saved} files.')
+        log.info('Download complete, checking data...')
+        num_saved = save_archive(
+            archive,
+            participant_id,
+            output_dir,
+            lock,
+            passphrase,
+            decompress_zst=not compressed,  # compressed is true when we do not want decompression
+            hash_lookup=local_hash_lookup,
+        )
+        log_func = log.warning if num_saved == 0 else log.info
+        log_func(f'download complete, created or updated {num_saved} files.')
         
-        # end condition
-        # TODO: possible bugs - .today() returns ~now, not a start or end of day....
-        if end > datetime.today():
-            atomic_write(backfill_file_path, b'COMPLETE')
+        # stop condition
+        if end > tmrrow:
             log.info(f'Backfill operations are complete for participant `{participant_id}`')
             return
         
-        # wite the new resume point to the backfill file, sleep, repeat
-        atomic_write(backfill_file_path, end.isoformat().encode())
-        log.info(f'next backfill for participant `{participant_id}` will resume from `{end}`')
-        sleep(BACKFILL_INTERVAL_SLEEP)
-        
+        # proceed to next windo
+        log.debug(f'next backfill for participant `{participant_id}` will resume from `{end}`')
+        log.info("")
         next_timestamp = end  # advance the window
 
 
@@ -579,7 +596,7 @@ def _get_next_backfill_window_strings(timestamp: datetime) -> tuple[datetime, da
 
 def iterate_with_spinner(
     resp: Response, bytesio: BytesIO, show_progress: bool
-) -> tuple[int, float, float]:
+) -> tuple[float, float, float]:
     spinner = itertools.cycle(['-', '/', '|', '\\'])
     
     t_start = perf_counter()  # hard to disentangle log statements from time measurement...
@@ -612,7 +629,7 @@ def iterate_with_spinner(
         stdout.flush()
     
     t_end = perf_counter()
-    return size, t_start, t_end
+    return size / 1024 / 1024, t_start, t_end
 
 
 #

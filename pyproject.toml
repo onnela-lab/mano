@@ -36,7 +36,7 @@ testpaths = [
 
 
 #
-# Ruff - general purpose python linter++
+# Ruff - general purpose python linter++, pull requests must pass ruff check
 #
 [tool.ruff]
 line-length = 105
@@ -67,6 +67,41 @@ ignore = [  # (linting directives to ignore)
 ]
 
 #
+# Flake8 - not a required linter
+#
+[tool.flake8]
+
+extend-ignore = [
+    "E127",  # continuation line over-indented for visual indent
+    "E128",  # continuation line under-indented for visual indent
+    "E225",  # missing whitespace around operator
+    # "E305",   # should have 2 blank lines after class or function definition
+    "E301",  # expected 1 blank line, found 0
+    # "E302",  # expected 2 blank lines, found 1
+    "E303",   # too many blank lines
+    "E701",  # multiple statements on one line (colon)
+    "E702",  # multiple statements on one line (semicolon)
+    # "E265",  # block comment should start with '# '
+    "E266",  # too many leading '#' for block comment
+    "E501",  # line too long
+    "R503",  # missing explicit None return
+    "W293",  # blank line contains whitespace
+    # "C408",  # unnecessary list comprehension
+    # "SIM102",  # use 'if any(...)' instead of 'if True in (...)'
+    "CFQ002",  # too many arguments for function call
+    # "CFQ002",  # missing whitespace after ',' (?)
+    # "CFQ004",
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "docs",
+    "frontend",
+    "paper",
+    "private",
+]
+
+#
 # isort - import sorting
 #
 [tool.isort]
@@ -89,7 +124,7 @@ known_first_party = [  # Force these libraries to a special spot in import order
 
 
 #
-# MyPy - Type checking
+# MyPy - Type checking - pull requests must pass mypy check
 #
 [tool.mypy]
 packages = "mano"
@@ -99,17 +134,17 @@ module = ["cryptease", "coloredlogs"]
 ignore_missing_imports = true
 
 #
-# Pyright - Type checking in the IDE
+# Pyright - Type checking in the VScode IDE
 #
 [tool.pyright]
 ignore = [
     "reportUnnecessaryIsInstance",  # we have custom type checking messages
 ]
 
+
 #
 ## Mano Project Information
 #
-
 
 [project.urls]
 Homepage = "https://github.com/onnela-lab/mano#Mano"
@@ -164,6 +199,7 @@ dependencies = [  # this is underneath [project] but is about the build / depend
     "colorama",
     "cryptease",
     "lxml",
+    "orjson",
     "python-dateutil",
     "pyzstd",
     "requests",

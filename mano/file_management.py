@@ -1,8 +1,9 @@
 import hashlib
-import json
 import re
 from base64 import encodebytes as base64_encodebytes
 from collections.abc import Generator
+from datetime import datetime
+from io import BytesIO
 from multiprocessing.pool import ThreadPool
 from os import (chmod, makedirs as _make_directories, remove as delete_file,
     replace as replace_file, walk as walk_directory)
@@ -12,6 +13,7 @@ from typing import Any
 from zipfile import ZipFile
 
 import cryptease as crypt
+import orjson
 import pyzstd
 from pyzstd import decompress
 
@@ -45,9 +47,15 @@ def atomic_write(filename: str, content: bytes, overwrite: bool = True, permissi
     chmod(tmp.name, permissions)
     # on wandows rename will fail if target exists with a FileExistsError if we use os.rename
     replace_file(tmp.name, filename)
+    log.debug(f"wrote file: `{filename}`, {len(content)} bytes.")
 
 
-def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = False) -> Generator[str, None, None]:
+def iterate_beiwe_data_files_recursively(
+    directory_path: str,
+    zst_only: bool = False,
+    include_zst: bool = False,
+    suppress_empty: bool = False
+) -> Generator[str, None, None]:
     """
     Generator that yields full paths for all file paths in a directory tree that are valid Beiwe
     data files.  constants.BEIWE_FILE_EXTENSIONS for valid extensions.
@@ -60,9 +68,14 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
             anything_at_all = True
             
             for file_path in files:
-                
+                is_valid = False
                 if zst_only:
                     is_valid = file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
+                elif include_zst:
+                    if file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4]):
+                        is_valid = True
+                    elif check_is_valid_beiwe_data_file(file_path):
+                        is_valid = True
                 else:
                     is_valid = check_is_valid_beiwe_data_file(file_path)
                 
@@ -74,6 +87,9 @@ def iterate_beiwe_data_files_recursively(directory_path: str, zst_only: bool = F
         # All other file system related errors seem to subclass OSError, we'll be broader.
         log.error(f"There was an issue accessing files in: `{directory_path}`: {e}")
         raise
+    
+    if suppress_empty:  # don't check for errors if caller doesn't care
+        return
     
     if not anything_at_all:  # walk doesn't error on empty dirs.
         log.error(msg := f"No such directory: `{directory_path}`")
@@ -205,8 +221,8 @@ def compress_to_zst_files(
         compression_level:
             ZSTD compression level to use, from 0 (fastest) to 22 (best).
             The default (2) matches the server and was tested and found to be fairly ideal.
-            Default will achieve 18-19% original size at hundreds of MB/s on most computers.
-            Higher values can provide additional compression gains up to about 14-15% original size,
+            2 will compress to 18-19% original size at hundreds of MB/s on most computers.
+            Higher values provide additional gains, up to around 14-15% of the original size,
             but are much slower, often down to single digit MB/s at the maximum level.
         multithread_count:
             Number of files to compress concurrently. Defaults to 1.
@@ -248,7 +264,7 @@ def compress_one_zst_file(
     
     it_exists = path_exists(compressed_path)
     if not overwrite and it_exists:
-        log.warning(f"Skipping: `{full_path}`, .zst file already exists.")
+        log.debug(f"Skipping: `{full_path}`, .zst file already exists.")
         return
     
     with open(full_path, 'rb') as fo:
@@ -364,18 +380,21 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
 
 #TODO: actually review what this does and confirm this rename is correct
 #TODO: document this
-def save_archive_with_registry(
+def save_archive(
     archive: ZipFile,
     participant_id: str,
     output_dir: str,
     lock: list[str] | None = None,
     passphrase: str | None = None,
+    decompress_zst: bool = False,
+    hash_lookup: dict[str, bytes] | None = None,
 ) -> int:
     """
     The order of operations here is important to ensure the ability to reach a state of consistency:
         1. Save the file
         2. Update the local registry
     """
+    
     if archive is None or not isinstance(archive, ZipFile):
         raise SaveError('Saving output data requires you provide a ZipFile object')
     
@@ -386,92 +405,114 @@ def save_archive_with_registry(
     # open registry file in downloaded archive
     log.debug('reading registry file from beiwe archive')
     with archive.open('registry', 'r') as fo:
-        registry = json.loads(fo.read().decode().strip())
+        registry = orjson.loads(fo.read().decode().strip())
     
     if not registry:
-        raise SaveError('Registry file in beiwe archive is empty or invalid.')
+        # the registry is empty when no files were downloaded - that is normal.
+        log.debug('Registry file in beiwe archive is empty or invalid.')
     
-    # if archive registry contains any entries, process them
     num_saved = 0
-    if registry:
-        # iterate over archive members
-        for member in archive.namelist():
-            if process_one_archive_file(member, output_dir, archive, participant_id, passphrase, lock):
-                num_saved += 1
-        
-        # update participant's registry file to avoid re-downloading these files
-        local_registry = dict[str, str]()
-        participant_registry_path = path_join(output_dir, participant_id, '.registry')
-        
-        # load existing local registry if it exists
-        if path_exists(participant_registry_path):
-            with open(participant_registry_path) as fo:
-                local_registry = json.load(fo)
-                log.debug(f'loaded existing local registry file for participant {participant_id}')
-        
-        local_registry.update(registry)
-        local_registry_str = json.dumps(local_registry, indent=2)
-        atomic_write(participant_registry_path, local_registry_str.encode())
+    for member in archive.namelist():
+        if process_one_archive_file(
+            member,
+            output_dir,
+            archive,
+            participant_id,
+            passphrase,
+            lock,
+            decompress_zst,
+            hash_lookup=hash_lookup or {},
+        ):
+            num_saved += 1
     
-    # return the number of saved files
     return num_saved
 
 
+# TODO: backfill is not able to handle encrypted files
+
 def process_one_archive_file(
-    file_path: str,
+    filename_in_zip: str,
     output_dir: str,
     archive: ZipFile,
-    user_id: str,
+    participant_id: str,
     passphrase: str | None,
     lock: list[str],
+    decompress_zst: bool,
+    hash_lookup: dict[str, bytes],
 ) -> bool:
-    """ Handle one file from inside a ZipFile Archive
+    """
+    Handle one file from inside a ZipFile Archive
     Lock is a list of data streams, if provided, those data streams will be encrypted.
     """
     
     # skip the registry files and directories - (not sure how fast/slow getinfo is)
-    if file_path == 'registry' or archive.getinfo(file_path).is_dir():
+    if filename_in_zip == 'registry' or archive.getinfo(filename_in_zip).is_dir():
+        log.debug(f'skipping archive file: `{filename_in_zip}`')
         return False
     
     # parse the data type determine if it should be encrypted
-    encrypt = zipped_file_path_to_data_stream(file_path, user_id) in lock
-    output_filename = f'{file_path}.lock' if encrypt else file_path  # lock extension if we need it
+    do_encrypt = determine_data_stream_from_internal_zip_filepath(filename_in_zip, participant_id) in lock
     
-    # its too verbose.
-    # log.debug(f'processing archive file: `{file_path}` (lock={encrypt})')
+    # prepend folder, append .lock if encrypting (even works on wandows, cool)
+    output_name = f'{filename_in_zip}.lock' if do_encrypt else filename_in_zip
+    output_name = path_join(output_dir, output_name)
+    
+    # read archive file content, decompress if we have a hash to check or just need to decompress,
+    # tracking if we decompressed for hash checking (start false only if it is a zst file)
+    
+    binary_data: bytes = archive.read(filename_in_zip)
+    if decompress_zst:
+        assert filename_in_zip.endswith('.zst'), f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
+        binary_data = decompress(binary_data)
+        output_name = output_name.replace(".zst", "")  # works even on uncompressed ~mp4s
+        was_decompressed = True
+    else:
+        was_decompressed = False
+    
+    log.warning(f"decompress_zst is {decompress_zst}, file_path is `{filename_in_zip}`")
+    
+    # bare_path, zst_path, lock_path, lock_zst_path = get_possible_real_paths(filename_in_zip)
     
     # detect if target exists, create the directory
-    if path_exists(target_abs := path_join(output_dir, output_filename)):
-        delete_file(target_abs)
-    if not path_exists(target_dir := dirname(target_abs)):
+    if path_exists(output_name):
+        # if we have a local hash lookup, check if the file already matches and skip it
+        if hash_lookup and check_hash_cache_match(
+            output_name, participant_id, binary_data, hash_lookup, was_decompressed
+        ):
+            log.debug(f"skipping existing file with matching hash at: `{output_name}`")
+            return False
+        
+        log.debug(f"clearing existing file at: `{output_name}`")
+        delete_file(output_name)
+    
+    if not path_exists(target_dir := dirname(output_name)):
+        log.debug(f"creating directory at: `{target_dir}`")
         make_directories(target_dir)
     
-    file_content = archive.open(file_path)  # read archive member content
-    
     # encrypt it if necessary
-    if encrypt:
+    if do_encrypt:
         key = crypt.kdf(passphrase)  # type: ignore
-        crypt.encrypt(file_content, key, filename=target_abs, permissions=0o0644)  # type: ignore
+        crypt.encrypt(BytesIO(binary_data), key, filename=output_name, permissions=0o0644)  # type: ignore
     else:
         # write content to persistent storage
-        atomic_write(target_abs, file_content.read())
+        atomic_write(output_name, binary_data)
     
     return True
 
 
-def zipped_file_path_to_data_stream(file_path: str, participant_id: str):
+def determine_data_stream_from_internal_zip_filepath(file_path: str, participant_id: str):
     """ Parse data type from a Beiwe archive member name. """
-    funcname = "zipped_file_path_to_data_stream"  # make sure this matches the function name
+    debug_funcname = "zipped_file_path_to_data_stream"
     
     # special error messages for common mistakes
-    if file_path.endswith('/'):
-        log.error(msg := DATA_STREAM_FOLDER_MSG(funcname, file_path))
+    if file_path.endswith('/') or file_path.endswith('\\'):
+        log.error(msg := DATA_STREAM_FOLDER_MSG(debug_funcname, file_path))
         raise ParseError(msg)
     if "registry" in file_path:
-        log.error(msg := DATA_STREAM_REGISTRY_MSG(funcname, file_path))
+        log.error(msg := DATA_STREAM_REGISTRY_MSG(debug_funcname, file_path))
         raise ParseError(msg)
     if not file_path.startswith(participant_id):
-        log.error(msg := DATA_STREAM_NOT_PARTICIPANT_MSG(funcname, file_path, participant_id))
+        log.error(msg := DATA_STREAM_NOT_PARTICIPANT_MSG(debug_funcname, file_path, participant_id))
         raise ParseError(msg)
     
     regexpr = f'^{participant_id}/([a-zA-Z_]+)/.*$'  # (the curly braces are not part of the regex)
@@ -490,7 +531,135 @@ def zipped_file_path_to_data_stream(file_path: str, participant_id: str):
     return match.group(1)
 
 
-#TODO: not used yet
+# File Hashing
+
+
+# TODO: multithread this?
+# todo: make this handle locked files.
+def generate_registry_info(
+    folder_path: str, study_id: str, participant_id: str,
+) -> tuple[dict[str, str], dict[str, bytes]]:
+    """
+    Reads and computes sha1 hashes for all Beiwe data files in a folder.
+    Returns two dictionaries, the first for use to be passed into the registry on the download API,
+    the second to provide local hash lookups for file integrity checking later so the hashes do not
+    have to be recomputed.
+    """
+    remote_hashes = dict[str, str]()
+    local_hashes = dict[str, bytes]()
+    log.info(f'Computing file hashes for Beiwe Platform data in folder: `{folder_path}`')
+    
+    itr8r = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
+    
+    for real_local_path in itr8r:
+        # base path is the file with no .lock or .zst extensions, zst path is with .zst
+        base_path = get_base_path(real_local_path, participant_id)
+        
+        hash_val = get_sha1_file_hash(real_local_path)
+        local_hashes[base_path] = hash_val
+        
+        # sometimes we need generate one of several possible remote paths
+        for new_path in normalize_path_for_registry(base_path, study_id, participant_id):
+            remote_hashes[new_path] = hash_val.decode()
+    
+    return remote_hashes, local_hashes
+
+
+def get_base_path(path: str, participant_id: str) -> str:
+    # convert wandows paths to slashes that aren't fake, remove .zst, remove lock
+    path = path.replace("\\", "/").replace(".lock", "").replace(".zst", "")
+    path = path.split(participant_id)[-1]    # we only care about the part after participant id
+    return path.lstrip("/")                  # clear leading slash
+
+
+def get_possible_real_paths(real_file_path: str) -> tuple[str, str, str, str]:
+    bare_path = real_file_path.replace(".lock", "").replace(".zst", "")
+    zst_path = bare_path + ".zst"
+    lock_path = bare_path + ".lock"
+    lock_zst_path = bare_path + ".zst.lock"
+    return bare_path, zst_path, lock_path, lock_zst_path
+
+
+def normalize_path_for_registry(path: str, study_id: str, participant_id: str) -> list[str]:
+    """
+    Normalize a file path to the format used in the registry.
+    
+    The backend needs some very specific file names, for the future we want to query for hashes,
+    test those hashes and missing files, then download files that need to be updated.
+    
+    Returns a list of possible normalized paths (some files require multiple valid names for
+    historical reasons).
+    """
+    folder, file_name = path.rsplit("/", 1)  # stream folder or survey+id folder
+    
+    # normalize the file's datetime format to true isoformat
+    file_name = file_name.replace(" ", "T").replace("+00_00", "").replace("_", ":")
+    if "audio_recordings" in folder or "survey_answers" in folder:
+        return _normalize_surveys_special_case(file_name, folder, study_id, participant_id)
+    
+    # we need to provide 3 possible paths for timings because there is a ~bug on the backend
+    # where it doesn't separate timings into their own files every time.
+    if "survey_timings" in folder:
+        return [
+            f"{study_id}/{participant_id}/{folder}/{file_name}",
+            f"{study_id}/{participant_id}/survey_timings/{file_name}",
+            f"{study_id}/{participant_id}/surveyTimings/{file_name}",  # this one is probably wrong
+        ]
+    
+    return [f"{study_id}/{participant_id}/{folder}/{file_name}"]
+
+
+def _normalize_surveys_special_case(
+    file_name: str, folder: str, study_id: str, participant_id: str
+) -> list[str]:
+    file_name, file_extention = file_name.rsplit(".", 1)
+    # add a Z to the end to make it ISO8601 _UTC_
+    t = datetime.fromisoformat(file_name + "Z").timestamp()
+    unix_timestamp_1 = int(t * 1000)
+    unix_timestamp_2 = int(t)
+    file_name_1 = f"{unix_timestamp_1}.{file_extention}"
+    file_name_2 = f"{unix_timestamp_2}.{file_extention}"
+    folder = folder.replace("audio_recordings", "voiceRecording")  # just do both
+    folder = folder.replace("survey_answers", "surveyAnswers")
+    return [
+        f"{study_id}/{participant_id}/{folder}/{file_name_1}",
+        f"{study_id}/{participant_id}/{folder}/{file_name_2}"
+    ]
+
+
+def check_hash_cache_match(
+    real_path: str, participant_id: str, file_content: bytes, hash_cache: dict[str, bytes], is_decompressed: bool
+) -> bool:
+    """
+    If the file matches a hash in the local hash lookup return True, otherwise return False.
+    The hash cache is expected to be the second value returned by generate_registry_info.
+    """
+    sha1 = hash_cache.get(get_base_path(real_path, participant_id))
+    if sha1 is None:
+        return False
+    
+    if real_path.endswith('.zst') and not is_decompressed:
+        file_content = decompress(file_content)
+    
+    return generate_base64_sha1_hash(file_content) == sha1
+
+
+def get_sha1_file_hash(path: str) -> bytes:
+    """
+    Generate SHA1 hash of a regular or .zst file.
+    """
+    log.debug(f'generating sha1 hash for file: `{path}`')
+    with open(path, 'rb') as fo:
+        data = fo.read()
+    if path.endswith('.zst'):
+        data = decompress(data)
+    # log.debug(f'generating sha1 hash for file: `{path}`')
+    return generate_base64_sha1_hash(data)
+
+
 def generate_base64_sha1_hash(data: bytes) -> bytes:
     # for some reason it has a new line at the end
     return base64_encodebytes(hashlib.sha1(data).digest()).strip()
+
+
+# todo: add test that we decompress (don't decompress??) .mp4 files correctly
