@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta, date
+from datetime import date, datetime, timedelta
 from io import BytesIO
-from os import makedirs, remove as delete_file, listdir
+from os import listdir, makedirs, remove as delete_file
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -560,25 +560,51 @@ def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
     keyring: dict[str, str],
     tmp_path: Path,
     mock_zip_data_compressed: bytes,
+    mock_zip_data_uncompressed: bytes,
 ):
     """ The backfill function needs to download _and compare hashes_ if there are file overwrites. 
     This test tests when there is a mismatch between whether the files to be extracted from the zip
     file are supposed to come out as compressed (.zst), and  the existing files are compressed. """
-    
-    target_folder = tmp_path / "target_folder"
-    before_creation_timestamp = datetime.now().timestamp()
-    
-    with ZipFile(BytesIO(mock_zip_data_compressed)) as zf:
-        zf.extractall(target_folder)
-    delete_file(target_folder / "registry")  # just get rid it
-    
-    # (tmp_path / "registry").
-    mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
+    _test_backfill_does_not_overwrite(
+        mocker, keyring, tmp_path, mock_zip_data_compressed, mock_zip_data_compressed, True
     )
-    
+
+
+def test_backfill_does_not_overwrite_matching_files_uncompressed_uncompressed(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    mock_zip_data_compressed: bytes,
+    mock_zip_data_uncompressed: bytes,
+):
+    """ as test_backfill_does_not_overwrite_matching_files_compressed_compressed, but flip the
+    initial data to uncompressed files, and the download with compressed=False to decompress files.
+    (Note that backfill always downloads the compressed version.) """
+    _test_backfill_does_not_overwrite(
+        mocker, keyring, tmp_path, mock_zip_data_uncompressed, mock_zip_data_compressed, False
+    )
+
+
+def _test_backfill_does_not_overwrite(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    data_to_decompress: bytes,
+    mock_zip_data_compressed: bytes,
+    compression_parameter: bool
+):
+    target_folder = tmp_path / "target_folder"
     gps_path = target_folder / "6y6s1w4g" / "gps"
     identifiers_path = target_folder / "6y6s1w4g" / "identifiers"
+    before_creation_timestamp = datetime.now().timestamp()
+    
+    with ZipFile(BytesIO(data_to_decompress)) as zf:
+        zf.extractall(target_folder)
+    delete_file(target_folder / "registry")  # we don't want it in this current implementation
+    
+    # (tmp_path / "registry").
+    _ = mocker.patch('mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed)))
+    
     gps_list = listdir(gps_path)
     identifiers_list = listdir(identifiers_path)
     
@@ -589,7 +615,7 @@ def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
         **{
             **default_backfill_kwargs(tmp_path, keyring),
             "output_dir": str(target_folder),
-            "compressed": True,
+            "compressed": compression_parameter,
         },
     )
     
@@ -602,6 +628,7 @@ def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
         p = (gps_path / p)
         assert p.stat().st_mtime >= before_creation_timestamp
         assert p.stat().st_ctime >= before_creation_timestamp
+
 
 #
 # Test Type Validation for download
@@ -922,6 +949,7 @@ def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], 
         passphrase="some_passphrase",
         user_id="USER_ID",
     )
+
 
 def test_backfill_allows_dates(keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path):
     mocker.patch("mano.sync._backfill_participant")  # prevent actual download
