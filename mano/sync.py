@@ -34,7 +34,7 @@ from mano.constants import APIError, DownloadError, ParseError, SaveError, Write
 # very verbose type hint(s)
 RequestPayload = dict[str, str | list[str] | dict[str, str]]
 
-
+# todo: how exactly does the registry parameter work on the download function.
 #TODO: implement registry file generation and other management tools.
 #TODO: Aggressively hook in the registry? Aggressively regenerate the registry? Always regenerate it?
 #TODO: does the spinner need to be intrinsically dependant on stdout?
@@ -544,9 +544,9 @@ def _backfill_participant(
         
         archive = download(
             Keyring,
-            study_id,
-            [participant_id],
-            data_streams,
+            study_id=study_id,
+            participant_ids=[participant_id],
+            data_streams=data_streams,
             time_start=start,
             time_end=end,
             compressed=True,

@@ -469,8 +469,6 @@ def process_one_archive_file(
     else:
         was_decompressed = False
     
-    log.warning(f"decompress_zst is {decompress_zst}, file_path is `{filename_in_zip}`")
-    
     # bare_path, zst_path, lock_path, lock_zst_path = get_possible_real_paths(filename_in_zip)
     
     # detect if target exists, create the directory

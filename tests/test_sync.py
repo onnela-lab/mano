@@ -363,44 +363,51 @@ def test_download_connection_error(keyring: dict[str, str]):
 # these helpers make the test code legible....
 def default_backfill_kwargs(tmp_path: Path, keyring: dict[str, str]) -> dict:
     return dict(
-        Keyring=keyring,
-        study_id='STUDY_ID',
-        participant_id='6y6s1w4g',
-        output_dir=str(tmp_path),
+        compressed=False,
         data_streams=['gps'],
+        Keyring=keyring,
         lock=[],
+        output_dir=str(tmp_path),
+        participant_id='6y6s1w4g',
         passphrase=None,
+        study_id='STUDY_ID',
     )
 
 
-def default_backfill_download_args(keyring: dict[str, str]) -> list:
-    return [keyring, 'STUDY_ID', ['6y6s1w4g'], ['gps']]
+def default_backfill_download_kwargs(start: datetime, end: datetime) -> dict:
+    return {
+        "study_id": "STUDY_ID",
+        "participant_ids": ["6y6s1w4g"],
+        "data_streams": ["gps"],
+        "time_start": start,
+        "time_end": end,
+        "compressed": True,
+        "registry": {},
+    }
 
 
 def test_backfill_calls_download(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
-    mock_zip_data_uncompressed: bytes,
+    mock_zip_data_compressed: bytes,
 ):
     """ Test that backfill_participant calls download with correct parameters. """
     mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
     
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterdt = today - timedelta(days=1)
     
-    # one call to yesterday, so the next call will be the default backfill time plus five days, so
+    # one call to yesterday, so the next call will be the default backfill time plus 20 days, so
     # into the future, which should trigger the finish logic
     sync.backfill(
         start_date=yesterdt.date().isoformat(), **default_backfill_kwargs(tmp_path, keyring)
     )
     mock_download.assert_called_once_with(
-        *default_backfill_download_args(keyring),
-        time_start=yesterdt,
-        time_end=(yesterdt+timedelta(days=5)),
+        keyring,
+        **default_backfill_download_kwargs(yesterdt, yesterdt+timedelta(days=20))
     )
 
 
@@ -408,12 +415,11 @@ def test_backfill_UTC_timezone_stripped_and_no_time_shifting(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
-    mock_zip_data_uncompressed: bytes,
+    mock_zip_data_compressed: bytes,
 ):
     mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
     
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterdt_utc = today.replace(tzinfo=UTC) - timedelta(days=1)
@@ -424,9 +430,8 @@ def test_backfill_UTC_timezone_stripped_and_no_time_shifting(
         **default_backfill_kwargs(tmp_path, keyring)
     )
     mock_download.assert_called_once_with(
-        *default_backfill_download_args(keyring),
-        time_start=yesterdt_no_utc,
-        time_end=(yesterdt_no_utc+timedelta(days=5)),
+        keyring,
+        **default_backfill_download_kwargs(yesterdt_no_utc, yesterdt_no_utc+timedelta(days=20))
     )
 
 
@@ -434,40 +439,39 @@ def test_backfill_called_twice(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
-    mock_zip_data_uncompressed: bytes,
+    mock_zip_data_compressed: bytes,
 ):
     """ Test that backfill_participant calls download twice when needed. """
     mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
     
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    five_days_ago_dt = today - timedelta(days=5)
+    twenty_days_ago_dt = today - timedelta(days=20)
     
     # set it to 5 days ago so two calls are needed to catch up to today
     # backfill_file.write_text(five_days_ago_dt.date().isoformat())
     
     sync.backfill(
-        start_date=five_days_ago_dt.date().isoformat(),
+        start_date=twenty_days_ago_dt.date().isoformat(),
         **default_backfill_kwargs(tmp_path, keyring)
     )
     
     # assert hits to download look good
     assert mock_download.call_count == 2
     mock_download.assert_any_call(
-        *default_backfill_download_args(keyring),
-        time_start=five_days_ago_dt,
-        time_end=(five_days_ago_dt + timedelta(days=5)),
+        keyring,
+        **default_backfill_download_kwargs(twenty_days_ago_dt, twenty_days_ago_dt+timedelta(days=20))
+        # *default_backfill_download_args(keyring),
     )
     mock_download.assert_any_call(
-        *default_backfill_download_args(keyring),
-        time_start=(five_days_ago_dt+timedelta(days=5)),
-        time_end=(five_days_ago_dt+timedelta(days=10)),
+        keyring,
+        **default_backfill_download_kwargs(twenty_days_ago_dt+timedelta(days=20), twenty_days_ago_dt+timedelta(days=40))
     )
     
-    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
-    assert backfill_file.read_text() == "COMPLETE"
+    # we removed the backfill tracking, it may be replaced by querying the server for data.
+    # backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
+    # assert backfill_file.read_text() == "COMPLETE"
 
 
 def test_backfill_makes_no_download_calls_when_up_to_date(
@@ -477,7 +481,6 @@ def test_backfill_makes_no_download_calls_when_up_to_date(
 ):
     """ Test that backfill_participant makes no download calls when up to date. """
     mock_download = mocker.patch('mano.sync.download')  # intentionally missing a return_value so it errors.
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
     tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
     # set it to today so no calls are needed
@@ -490,19 +493,19 @@ def test_backfill_makes_no_download_calls_when_up_to_date(
     assert not backfill_file.exists()
 
 
-def test_junk_backfill_file_is_ignored(
+def test_junk_backfill_file_is_deleted(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
-    mock_zip_data_uncompressed: bytes,
+    mock_zip_data_compressed: bytes,
 ):
     """ Test that backfill_participant works when there is a bad .backfill file. """
     mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
     yesterdt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     
+    # real old-style backfill files would have nothing useful in them
     backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
     makedirs(backfill_file.parent, exist_ok=True)
     backfill_file.write_text('some invalid date')
@@ -512,24 +515,24 @@ def test_junk_backfill_file_is_ignored(
         start_date=yesterdt.date().isoformat(), **default_backfill_kwargs(tmp_path, keyring)
     )
     mock_download.assert_called_once_with(
-        *default_backfill_download_args(keyring),
-        time_start=yesterdt,
-        time_end=(yesterdt+timedelta(days=5)),
+        keyring,
+        **default_backfill_download_kwargs(yesterdt, yesterdt+timedelta(days=20)),
     )
-    assert backfill_file.read_text() == "COMPLETE"
+    assert not backfill_file.exists()  # confirm we deleted
 
 
-def test_parseable_backfill_overrides(
+def test_old_style_backfill_file_is_ignored(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
-    mock_zip_data_uncompressed: bytes,
+    mock_zip_data_compressed: bytes,
 ):
     """ Test that backfill_participant works when there is a parseable .backfill file. """
     mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_uncompressed))
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    _ = mocker.patch('mano.sync.sleep')  # otherwise there is a sleep
+    
+    # this is from the test that tested whether a backfill file was parsed / overridden
     backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
@@ -544,13 +547,11 @@ def test_parseable_backfill_overrides(
         **default_backfill_kwargs(tmp_path, keyring)
     )
     mock_download.assert_called_once_with(
-        *default_backfill_download_args(keyring),
-        time_start=yesterday,  # overwritten by backfill file
-        time_end=(yesterday+timedelta(days=5)),  # overwritten by backfill file
+        keyring,
+        **default_backfill_download_kwargs(seven_days_ago, seven_days_ago+timedelta(days=20)),
     )
     
-    assert backfill_file.exists()
-    assert backfill_file.read_text() == "COMPLETE"
+    assert not backfill_file.exists()  # confirm we deleted
 
 
 #
