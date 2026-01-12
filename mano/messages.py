@@ -1,7 +1,7 @@
 # Some user messages get too fiddly to format inline with the code, and make it hard to read.
 # Place that code here.
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from mano.constants import BASE_24HR_TIME_FORMAT
@@ -95,7 +95,7 @@ def BACKFILL_START_DATE_FUTURE_MSG(start_date: datetime):
     return f'Backfill received the value "{start_date}" for `start_date`, which is in the future.'
 
 
-def BACKFILL_UNPARSABLE_DATE_MSG(start_date: str | datetime):
+def BACKFILL_UNPARSABLE_DATE_MSG(start_date: str | datetime | date):
     return f'Backfill received the value "{start_date}" for `start_date`, which it could not parse.'
 
 

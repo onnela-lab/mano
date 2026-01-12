@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from io import BytesIO
-from os import makedirs
+from os import makedirs, remove as delete_file, listdir
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -371,6 +371,7 @@ def default_backfill_kwargs(tmp_path: Path, keyring: dict[str, str]) -> dict:
         participant_id='6y6s1w4g',
         passphrase=None,
         study_id='STUDY_ID',
+        end_date=None,
     )
 
 
@@ -553,6 +554,54 @@ def test_old_style_backfill_file_is_ignored(
     
     assert not backfill_file.exists()  # confirm we deleted
 
+
+def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    mock_zip_data_compressed: bytes,
+):
+    """ The backfill function needs to download _and compare hashes_ if there are file overwrites. 
+    This test tests when there is a mismatch between whether the files to be extracted from the zip
+    file are supposed to come out as compressed (.zst), and  the existing files are compressed. """
+    
+    target_folder = tmp_path / "target_folder"
+    before_creation_timestamp = datetime.now().timestamp()
+    
+    with ZipFile(BytesIO(mock_zip_data_compressed)) as zf:
+        zf.extractall(target_folder)
+    delete_file(target_folder / "registry")  # just get rid it
+    
+    # (tmp_path / "registry").
+    mock_download = mocker.patch(
+        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
+    )
+    
+    gps_path = target_folder / "6y6s1w4g" / "gps"
+    identifiers_path = target_folder / "6y6s1w4g" / "identifiers"
+    gps_list = listdir(gps_path)
+    identifiers_list = listdir(identifiers_path)
+    
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    sync.backfill(
+        start_date=yesterday.date().isoformat(),
+        **{
+            **default_backfill_kwargs(tmp_path, keyring),
+            "output_dir": str(target_folder),
+            "compressed": True,
+        },
+    )
+    
+    # file list in this case should be unchanged
+    assert gps_list == listdir(gps_path)
+    assert identifiers_list == listdir(identifiers_path)
+    
+    # This is how you test files were not modified or overwritten:
+    for p in gps_list + identifiers_list:
+        p = (gps_path / p)
+        assert p.stat().st_mtime >= before_creation_timestamp
+        assert p.stat().st_ctime >= before_creation_timestamp
 
 #
 # Test Type Validation for download
@@ -874,6 +923,32 @@ def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], 
         user_id="USER_ID",
     )
 
+def test_backfill_allows_dates(keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path):
+    mocker.patch("mano.sync._backfill_participant")  # prevent actual download
+    sync.backfill(
+        Keyring=keyring,
+        study_id="STUDY_ID",
+        participant_id="USER_ID",
+        output_dir=str(tmp_path),
+        start_date=date(2018, 6, 15),
+        data_streams=["gps"],
+        lock=["gps"],
+        passphrase="some_passphrase",
+    )
+    
+    # date-strings
+    sync.backfill(
+        Keyring=keyring,
+        study_id="STUDY_ID",
+        participant_id="USER_ID",
+        output_dir=str(tmp_path),
+        start_date="2018-06-15",
+        data_streams=["gps"],
+        lock=["gps"],
+        passphrase="some_passphrase",
+        # user_id="USER_ID",
+    )
+
 
 def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: Path):
     
@@ -929,7 +1004,7 @@ def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: P
         )
     
     # empty start_date string
-    with pytest.raises(ValueError, match=".`start_date` parameter cannot be an empty.*"):
+    with pytest.raises(ValueError, match=".*`start_date` and `end_date` parameters cannot be empty.*"):
         sync.backfill(
             Keyring=keyring,
             study_id="STUDY_ID",

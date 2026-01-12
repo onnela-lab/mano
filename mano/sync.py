@@ -1,7 +1,7 @@
 import itertools
 import logging
 import zipfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from os import fsync, remove as delete_file
 from os.path import exists as file_exists, join as path_join
@@ -239,15 +239,20 @@ def download(
 
 
 def backfill(
+    # Required parameters:
     Keyring: dict[str, str],                        # Your loaded credentials (see documentation).
     study_id: str,                                  # The target Study ID.
     participant_id: str,                            # The target participant's ID.
     output_dir: str,                                # Directory to save downloaded data.
-    start_date: str | datetime = EARLIEST_POSSIBLE_DATA_DT,   # Date to start backfill from.
+    
+    # Optional parameters:
+    start_date: str | datetime | date = EARLIEST_POSSIBLE_DATA_DT,   # Date/time to start backfill from.
+    end_date: str | datetime | date | None = None,  # Date/time to stop backfill at.
     data_streams: list[str] | None = None,          # List of data streams to backfill.
     lock: list[str] | None = None,                  # List of files to lock during backfill.
     passphrase: str | None = None,                  # Passphrase for encryption.
     compressed: bool = False,                       # Compress downloaded data.
+    
     # Deprecated
     user_id: str | None = None,                     # DEPRECATED alias of participant_id.
 ) -> None:
@@ -286,10 +291,19 @@ def backfill(
         A subfolder with the participant ID will be created if it does not already exist.
         
     :param start_date: The date from which to start backfilling data.
-        This can be a datetime object or a string parseable by dateutil.parser.
+        This can be a date, datetime, or string parseable by dateutil.parser (but we recommend
+        the ISO-8601 format, e.g. "2023-06-15" or "2023-06-15T00:00:00Z" to avoid ambiguity).
+        Dates are interpreted as start of day (midnight, 12:00 AM).
         The default value is September 1, 2015, the earliest possible date for any data that
           any Beiwe study could possibly have.
-        If the provided date is in the future, backfill will exit without doing anything.
+        If the provided start date is in the future, backfill will exit without doing anything.
+        Be aware that the Beiwe platform expects all times to be in the UTC timezone.
+    
+    #
+    # Optional parameters
+    #
+    :param end_date: The date at which to stop backfilling data - defaults to start of day tomorrow.
+        Type and formatting expectations are the same as `start_date`, except this isoptional.
     
     :param data_streams: A list of the data streams to download.
         If None or an empty list is provided all data streams will be downloaded.
@@ -328,8 +342,11 @@ def backfill(
     if not isinstance(output_dir, str):
         log.error(msg := X_IS_NOT_A_Y_MSG("output_dir", str, output_dir, "backfill"))
         raise TypeError(msg)
-    if not isinstance(start_date, (str, datetime)):
-        log.error(msg := X_IS_NOT_A_Y_MSG("start_date", "str or datetime", start_date, "backfill"))
+    if not isinstance(start_date, (str, datetime, date)):
+        log.error(msg := X_IS_NOT_A_Y_MSG("start_date", "str, datetime, or date", start_date, "backfill"))
+        raise TypeError(msg)
+    if not isinstance(end_date, (str, datetime, date, type(None))):
+        log.error(msg := X_IS_NOT_A_Y_MSG("end_date", "str, datetime, date, or None", end_date, "backfill"))
         raise TypeError(msg)
     if not isinstance(data_streams, (type(None), list)):
         log.error(msg := X_IS_NOT_A_Y_MSG("data_streams", "list of strings or None", data_streams, "backfill"))
@@ -374,8 +391,8 @@ def backfill(
         validate_data_streams(lock, "backfill - `lock`")
     
     # start date cannot be an empty string
-    if start_date == "":
-        raise ValueError("Backfill's `start_date` parameter cannot be an empty string.")
+    if start_date == "" or end_date == "":
+        raise ValueError("Backfill's `start_date` and `end_date` parameters cannot be empty strings.")
     
     # ensure start_date is a datetime, remove the tzinfo
     try:
@@ -384,6 +401,15 @@ def backfill(
     except ParserError:
         log.error(msg := BACKFILL_UNPARSABLE_DATE_MSG(start_date))
         raise ValueError(msg)
+    
+    if end_date is not None:
+        try:
+            # (type checker complains if we use validate_datetime because return could be None.)
+            end_date = validate_required_datetime(end_date, "backfill - end_date")
+            end_date = end_date.replace(tzinfo=None)
+        except ParserError:
+            log.error(msg := BACKFILL_UNPARSABLE_DATE_MSG(end_date))
+            raise ValueError(msg)
     
     # time is in the future - this is valid _behavior_ so we don't raise an exception
     if start_date > datetime.now():
@@ -395,7 +421,16 @@ def backfill(
     
     # this is just a this wrapper to provide documentation for usage of Mano's backfill functionality
     _backfill_participant(
-        Keyring, study_id, participant_id, output_dir, start_date, data_streams, compressed, lock, passphrase,
+        Keyring,
+        study_id,
+        participant_id,
+        output_dir,
+        start_date,
+        data_streams,
+        compressed,
+        lock,
+        passphrase,
+        backfill_end=end_date,
     )
 
 
@@ -511,27 +546,30 @@ def _backfill_participant(
     study_id: str,
     participant_id: str,
     output_dir: str,
-    start_time: datetime,
+    backfill_start: datetime,
     data_streams: list[str],
     compressed: bool,
     lock: list[str],
     passphrase: str | None = None,
+    backfill_end: datetime | None = None,
 ) -> None:
     """
     Business logic for backfilling a participant's data.
     Do not call this function directly, use `backfill(...)`
     """
     
-    assert start_time.tzinfo is None, "start_time must be timezone-naive"
+    assert backfill_start.tzinfo is None, "start_time must be timezone-naive"
     
     participant_path = path_join(output_dir, participant_id)
     if file_exists(backfill_file := path_join(participant_path, '.backfill')):
         log.warning("found old backfill tracking file, deleteing it.")
         delete_file(backfill_file)
     
-    log.info(f'Starting backfill, initial timestamp: {start_time}')
-    next_timestamp = start_time
-    tmrrow = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    log.info(f'Starting backfill, initial timestamp: {backfill_start}')
+    next_timestamp = backfill_start
+    
+    backfill_end = backfill_end or \
+        datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
     particpant_registry, local_hash_lookup = generate_registry_info(
         participant_path, study_id, participant_id
@@ -568,7 +606,7 @@ def _backfill_participant(
         log_func(f'download complete, created or updated {num_saved} files.')
         
         # stop condition
-        if end > tmrrow:
+        if end > backfill_end:
             log.info(f'Backfill operations are complete for participant `{participant_id}`')
             return
         
@@ -652,13 +690,16 @@ def normalize_url(url: str) -> str:
     return url.rstrip('/')  # strip [any number of] trailing slashes
 
 
-def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | None:
+def validate_datetime(dt: str | datetime | date | None, msg_prefix: str) -> datetime | None:
     """ Process one time input parameter - a returned value of None indicates no time filter. """
     
     # empty string and None
     if dt is None or not dt:
         log.debug(NO_TIME_MSG(msg_prefix))
         return None
+    
+    if type(dt) is date:  # date subclasses datetime, this syntax to test the type is correct.
+        dt = datetime(dt.year, dt.month, dt.day)
     
     # string input
     if isinstance(dt, str):
@@ -669,6 +710,8 @@ def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | 
             log.error(msg := COULD_NOT_PARSE_TIME_MSG(msg_prefix, dt))
             raise UnParsableTimeError(msg)  # do not add "from e", the stack trace is not useful here
         log.debug(TIME_PARSED_MSG(msg_prefix, time_str, dt))
+    
+    assert type(dt) is datetime  # type checkers don't understand the date -> datetime conversion
     
     # naive datetime
     if dt.tzinfo is None:
@@ -684,7 +727,7 @@ def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | 
     return dt
 
 
-def validate_required_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime:
+def validate_required_datetime(dt: str | datetime | date | None, msg_prefix: str) -> datetime:
     """
     As handle_one_datetime_input, but raises ValueError on None/empty, and guarantees datetime return.
     """
