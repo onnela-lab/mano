@@ -610,13 +610,13 @@ def normalize_path_for_registry(path: str, study_id: str, participant_id: str) -
 def _normalize_surveys_special_case(
     file_name: str, folder: str, study_id: str, participant_id: str
 ) -> list[str]:
-    file_name, file_extention = file_name.rsplit(".", 1)
+    file_name, file_extension = file_name.rsplit(".", 1)
     # add a Z to the end to make it ISO8601 _UTC_
     t = datetime.fromisoformat(file_name + "Z").timestamp()
     unix_timestamp_1 = int(t * 1000)
     unix_timestamp_2 = int(t)
-    file_name_1 = f"{unix_timestamp_1}.{file_extention}"
-    file_name_2 = f"{unix_timestamp_2}.{file_extention}"
+    file_name_1 = f"{unix_timestamp_1}.{file_extension}"
+    file_name_2 = f"{unix_timestamp_2}.{file_extension}"
     folder = folder.replace("audio_recordings", "voiceRecording")  # just do both
     folder = folder.replace("survey_answers", "surveyAnswers")
     return [
@@ -651,7 +651,6 @@ def get_sha1_file_hash(path: str) -> bytes:
         data = fo.read()
     if path.endswith('.zst'):
         data = decompress(data)
-    # log.debug(f'generating sha1 hash for file: `{path}`')
     return generate_base64_sha1_hash(data)
 
 

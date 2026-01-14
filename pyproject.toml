@@ -89,7 +89,6 @@ extend-ignore = [
     # "C408",  # unnecessary list comprehension
     # "SIM102",  # use 'if any(...)' instead of 'if True in (...)'
     "CFQ002",  # too many arguments for function call
-    # "CFQ002",  # missing whitespace after ',' (?)
     # "CFQ004",
 ]
 exclude = [
