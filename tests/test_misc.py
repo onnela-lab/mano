@@ -14,7 +14,7 @@ from mano.constants import BEIWE_EXTENSIONS_MESSAGE, logger as log, UTC
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
-from mano.messages import TIME_REQUIRED_MSG
+from mano.messages import TIME_REQUIRED_ERROR
 from mano.sync import validate_datetime, validate_required_datetime
 from tests.conftest import (generate_compressed_zst_files, generate_uncompressed_zst_files,
     generate_valid_compress_test_files, generate_valid_decompress_test_files)
@@ -91,9 +91,9 @@ def test_datetime_validation():
 
 
 def test_require_datetime_errors_on_none():
-    with pytest.raises(ValueError, match=TIME_REQUIRED_MSG("_")):
+    with pytest.raises(ValueError, match=str(TIME_REQUIRED_ERROR("_"))):
         validate_required_datetime(None, "_")
-    with pytest.raises(ValueError, match=TIME_REQUIRED_MSG("_")):
+    with pytest.raises(ValueError, match=str(TIME_REQUIRED_ERROR("_"))):
         validate_required_datetime("", "_")
 
 

@@ -61,8 +61,7 @@ API_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"  # isoformat without timezone, YYYY-MM-DDT
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
 EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 
-BACKFILL_WINDOW = 5
-BACKFILL_INTERVAL_SLEEP = 3
+BACKFILL_WINDOW = 20
 
 # pyzstd custom parameters
 # Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
@@ -78,12 +77,15 @@ BACKEND_PYZSTD_PARAMS = {
 # We provide a tool that de/compresses/deletes files, JSON and MP4 files are likely to exist on
 # users' devices, so we need to at the very least default to skipping them.
 #TODO: add more protections and "intelligence" to determine if a file is a beiwe data file.
+#TODO: how could we handle locked files? they would need to be decrypted-compress-encrypted
 BEIWE_FILE_EXTENSIONS = [
     '.csv',
     '.wav',
-    # '.json',  # The platform provides some json data, but it is too dangerous to include.
-    # '.mp4',   # Mp4 files are already compressed... that's their gorram purpose.
+    '.json',  # The platform provides some json data, but it is too dangerous to include.
+    '.mp4',   # Mp4 files are already compressed... that's their gorram purpose.
 ]
+COMPRESSABLE_FILE_EXTENSIONS = ['.csv', '.wav']
+
 # Yeah we COULD just type out these two-item lists, but instead we will dynamically generate them.
 BEIWE_EXTENSIONS_ANDED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, and {BEIWE_FILE_EXTENSIONS[-1]}'
 BEIWE_EXTENSIONS_ORED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, or {BEIWE_FILE_EXTENSIONS[-1]}'
@@ -117,12 +119,17 @@ class StudySettingsError(Exception): pass  # noqa
 class UnParsableTimeError(ValueError): pass  # noqa
 
 
+_color_settings = coloredlogs.parse_encoded_styles(
+    "debug=green;info=blue,bright;warning=yellow;success=green,bold;error=red;critical=background=red"
+)
+
 # configure colored logging - currently this is our best spot for this
 coloredlogs.install(
     fmt="%(asctime)s %(name)s: %(message)s",
     programname="mano",
     level=logging.INFO,  # our default is going to be info (blue label, regular text color message)
     datefmt="%H:%M:%S",  # cutting out the date for brevity
+    level_styles=_color_settings
 )
 
 # The logger

@@ -1,31 +1,31 @@
 import itertools
 import logging
 import zipfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
-from os import fsync
+from os import fsync, remove as delete_file
 from os.path import exists as file_exists, join as path_join
 from pprint import pformat
 from sys import stdout
 from tempfile import NamedTemporaryFile
-from time import perf_counter, sleep
+from time import perf_counter
 
+import orjson
 import requests
 from dateutil.parser import parse as dateutil_parse, ParserError
 from dateutil.tz import UTC
 from requests.models import Response
 
-from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_INTERVAL_SLEEP,
-    BACKFILL_WINDOW, EARLIEST_POSSIBLE_DATA_DT, log, UnParsableTimeError, URL_COMPRESSED,
-    URL_UNCOMPRESSED)
-from mano.file_management import atomic_write, make_directories, save_archive_with_registry
-from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_MSG, BACKFILL_RESTARTING_WARNING,
-    BACKFILL_START_DATE_FUTURE_MSG, BACKFILL_UNPARSABLE_DATE_MSG, COULD_NOT_PARSE_TIME_MSG,
+from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_WINDOW,
+    EARLIEST_POSSIBLE_DATA_DT, log, URL_COMPRESSED, URL_UNCOMPRESSED)
+from mano.file_management import generate_registry_info, make_directories, save_archive
+from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_ERROR, BACKFILL_START_DATE_FUTURE_MSG,
+    BACKFILL_UNPARSABLE_DATE_ERROR, COULD_NOT_PARSE_TIME_ERROR,
     DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG,
-    NOT_200_OK_MSG, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
+    NOT_200_OK_ERROR, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
     PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
-    TIME_PARSED_MSG, TIME_REQUIRED_MSG, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_MSG)
+    TIME_PARSED_MSG, TIME_REQUIRED_ERROR, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
+    X_IS_NOT_A_Y_ERROR)
 
 
 # historical namespace items
@@ -35,10 +35,9 @@ from mano.constants import APIError, DownloadError, ParseError, SaveError, Write
 # very verbose type hint(s)
 RequestPayload = dict[str, str | list[str] | dict[str, str]]
 
-
+# todo: how exactly does the registry parameter work on the download function.
 #TODO: implement registry file generation and other management tools.
 #TODO: Aggressively hook in the registry? Aggressively regenerate the registry? Always regenerate it?
-#TODO: does the spinner need to be intrinsically dependant on stdout?
 
 
 def download(
@@ -58,7 +57,7 @@ def download(
     # Deprecated
     # Deprecated parameters will be removed in future releases of Mano, they will emit warnings.
     progress: int = 0,                         # Show the progress every N bytes.
-    user_ids: str | list[str] | None = None,         # alias of participant_ids.
+    user_ids: str | list[str] | None = None,   # Alias of participant_ids.
 ) -> zipfile.ZipFile:
     """
     A simple function to download Beiwe Platform Study Data from the Beiwe Data Access API.
@@ -82,7 +81,7 @@ def download(
     
     :param compressed: A boolean to indicate whether to download compressed data.
         
-        We highly recommend downloading compressed data.
+        We highly recommend downloading compressed data, it defaults to false for backwards compatibility.
         
         Compressed data uses ZSTD ("zee-standard"), which has virtually no downsides.
             At the settings we use is roughly 1/5th the size of uncompressed data.
@@ -157,11 +156,7 @@ def download(
         log.warning(USER_IDS_DEPRECATION_MSG)
         # raise type error early
         if not isinstance(user_ids, (list, type(None), str)):
-            log.error(
-                msg :=  # worst formatting ever...
-                X_IS_NOT_A_Y_MSG("user_ids", "str, list[str], or None", user_ids, "download")
-            )
-            raise TypeError(msg)
+            raise X_IS_NOT_A_Y_ERROR("user_ids", "str, list[str], or None", user_ids, "download")
     
     if user_ids and participant_ids:
         log.error(PICK_USER_PARTICIPANT_PLURAL_MSG)
@@ -173,41 +168,23 @@ def download(
         log.warning(PROGRESS_DEPRECATION_MSG)
     
     if not isinstance(Keyring, dict):
-        log.error(msg := X_IS_NOT_A_Y_MSG("Keyring", dict, Keyring, "download"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("Keyring", dict, Keyring, "download")
     if not isinstance(study_id, str):
-        log.error(msg := X_IS_NOT_A_Y_MSG("study_id", str, study_id, "download"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("study_id", str, study_id, "download")
     if not isinstance(participant_ids, (list, type(None), str)):
-        log.error(
-            msg :=  # worst formatting ever...
-            X_IS_NOT_A_Y_MSG("participant_ids", "list[str] or None", participant_ids, "download")
-        )
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("participant_ids", "list[str] or None", participant_ids, "download")
     if not isinstance(time_start, (str, datetime, type(None))):
-        log.error(
-            msg := X_IS_NOT_A_Y_MSG("time_start", "str, datetime, or None", time_start, "download")
-        )
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("time_start", "str, datetime, or None", time_start, "download")
     if not isinstance(time_end, (str, datetime, type(None))):
-        log.error(
-            msg := X_IS_NOT_A_Y_MSG("time_end", "str, datetime, or None", time_end, "download")
-        )
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("time_end", "str, datetime, or None", time_end, "download")
     if not isinstance(data_streams, (list, type(None))):
-        log.error(
-            msg := X_IS_NOT_A_Y_MSG("data_streams", "list[str] or None", data_streams, "download")
-        )
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("data_streams", "list[str] or None", data_streams, "download")
     if not isinstance(registry, (dict, type(None))):
-        log.error(msg := X_IS_NOT_A_Y_MSG("registry", "dict or None", registry, "download"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("registry", "dict or None", registry, "download")
     if not isinstance(compressed, bool):
-        log.error(msg := X_IS_NOT_A_Y_MSG("compressed", bool, compressed, "download"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("compressed", bool, compressed, "download")
     if not isinstance(progress, int):
-        log.error(msg := X_IS_NOT_A_Y_MSG("progress", int, progress, "download"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("progress", int, progress, "download")
     
     # handle participant_ids as str or list[str]
     if isinstance(participant_ids, str):
@@ -240,32 +217,43 @@ def download(
 
 
 def backfill(
+    # Required parameters:
     Keyring: dict[str, str],                        # Your loaded credentials (see documentation).
     study_id: str,                                  # The target Study ID.
     participant_id: str,                            # The target participant's ID.
     output_dir: str,                                # Directory to save downloaded data.
-    start_date: str | datetime = EARLIEST_POSSIBLE_DATA_DT,   # Date to start backfill from.
+    
+    # Optional parameters:
+    start_date: str | datetime | date = EARLIEST_POSSIBLE_DATA_DT,   # Date/time to start backfill from.
+    end_date: str | datetime | date | None = None,  # Date/time to stop backfill at.
     data_streams: list[str] | None = None,          # List of data streams to backfill.
     lock: list[str] | None = None,                  # List of files to lock during backfill.
     passphrase: str | None = None,                  # Passphrase for encryption.
+    compressed: bool = False,                       # Compress downloaded data.
+    
     # Deprecated
     user_id: str | None = None,                     # DEPRECATED alias of participant_id.
 ) -> None:
     """
-    Backfill is a somewhat more robust data download mechanism than the simple download function,
-    and we encourage users to try it out.
+    Backfill is a more robust downloading tool. It pulls down only the missing, updated, and new
+    data you require to sync up with the current available data. It does this by computing hashes of
+    existing data and providing that to the Beiwe Data Access API.
     
-    Backfill downloads data in smaller chunks for a participant, starting from a specified date.
-    By splitting up the requests we can address some common real-world difficulties:
     - Data on the Beiwe platform may be uploaded late for any number of real-world reasons.
       Backfill automates the built-in "registry" feature of the Beiwe Data Access API to avoid
-      re-downloading data you already have.
-    - The quantity of data produced by participants may be large and take time, so they may be
-      interrupted. For instance [and Onnela Lab has confirmed a few cases where] downloads can get
-      cut off by overenthusiastic campus firewalls or intrusion detection systems, perfect wifi is
-      a myth, rural internet is always problematic, etc.
+      re-downloading data you already have, and "back-fills" any data that arrives late.
     
-    This function helps to "backfill" data that arrives late.
+    - To reduce problems generally Backfill downloads data across multiple requests. Long-running
+      operations are more likely to get interrupted. We have encountered situation where downloads
+      got cut off by overenthusiastic campus firewalls or intrusion detection systems, perfect wifi
+      is a myth, rural internet is always problematic, etc.
+    
+    Please be aware:
+    - Backfill does require the server deployment of The Beiwe Platform you are connecting to be
+      relatively up-to-date, from roughly January 2025 or later. Older versions have known bugs and
+      may not filter out previously downloaded data correctly. It still works, but innefficiently.
+    - Backfill must read in all the data you currently have to compute the hashes. If you have slow
+      storage, like a spinning hard drive, this will take some time.
     
     #
     # Required parameters
@@ -286,10 +274,24 @@ def backfill(
         A subfolder with the participant ID will be created if it does not already exist.
         
     :param start_date: The date from which to start backfilling data.
-        This can be a datetime object or a string parseable by dateutil.parser.
+        This can be a date, datetime, or string parseable by dateutil.parser (but we recommend
+        the ISO-8601 format, e.g. "2023-06-15" or "2023-06-15T00:00:00Z" to avoid ambiguity).
+        Dates are interpreted as start of day (midnight, 12:00 AM).
         The default value is September 1, 2015, the earliest possible date for any data that
           any Beiwe study could possibly have.
-        If the provided date is in the future, backfill will exit without doing anything.
+        If the provided start date is in the future, backfill will exit without doing anything.
+        Be aware that the Beiwe platform expects all times to be in the UTC timezone.
+    
+    #
+    # Optional parameters
+    #
+    
+    :param compressed: A boolean to indicate whether to final downloaded data should be decompressed.
+        (The requests to the Beiwe Data Access API will still be for compressed data.)
+    
+    :param end_date: The date at which to stop backfilling data - defaults to None.
+        Type and formatting expectations are the same as `start_date`, except this one is optional.
+        The default value of None will run up until start of day tomorrow.
     
     :param data_streams: A list of the data streams to download.
         If None or an empty list is provided all data streams will be downloaded.
@@ -307,7 +309,7 @@ def backfill(
     if user_id is not None:
         log.warning(USER_ID_KEYWORD_DEPRECATION_MSG)
         if not isinstance(user_id, str):
-            raise TypeError(X_IS_NOT_A_Y_MSG("user_id", str, user_id, "backfill"))
+            raise X_IS_NOT_A_Y_ERROR("user_id", str, user_id, "backfill")
     
     if user_id and participant_id:
         log.error(PICK_USER_PARTICIPANT_SINGLE_MSG)
@@ -317,29 +319,25 @@ def backfill(
     
     # Type checking messages
     if not isinstance(Keyring, dict):
-        log.error(msg := X_IS_NOT_A_Y_MSG("Keyring", dict, Keyring, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("Keyring", dict, Keyring, "backfill")
     if not isinstance(study_id, str):
-        log.error(msg := X_IS_NOT_A_Y_MSG("study_id", str, study_id, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("study_id", str, study_id, "backfill")
     if not isinstance(participant_id, (str, type(None))):
-        log.error(msg := X_IS_NOT_A_Y_MSG("participant_id", "str or None", participant_id, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("participant_id", "str or None", participant_id, "backfill")
     if not isinstance(output_dir, str):
-        log.error(msg := X_IS_NOT_A_Y_MSG("output_dir", str, output_dir, "backfill"))
-        raise TypeError(msg)
-    if not isinstance(start_date, (str, datetime)):
-        log.error(msg := X_IS_NOT_A_Y_MSG("start_date", "str or datetime", start_date, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("output_dir", str, output_dir, "backfill")
+    if not isinstance(start_date, (str, datetime, date)):
+        raise X_IS_NOT_A_Y_ERROR("start_date", "str, datetime, or date", start_date, "backfill")
+    if not isinstance(end_date, (str, datetime, date, type(None))):
+        raise X_IS_NOT_A_Y_ERROR("end_date", "str, datetime, date, or None", end_date, "backfill")
     if not isinstance(data_streams, (type(None), list)):
-        log.error(msg := X_IS_NOT_A_Y_MSG("data_streams", "list of strings or None", data_streams, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("data_streams", "list of strings or None", data_streams, "backfill")
     if not isinstance(lock, (type(None), list)):
-        log.error(msg := X_IS_NOT_A_Y_MSG("lock", "list of strings or None", lock, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("lock", "list of strings or None", lock, "backfill")
+    if not isinstance(compressed, bool):
+        raise X_IS_NOT_A_Y_ERROR("compressed", bool, compressed, "backfill")
     if not isinstance(passphrase, (type(None), str)):
-        log.error(msg := X_IS_NOT_A_Y_MSG("passphrase", "str or None", passphrase, "backfill"))
-        raise TypeError(msg)
+        raise X_IS_NOT_A_Y_ERROR("passphrase", "str or None", passphrase, "backfill")
     
     # and then if they are still None convert them to empty lists
     data_streams = data_streams or []
@@ -349,38 +347,41 @@ def backfill(
     # require both lock and passphrase if either is provided
     if int(bool(lock)) + int(bool(passphrase)) == 1:
         if not lock:
-            log.error(msg := BACKFILL_LOCK_AND_PASSPHRASE_MSG("lock", "passphrase"))
-            raise ValueError(msg)
+            raise BACKFILL_LOCK_AND_PASSPHRASE_ERROR("lock", "passphrase")
         if not passphrase:
-            log.error(msg := BACKFILL_LOCK_AND_PASSPHRASE_MSG("passphrase", "lock"))
-            raise ValueError(msg)
+            raise BACKFILL_LOCK_AND_PASSPHRASE_ERROR("passphrase", "lock")
     
     # more type checking of list contents
     if data_streams:
         for ds in data_streams:
             if not isinstance(ds, str):
-                log.error(msg := X_IS_NOT_A_Y_MSG("data_streams item", str, ds, "backfill"))
-                raise TypeError(msg)
+                raise X_IS_NOT_A_Y_ERROR("data_streams item", str, ds, "backfill")
         validate_data_streams(data_streams, "backfill - `data_streams`")
     
     if lock:
         for lk in lock:
             if not isinstance(lk, str):
-                log.error(msg := X_IS_NOT_A_Y_MSG("lock item", str, lk, "backfill"))
-                raise TypeError(msg)
+                raise X_IS_NOT_A_Y_ERROR("lock item", str, lk, "backfill")
         validate_data_streams(lock, "backfill - `lock`")
     
     # start date cannot be an empty string
-    if start_date == "":
-        raise ValueError("Backfill's `start_date` parameter cannot be an empty string.")
+    if start_date == "" or end_date == "":
+        raise ValueError("Backfill's `start_date` and `end_date` parameters cannot be empty strings.")
     
     # ensure start_date is a datetime, remove the tzinfo
     try:
         start_date = validate_required_datetime(start_date, "backfill - start_date")
         start_date = start_date.replace(tzinfo=None)
     except ParserError:
-        log.error(msg := BACKFILL_UNPARSABLE_DATE_MSG(start_date))
-        raise ValueError(msg)
+        raise BACKFILL_UNPARSABLE_DATE_ERROR(start_date)
+    
+    if end_date is not None:
+        try:
+            # (type checker complains if we use validate_datetime because return could be None.)
+            end_date = validate_required_datetime(end_date, "backfill - end_date")
+            end_date = end_date.replace(tzinfo=None)
+        except ParserError:
+            raise BACKFILL_UNPARSABLE_DATE_ERROR(end_date)
     
     # time is in the future - this is valid _behavior_ so we don't raise an exception
     if start_date > datetime.now():
@@ -392,7 +393,16 @@ def backfill(
     
     # this is just a this wrapper to provide documentation for usage of Mano's backfill functionality
     _backfill_participant(
-        Keyring, study_id, participant_id, output_dir, start_date, data_streams, lock, passphrase,
+        Keyring,
+        study_id,
+        participant_id,
+        output_dir,
+        start_date,
+        data_streams,
+        compressed,
+        lock,
+        passphrase,
+        backfill_end=end_date,
     )
 
 
@@ -416,7 +426,7 @@ def save(
     if user_id and not participant_id:
         participant_id = user_id
     
-    return save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
+    return save_archive(archive, participant_id, output_dir, lock, passphrase)
 
 
 #
@@ -457,10 +467,12 @@ def _download(
     if time_end:
         payload["time_end"] = time_end.strftime(API_TIME_FORMAT)
     if registry:
-        payload["registry"] = registry
+        payload["registry"] = orjson.dumps(registry).decode()
     
-    # don't log sensitive information
-    dummy_payload = {k: v for k, v in payload.items() if k not in ("access_key", "secret_key")}
+    # don't log sensitive information, registry may be huuge
+    dummy_payload = {k: v for k, v in payload.items() if k not in ("access_key", "secret_key", "registry")}
+    if registry:
+        dummy_payload["registry"] = "<omitted>"
     log.debug(f"download parameters: {pformat(dummy_payload, width=20000)}")
     
     return _do_download(url, payload)
@@ -475,14 +487,16 @@ def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
     # submit download request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
-        log.error(err_msg := NOT_200_OK_MSG(resp.status_code, resp.url))
-        raise APIError(err_msg)
+        raise NOT_200_OK_ERROR(resp.status_code, resp.url)
     
-    log.info('Server responded, reading zip data... ')
-    size, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
-    log.info('Download finished.')
-    MBps = (size / 1024 / 1024) / (t_end - t_start)
-    log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s)')
+    log.info('Server responded, downloading zip data... ')
+    MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
+    
+    MBps = MB / (t_end - t_start)
+    if f"{t_end - t_start:.2f}" == "0.00":
+        log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
+    else:
+        log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s) for {MB:.2f} MB.')
     
     # load response content into a zipfile object
     try:
@@ -503,61 +517,73 @@ def _backfill_participant(
     study_id: str,
     participant_id: str,
     output_dir: str,
-    start_time: datetime,
+    backfill_start: datetime,
     data_streams: list[str],
+    compressed: bool,
     lock: list[str],
     passphrase: str | None = None,
+    backfill_end: datetime | None = None,
 ) -> None:
     """
     Business logic for backfilling a participant's data.
+    Do not call this function directly, use `backfill(...)`
     """
-    # do not call this function directly, use `backfill(...)`
-    assert start_time.tzinfo is None, "start_time must be timezone-naive"
     
-    backfill_file_path = path_join(output_dir, participant_id, '.backfill')
+    assert backfill_start.tzinfo is None, "start_time must be timezone-naive"
     
-    log.info(f'Starting backfill, initial timestamp: {start_time}')
-    next_timestamp = start_time
+    participant_path = path_join(output_dir, participant_id)
+    if file_exists(backfill_file := path_join(participant_path, '.backfill')):
+        log.warning("found old backfill tracking file, deleting it.")
+        delete_file(backfill_file)
     
-    # safely read in the backfill tracking file if it exists, override input start time if present.
-    if file_exists(backfill_file_path):
-        with open(backfill_file_path) as fo:
-            _tmp = fo.read().strip()
-        
-        if _tmp != 'COMPLETE':
-            if check_can_parse_to_datetime(_tmp):
-                next_timestamp = dateutil_parse(_tmp)
-                log.warning(BACKFILL_RESTARTING_WARNING(participant_id))
-                log.info(f'backfill file contains string `{next_timestamp}`')
-            else:
-                log.warning("Backfill tracking file was junk, ignoring.")
+    log.info(f'Starting backfill, initial timestamp: {backfill_start}')
+    next_timestamp = backfill_start
+    
+    backfill_end = backfill_end or \
+        datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    
+    participant_registry, local_hash_lookup = generate_registry_info(
+        participant_path, study_id, participant_id
+    )
     
     while True:
-        
         # get [next] download window and resume point, and download
         start, end = _get_next_backfill_window_strings(next_timestamp)
-        log.info(f'Current backfill window is {start} - {end}...')
+        log.info(f'Checking for backfill window {start} - {end}...')
         
         archive = download(
-            Keyring, study_id, [participant_id], data_streams, time_start=start, time_end=end
+            Keyring,
+            study_id=study_id,
+            participant_ids=[participant_id],
+            data_streams=data_streams,
+            time_start=start,
+            time_end=end,
+            compressed=True,
+            registry=participant_registry
         )
         
         # save data
-        num_saved = save_archive_with_registry(archive, participant_id, output_dir, lock, passphrase)
-        log.info(f'One download complete, saved {num_saved} files.')
+        log.info('Download complete, checking data...')
+        num_saved = save_archive(
+            archive,
+            participant_id,
+            output_dir,
+            lock,
+            passphrase,
+            decompress_zst=not compressed,  # compressed is true when we do not want decompression
+            hash_lookup=local_hash_lookup,
+        )
+        log_func = log.warning if num_saved == 0 else log.info
+        log_func(f'download complete, created or updated {num_saved} files.')
         
-        # end condition
-        # TODO: possible bugs - .today() returns ~now, not a start or end of day....
-        if end > datetime.today():
-            atomic_write(backfill_file_path, b'COMPLETE')
+        # stop condition
+        if end > backfill_end:
             log.info(f'Backfill operations are complete for participant `{participant_id}`')
             return
         
-        # wite the new resume point to the backfill file, sleep, repeat
-        atomic_write(backfill_file_path, end.isoformat().encode())
-        log.info(f'next backfill for participant `{participant_id}` will resume from `{end}`')
-        sleep(BACKFILL_INTERVAL_SLEEP)
-        
+        # proceed to next window
+        log.debug(f'next backfill for participant `{participant_id}` will resume from `{end}`')
+        log.info("")
         next_timestamp = end  # advance the window
 
 
@@ -579,7 +605,7 @@ def _get_next_backfill_window_strings(timestamp: datetime) -> tuple[datetime, da
 
 def iterate_with_spinner(
     resp: Response, bytesio: BytesIO, show_progress: bool
-) -> tuple[int, float, float]:
+) -> tuple[float, float, float]:
     spinner = itertools.cycle(['-', '/', '|', '\\'])
     
     t_start = perf_counter()  # hard to disentangle log statements from time measurement...
@@ -612,7 +638,7 @@ def iterate_with_spinner(
         stdout.flush()
     
     t_end = perf_counter()
-    return size, t_start, t_end
+    return size / 1024 / 1024, t_start, t_end
 
 
 #
@@ -624,10 +650,10 @@ def normalize_url(url: str) -> str:
     url = url.strip()
     
     if url == '':
-        raise ValueError('An empty URL provided')
+        raise ValueError('An empty URL was provided')
     
     if url.startswith('http://'):  # force https
-        url = 'https://' + url[7:]
+        url = url.replace('http://', 'https://', 1)
     
     if not url.startswith('https://'):  # add https
         url = 'https://' + url
@@ -635,7 +661,7 @@ def normalize_url(url: str) -> str:
     return url.rstrip('/')  # strip [any number of] trailing slashes
 
 
-def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | None:
+def validate_datetime(dt: str | datetime | date | None, msg_prefix: str) -> datetime | None:
     """ Process one time input parameter - a returned value of None indicates no time filter. """
     
     # empty string and None
@@ -643,15 +669,20 @@ def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | 
         log.debug(NO_TIME_MSG(msg_prefix))
         return None
     
+    if type(dt) is date:  # date subclasses datetime, this syntax to test the type is correct.
+        dt = datetime(dt.year, dt.month, dt.day)
+    
     # string input
     if isinstance(dt, str):
         time_str = dt
         try:
             dt = dateutil_parse(dt)
         except ParserError:
-            log.error(msg := COULD_NOT_PARSE_TIME_MSG(msg_prefix, dt))
-            raise UnParsableTimeError(msg)  # do not add "from e", the stack trace is not useful here
+            # do not add "from e", the stack trace is not useful here
+            raise COULD_NOT_PARSE_TIME_ERROR(msg_prefix, dt)
         log.debug(TIME_PARSED_MSG(msg_prefix, time_str, dt))
+    
+    assert type(dt) is datetime  # type checkers don't understand the date -> datetime conversion
     
     # naive datetime
     if dt.tzinfo is None:
@@ -667,14 +698,13 @@ def validate_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime | 
     return dt
 
 
-def validate_required_datetime(dt: str | datetime | None, msg_prefix: str) -> datetime:
+def validate_required_datetime(dt: str | datetime | date | None, msg_prefix: str) -> datetime:
     """
     As handle_one_datetime_input, but raises ValueError on None/empty, and guarantees datetime return.
     """
     dt = validate_datetime(dt, msg_prefix)
     if dt is None or not dt:
-        log.error(msg := TIME_REQUIRED_MSG(msg_prefix))
-        raise ValueError(msg)
+        raise TIME_REQUIRED_ERROR(msg_prefix)
     return dt
 
 
