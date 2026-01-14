@@ -13,7 +13,7 @@ from responses import RequestsMock
 
 from mano import sync
 from mano.constants import APIError, UnParsableTimeError, UTC
-from mano.messages import NOT_200_OK_MSG
+from mano.messages import NOT_200_OK_ERROR
 
 
 def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
@@ -324,7 +324,7 @@ def test_download_http_error(keyring: dict[str, str]):
             body="Internal Server Error"
         )
         
-        with pytest.raises(APIError, match=NOT_200_OK_MSG(500, url)):
+        with pytest.raises(APIError, match=str(NOT_200_OK_ERROR(500, url))):
             sync.download(
                 keyring,
                 study_id='STUDY_ID',
