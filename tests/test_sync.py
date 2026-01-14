@@ -463,7 +463,6 @@ def test_backfill_called_twice(
     mock_download.assert_any_call(
         keyring,
         **default_backfill_download_kwargs(twenty_days_ago_dt, twenty_days_ago_dt+timedelta(days=20))
-        # *default_backfill_download_args(keyring),
     )
     mock_download.assert_any_call(
         keyring,
@@ -596,11 +595,12 @@ def _test_backfill_does_not_overwrite(
     target_folder = tmp_path / "target_folder"
     gps_path = target_folder / "6y6s1w4g" / "gps"
     identifiers_path = target_folder / "6y6s1w4g" / "identifiers"
-    before_creation_timestamp = datetime.now().timestamp()
     
+    before_creation_timestamp = datetime.now().timestamp()
     with ZipFile(BytesIO(data_to_decompress)) as zf:
         zf.extractall(target_folder)
     delete_file(target_folder / "registry")  # we don't want it in this current implementation
+    after_creation_timestamp = datetime.now().timestamp()
     
     # (tmp_path / "registry").
     _ = mocker.patch('mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed)))
@@ -618,16 +618,26 @@ def _test_backfill_does_not_overwrite(
             "compressed": compression_parameter,
         },
     )
+    after_api_call_timestamp = datetime.now().timestamp()
     
     # file list in this case should be unchanged
     assert gps_list == listdir(gps_path)
     assert identifiers_list == listdir(identifiers_path)
     
     # This is how you test files were not modified or overwritten:
+    # ctime is creation time, mtime is modified time
     for p in gps_list + identifiers_list:
         p = (gps_path / p)
-        assert p.stat().st_mtime >= before_creation_timestamp
-        assert p.stat().st_ctime >= before_creation_timestamp
+        ctime = p.stat().st_ctime
+        mtime = p.stat().st_mtime
+        assert ctime <= after_creation_timestamp
+        assert mtime <= after_creation_timestamp
+        
+        assert ctime <= after_api_call_timestamp
+        assert mtime <= after_api_call_timestamp
+        
+        assert ctime >= before_creation_timestamp
+        assert mtime >= before_creation_timestamp
 
 
 #
