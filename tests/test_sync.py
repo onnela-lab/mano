@@ -562,7 +562,7 @@ def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
     mock_zip_data_compressed: bytes,
     mock_zip_data_uncompressed: bytes,
 ):
-    """ The backfill function needs to download _and compare hashes_ if there are file overwrites. 
+    """ The backfill function needs to download _and compare hashes_ if there are file overwrites.
     This test tests when there is a mismatch between whether the files to be extracted from the zip
     file are supposed to come out as compressed (.zst), and  the existing files are compressed. """
     _test_backfill_does_not_overwrite(
@@ -748,7 +748,7 @@ def test_download_single_user_string_works(keyring: dict[str, str], mocker: Mock
     # Call the download function with a single string participant ID
     time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
     time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
-    zf = sync.download(
+    _zf = sync.download(
         keyring,
         study_id='STUDY_ID',
         participant_ids='USER_ID',
@@ -768,7 +768,7 @@ def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerF
     # Call the download function with a single string participant ID
     time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
     time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
-    zf = sync.download(
+    _zf = sync.download(
         keyring,
         study_id='STUDY_ID',
         participant_ids='USER_ID,user_id',
