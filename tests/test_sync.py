@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from os import listdir, makedirs, remove as delete_file
 from pathlib import Path
+from time import sleep
 from zipfile import ZipFile
 
 import pytest
@@ -592,15 +593,20 @@ def _test_backfill_does_not_overwrite(
     mock_zip_data_compressed: bytes,
     compression_parameter: bool
 ):
+    """ WOW FUN FACT - WANDOWS CAN'T DO FILE CREATION TIME PROPERLY SO THIS TEST GETS SLEEP STATEMENTS """
+    
     target_folder = tmp_path / "target_folder"
     gps_path = target_folder / "6y6s1w4g" / "gps"
     identifiers_path = target_folder / "6y6s1w4g" / "identifiers"
     
-    # before_creation_timestamp = datetime.now().timestamp()
     with ZipFile(BytesIO(data_to_decompress)) as zf:
         zf.extractall(target_folder)
     delete_file(target_folder / "registry")  # we don't want it in this current implementation
-    after_creation_timestamp = datetime.now().timestamp()
+    
+    # inserting sleeps for 0.02 seconds either side so that fs timestamps differ enough to be detected
+    sleep(1/50)
+    between_creation_and_potential_update = datetime.now().timestamp()
+    sleep(1/50)
     
     # (tmp_path / "registry").
     _ = mocker.patch('mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed)))
@@ -618,7 +624,6 @@ def _test_backfill_does_not_overwrite(
             "compressed": compression_parameter,
         },
     )
-    after_api_call_timestamp = datetime.now().timestamp()
     
     # file list in this case should be unchanged
     assert gps_list == listdir(gps_path)
@@ -630,15 +635,8 @@ def _test_backfill_does_not_overwrite(
         p = (gps_path / p)
         ctime = p.stat().st_ctime
         mtime = p.stat().st_mtime
-        assert ctime <= after_creation_timestamp
-        assert mtime <= after_creation_timestamp
-        
-        assert ctime <= after_api_call_timestamp
-        assert mtime <= after_api_call_timestamp
-        
-        # these two sometimes fail on the ci, its fine we don't actually care.
-        # assert ctime >= before_creation_timestamp
-        # assert mtime >= before_creation_timestamp
+        assert ctime <= between_creation_and_potential_update
+        assert mtime <= between_creation_and_potential_update
 
 
 #
