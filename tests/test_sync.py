@@ -638,8 +638,8 @@ def _test_backfill_does_not_overwrite(
     
     # This is how you test files were not modified or overwritten:
     # ctime is creation time, mtime is modified time
-    for p in gps_list + identifiers_list:
-        p = (gps_path / p)
+    for a_path in gps_list + identifiers_list:
+        p = (gps_path / a_path)
         ctime = p.stat().st_ctime
         mtime = p.stat().st_mtime
         assert ctime <= between_creation_and_potential_update
