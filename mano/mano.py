@@ -98,7 +98,7 @@ def keyring(
         key = crypt.key_from_file(fo, passphrase)
         content = b''
         
-        # crypt.decrypt is not a None-y
+        # crypt.decrypt cannot be None
         for chunk in crypt.decrypt(fo, key):  # type: ignore
             content += chunk
     

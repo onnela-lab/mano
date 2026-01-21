@@ -16,8 +16,9 @@ from mano.file_management import (compress_as_backend, compress_general, compres
     iterate_beiwe_data_files_recursively)
 from mano.messages import TIME_REQUIRED_ERROR
 from mano.sync import validate_datetime, validate_required_datetime
-from tests.conftest import (generate_compressed_zst_files, generate_uncompressed_zst_files,
-    generate_valid_compress_test_files, generate_valid_decompress_test_files)
+from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES, generate_compressed_zst_files,
+    generate_uncompressed_zst_files, generate_valid_compress_test_files,
+    generate_valid_decompress_test_files)
 
 
 @responses.activate
@@ -308,6 +309,29 @@ def test_iterate_recursive_zst_only(tmp_path: Path):
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True)}
     expected_zst_filenames = {str(f) for f in zst_files}
     assert found_files == expected_zst_filenames
+
+
+def test_iterate_lock_files(tmp_path: Path):
+    lock_files = [
+        tmp_path / "data2.csv.lock",
+        tmp_path / "subdir2" / "audio2.wav.lock",
+        tmp_path / "data2.csv.zst.lock",
+        tmp_path / "subdir2" / "audio2.wav.zst.lock",
+    ]
+    (tmp_path / "subdir2").mkdir()
+    
+    for filepath in lock_files:
+        if ".zst" in filepath.name:
+            filepath.write_bytes(COMPRESSED_BYTES)
+        else:
+            filepath.write_bytes(DECOMPRESSED_BYTES)
+    
+    zst_only_true = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True)}
+    assert zst_only_true == {str(f) for f in lock_files if ".zst" in str(f)}
+    zst_only_false = {*iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=False)}
+    assert zst_only_false == {str(f) for f in lock_files if ".zst" not in str(f)}
+    both = {*iterate_beiwe_data_files_recursively(str(tmp_path), include_zst=True)}
+    assert both == {str(f) for f in lock_files}
 
 
 # full compress/decompress tests

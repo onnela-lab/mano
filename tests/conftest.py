@@ -245,6 +245,7 @@ def generate_valid_decompress_test_files(tmp_path: Path) -> tuple[list[Path], li
         tmp_path / "data1.csv.zst",
         tmp_path / "subdir1" / "audio.wav.zst",
     ]
+    
     non_zst_files = [
         tmp_path / "document.txt",
         tmp_path / "subdir1" / "image.jpg",

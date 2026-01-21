@@ -10,6 +10,7 @@ from sys import stdout
 from tempfile import NamedTemporaryFile
 from time import perf_counter
 
+import cryptease
 import orjson
 import requests
 from dateutil.parser import parse as dateutil_parse, ParserError
@@ -521,7 +522,7 @@ def _backfill_participant(
     data_streams: list[str],
     compressed: bool,
     lock: list[str],
-    passphrase: str | None = None,
+    encryption_key: cryptease.Key | None = None,
     backfill_end: datetime | None = None,
 ) -> None:
     """
@@ -543,7 +544,7 @@ def _backfill_participant(
         datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
     participant_registry, local_hash_lookup = generate_registry_info(
-        participant_path, study_id, participant_id
+        participant_path, study_id, participant_id, encryption_key
     )
     
     while True:
@@ -569,7 +570,7 @@ def _backfill_participant(
             participant_id,
             output_dir,
             lock,
-            passphrase,
+            encryption_key,
             decompress_zst=not compressed,  # compressed is true when we do not want decompression
             hash_lookup=local_hash_lookup,
         )
