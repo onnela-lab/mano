@@ -12,15 +12,15 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from zipfile import ZipFile
 
-import cryptease
 import pyzstd
-from cryptease import decrypt_to_stream
+from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
 from pyzstd import decompress
 
 from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
-    DecryptionUnavailableError, log, ParseError, SaveError, WriteError)
-from mano.messages import (CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG, DATA_STREAM_NOT_PARTICIPANT_MSG,
-    DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
+    EncryptionKeyUnavailable, log, ParseError, SaveError, WriteError)
+from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
+    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG,
+    PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
 def make_directories(path: str):
@@ -386,7 +386,6 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
 # File Encryption
 #
 
-
 #TODO: actually review what this does and confirm this rename is correct
 #TODO: document this
 def save_archive(
@@ -411,12 +410,7 @@ def save_archive(
     if lock and not passphrase:
         raise SaveError('Encrypting data requires a passphrase.')
     
-    if lock and passphrase:
-        log.debug("decoding key for decrypting locked files")
-    
-    # this runs pbkdf2, which is slow, so we only do it once
-    encryption_key = cryptease.kdf(passphrase) if lock and passphrase else None
-    
+    # probably cannot multithread due to "file-io" in the backing memory of the ZipFile object
     num_saved = 0
     for member in archive.namelist():
         if process_one_archive_file(
@@ -424,7 +418,7 @@ def save_archive(
             output_dir,
             archive,
             participant_id,
-            encryption_key,
+            passphrase,
             lock,
             decompress_zst,
             hash_lookup=hash_lookup or {},
@@ -434,14 +428,12 @@ def save_archive(
     return num_saved
 
 
-# TODO: backfill is not able to handle encrypted files
-
 def process_one_archive_file(
     filename_in_zip: str,
     output_dir: str,
     archive: ZipFile,
     participant_id: str,
-    encryption_key: cryptease.Key | None,
+    passphrase: str | None,
     lock: list[str],
     decompress_zst: bool,
     hash_lookup: dict[str, bytes],
@@ -468,7 +460,8 @@ def process_one_archive_file(
     
     binary_data: bytes = archive.read(filename_in_zip)
     if decompress_zst:
-        assert filename_in_zip.endswith('.zst'), f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
+        if not filename_in_zip.endswith('.zst'):
+            f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
         binary_data = decompress(binary_data)
         output_name = output_name.replace(".zst", "")  # works even on uncompressed ~mp4s
         was_decompressed = True
@@ -493,9 +486,9 @@ def process_one_archive_file(
         log.debug(f"creating directory at: `{target_dir}`")
         make_directories(target_dir)
     
-    # encrypt it if necessary
+    # encrypt if necessary
     if do_encrypt:
-        cryptease.encrypt(BytesIO(binary_data), encryption_key, filename=output_name, permissions=0o0644)  # type: ignore
+        do_encrypted_write(binary_data, output_name, passphrase)
     else:
         # write content to persistent storage
         atomic_write(output_name, binary_data)
@@ -539,7 +532,7 @@ def determine_data_stream_from_internal_zip_filepath(file_path: str, participant
 
 # todo: make this handle locked files.
 def generate_registry_info(
-    folder_path: str, study_id: str, participant_id: str, encryption_key: cryptease.Key | None = None
+    folder_path: str, study_id: str, participant_id: str, passphrase: str | None = None
 ) -> tuple[dict[str, str], dict[str, bytes]]:
     """
     Reads and computes sha1 hashes for all Beiwe data files in a folder.
@@ -560,7 +553,7 @@ def generate_registry_info(
         # with our other parameters)
         task_results_we_must_then_iterate_over = pool.imap_unordered(
             lambda path: _threadable_generate_registry_info(
-                path, study_id, participant_id, encryption_key, remote_hashes, local_hashes
+                path, study_id, participant_id, passphrase, remote_hashes, local_hashes
             ),
             paths,
         )
@@ -578,12 +571,12 @@ def _threadable_generate_registry_info(
     real_local_path: str,
     study_id: str,
     participant_id: str,
-    encryption_key: cryptease.Key | None,
+    passphrase: str | None,
     remote_hashes: dict[str, str],
     local_hashes: dict[str, bytes],
 ):
     # base path is the file with no .lock or .zst extensions, zst path is with .zst
-    hash_val = get_sha1_file_hash(real_local_path, encryption_key)
+    hash_val = get_sha1_file_hash(real_local_path, passphrase)
     base_path = get_base_path(real_local_path, participant_id)
     local_hashes[base_path] = hash_val
     
@@ -592,10 +585,8 @@ def _threadable_generate_registry_info(
         remote_hashes[new_path] = hash_val.decode()
 
 
-def get_sha1_file_hash(path: str, encryption_key: cryptease.Key | None) -> bytes:
-    """
-    Generate SHA1 hash of a regular or .zst file.
-    """
+def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
+    """ Generate SHA1 hash of a regular or .zst file. """
     
     log.debug(f'generating sha1 hash for file: `{path}`')
     
@@ -603,9 +594,8 @@ def get_sha1_file_hash(path: str, encryption_key: cryptease.Key | None) -> bytes
         data = fo.read()
     
     if path.endswith(".lock"):
-        if encryption_key is None:
-            raise DecryptionUnavailableError(CANNOT_HASH_MSG(path))
-        data = b"".join(decrypt_to_stream(BytesIO(data), encryption_key))
+        # may be slow due to PBKDF2 key derivation
+        data = decrypt_binary_data_to_bytes(data, passphrase, path)
     
     if path.endswith('.zst') or path.endswith('.zst.lock'):
         data = decompress(data)
@@ -616,6 +606,35 @@ def get_sha1_file_hash(path: str, encryption_key: cryptease.Key | None) -> bytes
 def generate_base64_sha1_hash(data: bytes) -> bytes:
     # (for some reason it has a new line at the end)
     return base64_encodebytes(hashlib.sha1(data).digest()).strip()
+
+
+#
+# Encryption Operations
+#
+
+
+def decrypt_binary_data_to_bytes(binary_data: bytes, passphrase: str | None, path: str) -> bytes:
+    """
+    Decrypt a (.lock) file's binary data using cryptease.
+    - Cryptease embeds the salt and iv in the file, it prepends a human readable header into the file binary.
+    - Decryption requires using the password and the encrypted file itself to derive a final key.
+    - For this purpose it provides a `key_from_file` function
+    - Somewhere in there I'm pretty sure it uses PBKDF2 with sha256, so this is probably slow(ish).
+    """
+    if passphrase is None:
+        raise EncryptionKeyUnavailable(CANNOT_HASH_MSG(path))
+    
+    encryption_key_obj = key_from_file(BytesIO(binary_data), passphrase)
+    return b"".join(decrypt_to_stream(BytesIO(binary_data), encryption_key_obj))
+
+
+def do_encrypted_write(binary_data: bytes, filename: str, passphrase: str | None):
+    """ Using cryptease, generate an encryption key, and encrypt the binary data to the file. """
+    if passphrase is None:
+        raise EncryptionKeyUnavailable(CANNOT_ENCRYPT_MSG(filename))
+    
+    encryption_key = key_derivation_function(passphrase)  # may be slow
+    encrypt(BytesIO(binary_data), encryption_key, filename=filename, permissions=0o0644)
 
 
 #

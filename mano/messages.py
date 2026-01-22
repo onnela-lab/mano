@@ -143,6 +143,12 @@ def CANNOT_HASH_MSG(path: str):
     return f"Mano encountered an encrypted file ({path}) " \
            "but cannot produce a hash because no decryption key was provided."
 
+
+def CANNOT_ENCRYPT_MSG(path: str):
+    return f"Mano encountered a request to encrypt a file ({path}) " \
+           "but cannot do so because no passphrase was provided."
+
+
 #
 # Deprecation warnings
 #

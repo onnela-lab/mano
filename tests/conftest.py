@@ -1,14 +1,45 @@
+from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
 
 import pytest
 import pyzstd
 import responses
+from cryptease import encrypt_to_stream, kdf as key_derivation_function
 
 
 """
 Pytest configuration and shared fixtures for mano tests.
 """
+
+# TODO: move these constants and helpers to a common test utils file
+STUDY_ID = "abcdefghijklmnopqrstuvwx"  # 24 chars
+PARTICIPANT_ID = "12345678"
+DATA_STREAM_FOLDER = "accelerometer"
+DATA_STREAM_FILE = "2024-02-16 09_00_00+00_00.csv"
+DATA_STREAM_FILE_ISO = "2024-02-16T09:00:00.csv"
+NORMALIZED_FILE_PATH = f"{STUDY_ID}/{PARTICIPANT_ID}/{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE_ISO}"
+LOCAL_PATH_REFERENCE = f"{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE}"
+FILE_CONTENT_UNCOMPRESSED = b"timestamp,x,y,z\n2024-02-16 09:00:00+00:00,0.1,0.2,0.3\n"
+FILE_CONTENT_COMPRESSED = pyzstd.compress(FILE_CONTENT_UNCOMPRESSED)
+
+# the encrypted files and passphrase differ on every run due to the salt and iv
+PASSPHRASE_STRING = "test_passphrase"
+salt = b'JOoKmNv31b1kLVJnwPAtCorhTSRb0In77k8xw5AVDjc='  # make the key static across all test runs
+PASSPHRASE_OBJECT = key_derivation_function(PASSPHRASE_STRING, salt)  # slow, make global
+
+# these files look weird, they start with a ~json-like header with information about the key
+FILE_CONTENT_ENCRYPTED_UNCOMPRESSED = b"".join(
+    encrypt_to_stream(BytesIO(FILE_CONTENT_UNCOMPRESSED), PASSPHRASE_OBJECT)
+)
+FILE_CONTENT_ENCRYPTED_COMPRESSED = b"".join(
+    encrypt_to_stream(BytesIO(FILE_CONTENT_COMPRESSED), PASSPHRASE_OBJECT)
+)
+
+# FILE_SHA1_HASH_BYTES = base64.b64encode(hashlib.sha1(FILE_CONTENT_UNCOMPRESSED).digest())
+FILE_SHA1_HASH_BYTES = b"mJfbbHQygEaa6euqwUnye9vYulM="  # hardcode this to make it unambiguous
+FILE_SHA1_HASH_STRING = FILE_SHA1_HASH_BYTES.decode()
+
 
 
 @pytest.fixture

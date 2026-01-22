@@ -6,10 +6,8 @@ from time import sleep
 from zipfile import ZipFile
 
 import pytest
-import pyzstd
 import requests
 import responses
-from cryptease import encrypt_to_stream, kdf as key_derivation_function
 from pytest_mock import MockerFixture
 from pyzstd import decompress
 from responses import RequestsMock
@@ -17,6 +15,10 @@ from responses import RequestsMock
 from mano import sync
 from mano.constants import APIError, UnParsableTimeError, UTC
 from mano.messages import NOT_200_OK_ERROR
+from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_COMPRESSED,
+    FILE_CONTENT_ENCRYPTED_COMPRESSED, FILE_CONTENT_ENCRYPTED_UNCOMPRESSED,
+    FILE_CONTENT_UNCOMPRESSED, FILE_SHA1_HASH_BYTES, FILE_SHA1_HASH_STRING, LOCAL_PATH_REFERENCE,
+    NORMALIZED_FILE_PATH, PARTICIPANT_ID, PASSPHRASE_STRING, STUDY_ID)
 
 
 #
@@ -25,7 +27,7 @@ from mano.messages import NOT_200_OK_ERROR
 
 
 def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download function returns a ZipFile object."""
+    """ Test that download function returns a ZipFile object. """
     # Call the download function
     zf = sync.download(
         keyring,
@@ -1081,34 +1083,6 @@ def test_backfill__future_does_not_call_backfill_participant(
 # TODO: we need to support `2024-02-16 09_00_00+00_00.csv` and `2024-02-16 09_00_00.csv` file paths
 #   but always convert to +00_00
 
-# TODO: move these constants and helpers to a common test utils file
-STUDY_ID = "abcdefghijklmnopqrstuvwx"  # 24 chars
-PARTICIPANT_ID = "12345678"
-DATA_STREAM_FOLDER = "accelerometer"
-DATA_STREAM_FILE = "2024-02-16 09_00_00+00_00.csv"
-DATA_STREAM_FILE_ISO = "2024-02-16T09:00:00.csv"
-NORMALIZED_FILE_PATH = f"{STUDY_ID}/{PARTICIPANT_ID}/{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE_ISO}"
-LOCAL_PATH_REFERENCE = f"{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE}"
-FILE_CONTENT_UNCOMPRESSED = b"timestamp,x,y,z\n2024-02-16 09:00:00+00:00,0.1,0.2,0.3\n"
-FILE_CONTENT_COMPRESSED = pyzstd.compress(FILE_CONTENT_UNCOMPRESSED)
-
-# the encrypted files and passphrase differ on every run due to the salt and iv
-PASSPHRASE_STRING = "test_passphrase"
-salt = b'JOoKmNv31b1kLVJnwPAtCorhTSRb0In77k8xw5AVDjc='  # make the key static across all test runs
-PASSPHRASE_OBJECT = key_derivation_function(PASSPHRASE_STRING, salt)  # slow, make global
-
-# these files look weird, they start with a ~json-like header with information about the key
-FILE_CONTENT_ENCRYPTED_UNCOMPRESSED = b"".join(
-    encrypt_to_stream(BytesIO(FILE_CONTENT_UNCOMPRESSED), PASSPHRASE_OBJECT)
-)
-FILE_CONTENT_ENCRYPTED_COMPRESSED = b"".join(
-    encrypt_to_stream(BytesIO(FILE_CONTENT_COMPRESSED), PASSPHRASE_OBJECT)
-)
-
-# FILE_SHA1_HASH_BYTES = base64.b64encode(hashlib.sha1(FILE_CONTENT_UNCOMPRESSED).digest())
-FILE_SHA1_HASH_BYTES = b"mJfbbHQygEaa6euqwUnye9vYulM="  # hardcode this to make it unambiguous
-FILE_SHA1_HASH_STRING = FILE_SHA1_HASH_BYTES.decode()
-
 
 def setup_file_paths_components(tmp_path: Path) -> tuple[Path, ...]:
     """ Sets up every folder path we might need for the tests. """
@@ -1132,7 +1106,7 @@ def test_generate_registry_hashes_no_files(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=None,
+        passphrase=None,
     )
     assert remote_hashes == {}
     assert local_hashes == {}
@@ -1147,7 +1121,7 @@ def test_generate_registry_hashes_uncompressed_unencrypted(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=None,
+        passphrase=None,
     )
     
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
@@ -1163,7 +1137,7 @@ def test_generate_registry_hashes_compressed_unencrypted(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=None,
+        passphrase=None,
     )
     
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
@@ -1179,7 +1153,7 @@ def test_generate_registry_hashes_uncompressed_encrypted(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=PASSPHRASE_OBJECT,
+        passphrase=PASSPHRASE_STRING,
     )
     
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
@@ -1195,7 +1169,7 @@ def test_generate_registry_hashes_compressed_encrypted(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=PASSPHRASE_OBJECT,
+        passphrase=PASSPHRASE_STRING,
     )
     
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
@@ -1213,7 +1187,7 @@ def test_generate_registry_hashes_mixed_files(tmp_path: Path):
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        encryption_key=PASSPHRASE_OBJECT,
+        passphrase=PASSPHRASE_STRING,
     )
     
     # TODO: this should probably detect this case and emit a warning rather than overwriting...

@@ -19,11 +19,9 @@ Config = os.path.join(os.path.dirname(__file__), 'config.json')
 with open(Config, 'rb') as fo:
     Config = json.load(fo)
 
-
 # TODO: source this locale from the system
 LOCALE = str(Config['locale'])
 locale.setlocale(locale.LC_ALL, LOCALE)
-
 
 DATA_STREAMS = Config['data_streams']  # historical variable name, cannot/do not change
 
@@ -141,7 +139,7 @@ class StudySettingsError(Exception): pass  # noqa
 
 # new!
 class UnParsableTimeError(ValueError): pass  # noqa
-class DecryptionUnavailableError(Exception): pass
+class EncryptionKeyUnavailable(Exception): pass
 
 _color_settings = coloredlogs.parse_encoded_styles(
     "debug=green;info=blue,bright;warning=yellow;success=green,bold;error=red;critical=background=red"
