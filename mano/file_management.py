@@ -5,22 +5,22 @@ from collections.abc import Generator
 from datetime import datetime
 from io import BytesIO
 from multiprocessing.pool import ThreadPool
-from os import (chmod, makedirs as _make_directories, remove as delete_file,
+from os import (chmod, cpu_count, makedirs as _make_directories, remove as delete_file,
     replace as replace_file, walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
 from typing import Any
 from zipfile import ZipFile
 
-import cryptease as crypt
-import orjson
 import pyzstd
+from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
 from pyzstd import decompress
 
 from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
-    log, ParseError, SaveError, WriteError)
-from mano.messages import (DATA_STREAM_FOLDER_MSG, DATA_STREAM_NOT_PARTICIPANT_MSG,
-    DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
+    EncryptionKeyUnavailable, log, ParseError, SaveError, WriteError)
+from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
+    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG,
+    PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
 def make_directories(path: str):
@@ -69,6 +69,12 @@ def iterate_beiwe_data_files_recursively(
             
             for file_path in files:
                 is_valid = False
+                
+                # ".lock" is always at the end
+                is_locked = file_path.endswith('.lock')
+                if is_locked:
+                    file_path = file_path[:-5]
+                
                 if zst_only:
                     is_valid = file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
                 elif include_zst:
@@ -81,6 +87,8 @@ def iterate_beiwe_data_files_recursively(
                 
                 if is_valid:
                     any_valid_files = True
+                    if is_locked:
+                        file_path += '.lock'
                     yield path_join(root, file_path)
     
     except Exception as e:
@@ -377,7 +385,6 @@ def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
 # File Encryption
 #
 
-
 #TODO: actually review what this does and confirm this rename is correct
 #TODO: document this
 def save_archive(
@@ -402,15 +409,7 @@ def save_archive(
     if lock and not passphrase:
         raise SaveError('Encrypting data requires a passphrase.')
     
-    # open registry file in downloaded archive
-    log.debug('reading registry file from beiwe archive')
-    with archive.open('registry', 'r') as fo:
-        registry = orjson.loads(fo.read().decode().strip())
-    
-    if not registry:
-        # the registry is empty when no files were downloaded - that is normal.
-        log.debug('Registry file in beiwe archive is empty or invalid.')
-    
+    # probably cannot multithread due to "file-io" in the backing memory of the ZipFile object
     num_saved = 0
     for member in archive.namelist():
         if process_one_archive_file(
@@ -427,8 +426,6 @@ def save_archive(
     
     return num_saved
 
-
-# TODO: backfill is not able to handle encrypted files
 
 def process_one_archive_file(
     filename_in_zip: str,
@@ -462,7 +459,8 @@ def process_one_archive_file(
     
     binary_data: bytes = archive.read(filename_in_zip)
     if decompress_zst:
-        assert filename_in_zip.endswith('.zst'), f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
+        if not filename_in_zip.endswith('.zst'):
+            f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
         binary_data = decompress(binary_data)
         output_name = output_name.replace(".zst", "")  # works even on uncompressed ~mp4s
         was_decompressed = True
@@ -487,10 +485,9 @@ def process_one_archive_file(
         log.debug(f"creating directory at: `{target_dir}`")
         make_directories(target_dir)
     
-    # encrypt it if necessary
+    # encrypt if necessary
     if do_encrypt:
-        key = crypt.kdf(passphrase)  # type: ignore
-        crypt.encrypt(BytesIO(binary_data), key, filename=output_name, permissions=0o0644)  # type: ignore
+        do_encrypted_write(binary_data, output_name, passphrase)
     else:
         # write content to persistent storage
         atomic_write(output_name, binary_data)
@@ -532,10 +529,9 @@ def determine_data_stream_from_internal_zip_filepath(file_path: str, participant
 # File Hashing
 
 
-# TODO: multithread this?
 # todo: make this handle locked files.
 def generate_registry_info(
-    folder_path: str, study_id: str, participant_id: str,
+    folder_path: str, study_id: str, participant_id: str, passphrase: str | None = None
 ) -> tuple[dict[str, str], dict[str, bytes]]:
     """
     Reads and computes sha1 hashes for all Beiwe data files in a folder.
@@ -547,20 +543,102 @@ def generate_registry_info(
     local_hashes = dict[str, bytes]()
     log.info(f'Computing file hashes for Beiwe Platform data in folder: `{folder_path}`')
     
-    itr8r = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
+    paths = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
     
-    for real_local_path in itr8r:
-        # base path is the file with no .lock or .zst extensions, zst path is with .zst
-        base_path = get_base_path(real_local_path, participant_id)
-        
-        hash_val = get_sha1_file_hash(real_local_path)
-        local_hashes[base_path] = hash_val
-        
-        # sometimes we need generate one of several possible remote paths
-        for new_path in normalize_path_for_registry(base_path, study_id, participant_id):
-            remote_hashes[new_path] = hash_val.decode()
+    pool = setup_threadpool(get_reasonable_cpu_count(), "hashing")
+    try:
+        # imap_unordered returns results as they complete, not in order of submission. (passes every
+        # path from `paths` to the lambda, which is justs calls _threadable_generate_registry_info
+        # with our other parameters)
+        task_results_we_must_then_iterate_over = pool.imap_unordered(
+            lambda path: _threadable_generate_registry_info(
+                path, study_id, participant_id, passphrase, remote_hashes, local_hashes
+            ),
+            paths,
+        )
+        for _ in task_results_we_must_then_iterate_over: pass
+    
+    finally:
+        pool.close()
+        pool.join()
+        pool.terminate()
     
     return remote_hashes, local_hashes
+
+
+def _threadable_generate_registry_info(
+    real_local_path: str,
+    study_id: str,
+    participant_id: str,
+    passphrase: str | None,
+    remote_hashes: dict[str, str],
+    local_hashes: dict[str, bytes],
+):
+    # base path is the file with no .lock or .zst extensions, zst path is with .zst
+    hash_val = get_sha1_file_hash(real_local_path, passphrase)
+    base_path = get_base_path(real_local_path, participant_id)
+    local_hashes[base_path] = hash_val
+    
+    # sometimes we need generate one of several possible remote paths
+    for new_path in normalize_path_for_registry(base_path, study_id, participant_id):
+        remote_hashes[new_path] = hash_val.decode()
+
+
+def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
+    """ Generate SHA1 hash of a regular or .zst file. """
+    
+    log.debug(f'generating sha1 hash for file: `{path}`')
+    
+    with open(path, 'rb') as fo:
+        data = fo.read()
+    
+    if path.endswith(".lock"):
+        # may be slow due to PBKDF2 key derivation
+        data = decrypt_binary_data_to_bytes(data, passphrase, path)
+    
+    if path.endswith('.zst') or path.endswith('.zst.lock'):
+        data = decompress(data)
+    
+    return generate_base64_sha1_hash(data)
+
+
+def generate_base64_sha1_hash(data: bytes) -> bytes:
+    # (for some reason it has a new line at the end)
+    return base64_encodebytes(hashlib.sha1(data).digest()).strip()
+
+
+#
+# Encryption Operations
+#
+
+
+def decrypt_binary_data_to_bytes(binary_data: bytes, passphrase: str | None, path: str) -> bytes:
+    """
+    Decrypt a (.lock) file's binary data using cryptease.
+    - Cryptease embeds the salt and iv in the file, it prepends a human readable header into the file binary.
+    - Decryption requires using the password and the encrypted file itself to derive a final key.
+    - For this purpose it provides a `key_from_file` function
+    - Somewhere in there I'm pretty sure it uses PBKDF2 with sha256, so this is probably slow(ish).
+    """
+    if passphrase is None:
+        raise EncryptionKeyUnavailable(CANNOT_HASH_MSG(path))
+    
+    encryption_key_obj = key_from_file(BytesIO(binary_data), passphrase)
+    return b"".join(decrypt_to_stream(BytesIO(binary_data), encryption_key_obj))
+
+
+def do_encrypted_write(binary_data: bytes, filename: str, passphrase: str | None):
+    """ Using cryptease, generate an encryption key, and encrypt the binary data to the file. """
+    if passphrase is None:
+        raise EncryptionKeyUnavailable(CANNOT_ENCRYPT_MSG(filename))
+    
+    encryption_key = key_derivation_function(passphrase)  # may be slow
+    encrypt(BytesIO(binary_data), encryption_key, filename=filename, permissions=0o0644)
+
+
+#
+# Path details for hashing
+#
 
 
 def get_base_path(path: str, participant_id: str) -> str:
@@ -631,6 +709,7 @@ def check_hash_cache_match(
     """
     If the file matches a hash in the local hash lookup return True, otherwise return False.
     The hash cache is expected to be the second value returned by generate_registry_info.
+    This does not take files from the user's drive, it takes downloaded files so can't be locked.
     """
     sha1 = hash_cache.get(get_base_path(real_path, participant_id))
     if sha1 is None:
@@ -642,21 +721,9 @@ def check_hash_cache_match(
     return generate_base64_sha1_hash(file_content) == sha1
 
 
-def get_sha1_file_hash(path: str) -> bytes:
-    """
-    Generate SHA1 hash of a regular or .zst file.
-    """
-    log.debug(f'generating sha1 hash for file: `{path}`')
-    with open(path, 'rb') as fo:
-        data = fo.read()
-    if path.endswith('.zst'):
-        data = decompress(data)
-    return generate_base64_sha1_hash(data)
-
-
-def generate_base64_sha1_hash(data: bytes) -> bytes:
-    # for some reason it has a new line at the end
-    return base64_encodebytes(hashlib.sha1(data).digest()).strip()
+def get_reasonable_cpu_count() -> int:
+    count = cpu_count()
+    return max(1, count // 2) if count else 1
 
 
 # todo: add test that we decompress (don't decompress??) .mp4 files correctly

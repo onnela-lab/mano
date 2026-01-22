@@ -15,10 +15,19 @@ from responses import RequestsMock
 from mano import sync
 from mano.constants import APIError, UnParsableTimeError, UTC
 from mano.messages import NOT_200_OK_ERROR
+from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_COMPRESSED,
+    FILE_CONTENT_ENCRYPTED_COMPRESSED, FILE_CONTENT_ENCRYPTED_UNCOMPRESSED,
+    FILE_CONTENT_UNCOMPRESSED, FILE_SHA1_HASH_BYTES, FILE_SHA1_HASH_STRING, LOCAL_PATH_REFERENCE,
+    NORMALIZED_FILE_PATH, PARTICIPANT_ID, PASSPHRASE_STRING, STUDY_ID)
+
+
+#
+# test download function
+#
 
 
 def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download function returns a ZipFile object."""
+    """ Test that download function returns a ZipFile object. """
     # Call the download function
     zf = sync.download(
         keyring,
@@ -631,8 +640,8 @@ def _test_backfill_does_not_overwrite(
     
     # This is how you test files were not modified or overwritten:
     # ctime is creation time, mtime is modified time
-    for p in gps_list + identifiers_list:
-        p = (gps_path / p)
+    for a_path in gps_list + identifiers_list:
+        p = (gps_path / a_path)
         ctime = p.stat().st_ctime
         mtime = p.stat().st_mtime
         assert ctime <= between_creation_and_potential_update
@@ -1065,3 +1074,122 @@ def test_backfill__future_does_not_call_backfill_participant(
         start_date=tomorrow,
     )
     mock_backfill_participant.assert_not_called()
+
+
+#
+# test backfill hashing and file management components
+#
+
+# TODO: we need to support `2024-02-16 09_00_00+00_00.csv` and `2024-02-16 09_00_00.csv` file paths
+#   but always convert to +00_00
+
+
+def setup_file_paths_components(tmp_path: Path) -> tuple[Path, ...]:
+    """ Sets up every folder path we might need for the tests. """
+    study_path = tmp_path / STUDY_ID
+    participant_path = study_path / PARTICIPANT_ID
+    stream_path = participant_path / DATA_STREAM_FOLDER
+    fp_uncompr = stream_path / DATA_STREAM_FILE
+    fp_compr = stream_path / (DATA_STREAM_FILE + ".zst")
+    fp_encr = stream_path / (DATA_STREAM_FILE + ".lock")
+    fp_encr_compr = stream_path / (DATA_STREAM_FILE + ".zst.lock")
+    # always make the folder exist...
+    stream_path.mkdir(parents=True, exist_ok=True)
+    
+    return study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr
+
+
+def test_generate_registry_hashes_no_files(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=None,
+    )
+    assert remote_hashes == {}
+    assert local_hashes == {}
+
+
+def test_generate_registry_hashes_uncompressed_unencrypted(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    
+    fp_uncompr.write_bytes(FILE_CONTENT_UNCOMPRESSED)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=None,
+    )
+    
+    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
+    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
+
+
+def test_generate_registry_hashes_compressed_unencrypted(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    
+    fp_compr.write_bytes(FILE_CONTENT_COMPRESSED)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=None,
+    )
+    
+    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
+    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
+
+
+def test_generate_registry_hashes_uncompressed_encrypted(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    
+    fp_encr.write_bytes(FILE_CONTENT_ENCRYPTED_UNCOMPRESSED)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=PASSPHRASE_STRING,
+    )
+    
+    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
+    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
+
+
+def test_generate_registry_hashes_compressed_encrypted(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    
+    fp_encr_compr.write_bytes(FILE_CONTENT_ENCRYPTED_COMPRESSED)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=PASSPHRASE_STRING,
+    )
+    
+    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
+    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
+
+
+def test_generate_registry_hashes_mixed_files(tmp_path: Path):
+    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
+        setup_file_paths_components(tmp_path)
+    fp_uncompr.write_bytes(FILE_CONTENT_UNCOMPRESSED)
+    fp_compr.write_bytes(FILE_CONTENT_COMPRESSED)
+    fp_encr.write_bytes(FILE_CONTENT_ENCRYPTED_UNCOMPRESSED)
+    fp_encr_compr.write_bytes(FILE_CONTENT_ENCRYPTED_COMPRESSED)
+    remote_hashes, local_hashes = sync.generate_registry_info(
+        str(tmp_path),
+        study_id=STUDY_ID,
+        participant_id=PARTICIPANT_ID,
+        passphrase=PASSPHRASE_STRING,
+    )
+    
+    # TODO: this should probably detect this case and emit a warning rather than overwriting...
+    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
+    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}

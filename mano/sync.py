@@ -543,7 +543,7 @@ def _backfill_participant(
         datetime.today().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
     participant_registry, local_hash_lookup = generate_registry_info(
-        participant_path, study_id, participant_id
+        participant_path, study_id, participant_id, passphrase
     )
     
     while True:
