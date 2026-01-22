@@ -74,7 +74,6 @@ def iterate_beiwe_data_files_recursively(
                 is_locked = file_path.endswith('.lock')
                 if is_locked:
                     file_path = file_path[:-5]
-                    log.warning(f"locked file: {file_path}(.lock) found.")
                 
                 if zst_only:
                     is_valid = file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
