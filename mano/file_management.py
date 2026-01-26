@@ -1,7 +1,8 @@
 import hashlib
 import re
 from base64 import encodebytes as base64_encodebytes
-from collections.abc import Generator
+from collections import defaultdict
+from collections.abc import Callable, Generator, Iterable
 from datetime import datetime
 from io import BytesIO
 from multiprocessing.pool import ThreadPool
@@ -14,6 +15,7 @@ from zipfile import ZipFile
 
 import pyzstd
 from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
+from mypy.types import T
 from pyzstd import decompress
 
 from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
@@ -132,12 +134,7 @@ def bytes_to_human_filesize(b: bytes) -> str:
     return f"{count:.2f}{suffixes[index]}"
 
 
-def decompress_zst_files(
-    target_path: str,
-    delete_zsts: bool = False,
-    overwrite: bool = False,
-    multithread_count: int = 1,
-):
+def decompress_zst_files(target_path: str, delete_zsts: bool = False, overwrite: bool = False):
     """
     Decompresses all .zst files in a directory and its subdirectories, also works on single files.
     
@@ -149,28 +146,14 @@ def decompress_zst_files(
             Delete the original .zst files after decompression. Defaults to False.
         overwrite:
             Overwrite existing decompressed files, otherwise skip it. Defaults to False.
-        multithread_count:
-            Number of files to decompress concurrently. Defaults to 1.
-            (ZSTD decompression is extremely fast, test before assuming this will provide benefits.)
     """
     kwargs = dict(delete_zsts=delete_zsts, overwrite=overwrite)
     
     if target_path.endswith('.zst'):  # single file (not a directory)
         return decompress_one_zst_file(target_path, **kwargs)
     
-    pool = setup_threadpool(multithread_count, "decompression")
-    try:
-        # imap_unordered returns results as they complete, not in order of submission.
-        for _ in pool.imap_unordered(
-            lambda fp: decompress_one_zst_file(fp, **kwargs),  # just hands it the file path
-            iterate_beiwe_data_files_recursively(target_path, zst_only=True)
-        ):
-            pass
-    
-    finally:
-        pool.close()
-        pool.join()
-        pool.terminate()
+    files = iterate_beiwe_data_files_recursively(target_path, zst_only=True)
+    easy_threaded_iterate(decompress_one_zst_file, "decompression", files, **kwargs)
 
 
 def decompress_one_zst_file(
@@ -210,7 +193,6 @@ def compress_to_zst_files(
     delete_original: bool = False,
     overwrite: bool = False,
     compression_level: int = 2,
-    multithread_count: int = 1,
 ):
     """
     Compress all files in a directory and its subdirectories to individual .zst files.
@@ -232,10 +214,6 @@ def compress_to_zst_files(
             2 will compress to 18-19% original size at hundreds of MB/s on most computers.
             Higher values provide additional gains, up to around 14-15% of the original size,
             but are much slower, often down to single digit MB/s at the maximum level.
-        multithread_count:
-            Number of files to compress concurrently. Defaults to 1.
-            ZSTD compression speed varies widely with compression level, test before assuming this
-            will provide benefits. It is likely that higher compression levels will benefit more.
     """
     
     kwargs = dict[str, Any](  # (type-checking does not like it when you wrap kwargs like this)
@@ -247,18 +225,12 @@ def compress_to_zst_files(
     if check_is_valid_beiwe_data_file(target_path):  # single file (not a directory)
         return compress_one_zst_file(target_path, **kwargs)
     
-    pool = setup_threadpool(multithread_count, "compression")
-    try:
-        # imap_unordered returns results as they complete, not in order of submission.
-        for _ in pool.imap_unordered(
-            lambda fp: compress_one_zst_file(fp, **kwargs),  # just hands it a file path
-            iterate_beiwe_data_files_recursively(target_path)
-        ):
-            pass
-    finally:
-        pool.close()
-        pool.join()
-        pool.terminate()
+    easy_threaded_iterate(
+        compress_one_zst_file,
+        "compression",
+        iterate_beiwe_data_files_recursively(target_path),
+        **kwargs,
+    )
 
 
 def compress_one_zst_file(
@@ -371,14 +343,6 @@ def validate_is_a_folder_or_zst_file(path: str):
 def check_is_valid_beiwe_data_file(path: str) -> bool:
     """ Check if a path is a valid Beiwe data file. """
     return any(path.endswith(ext) for ext in BEIWE_FILE_EXTENSIONS)
-
-
-def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
-    """ Setup a thread pool with logging. """
-    multithread_count = max(1, multithread_count)  # just ignore 0 and negatives
-    if multithread_count > 1:
-        log.info(f"Using {multithread_count} threads for {name}.")
-    return ThreadPool(multithread_count)
 
 
 #
@@ -526,7 +490,39 @@ def determine_data_stream_from_internal_zip_filepath(file_path: str, participant
     return match.group(1)
 
 
+#
 # File Hashing
+#
+
+
+def find_duplicate_files(
+    folder_path: str, participant_id: str, passphrase: str | None = None
+) -> tuple[dict[str, list[str]], dict[bytes, list[str]]]:
+    
+    paths = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
+    paths_and_hashes = easy_threaded_iterate(
+        _threadable_hash_and_path, "generating hashes", paths, participant_id, passphrase
+    )
+    
+    base_to_real = defaultdict(list[str])
+    hash_to_base = defaultdict(list[str])
+    for real_local_path, base_path, hash_val in paths_and_hashes:
+        base_to_real[base_path].append(real_local_path)
+        hash_to_base[hash_val].append(base_path)
+    
+    duplicates_by_base_path = {k: v for k, v in base_to_real.items() if len(v) > 1}
+    duplicates_by_hash = {k: v for k, v in hash_to_base.items() if len(v) > 1}
+    return duplicates_by_base_path, duplicates_by_hash
+
+
+def _threadable_hash_and_path(
+    real_local_path: str, participant_id: str, passphrase: str | None,
+) -> tuple[str, str, bytes]:
+    return (
+        real_local_path,
+        get_base_path(real_local_path, participant_id),
+        get_sha1_file_hash(real_local_path, passphrase),
+    )
 
 
 # todo: make this handle locked files.
@@ -545,24 +541,16 @@ def generate_registry_info(
     
     paths = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
     
-    pool = setup_threadpool(get_reasonable_cpu_count(), "hashing")
-    try:
-        # imap_unordered returns results as they complete, not in order of submission. (passes every
-        # path from `paths` to the lambda, which is justs calls _threadable_generate_registry_info
-        # with our other parameters)
-        task_results_we_must_then_iterate_over = pool.imap_unordered(
-            lambda path: _threadable_generate_registry_info(
-                path, study_id, participant_id, passphrase, remote_hashes, local_hashes
-            ),
-            paths,
-        )
-        for _ in task_results_we_must_then_iterate_over: pass
-    
-    finally:
-        pool.close()
-        pool.join()
-        pool.terminate()
-    
+    easy_threaded_iterate(
+        _threadable_generate_registry_info,
+        "generating registry info",
+        paths,
+        study_id,  # lambda params start
+        participant_id,
+        passphrase,
+        remote_hashes,
+        local_hashes,
+    )
     return remote_hashes, local_hashes
 
 
@@ -642,6 +630,7 @@ def do_encrypted_write(binary_data: bytes, filename: str, passphrase: str | None
 
 
 def get_base_path(path: str, participant_id: str) -> str:
+    """ returns a normalized "base" path stripped of .zst/.lock and leading folders. """
     # convert wandows paths to slashes that aren't fake, remove .zst, remove lock
     path = path.replace("\\", "/").replace(".lock", "").replace(".zst", "")
     path = path.split(participant_id)[-1]    # we only care about the part after participant id
@@ -721,9 +710,45 @@ def check_hash_cache_match(
     return generate_base64_sha1_hash(file_content) == sha1
 
 
+
+#
+# Threadpool Helpers
+#
+
+
 def get_reasonable_cpu_count() -> int:
     count = cpu_count()
     return max(1, count // 2) if count else 1
+
+
+def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
+    """ Setup a thread pool with logging. """
+    multithread_count = max(1, multithread_count)  # just ignore 0 and negatives
+    if multithread_count > 1:
+        log.info(f"Using {multithread_count} threads for {name}.")
+    return ThreadPool(multithread_count)
+
+
+def easy_threaded_iterate(
+    func: Callable[..., T],
+    name: str,
+    iterable: Iterable[Any],
+    *lambda_args: Any,
+    **lambda_kwargs: Any,
+) -> list[T]:
+    """ Simple threaded iterator wrapper with logging. """
+    pool = setup_threadpool(get_reasonable_cpu_count(), name or "easy_threaded_iterator")
+    items = list(iterable)  # iterating on file names like this can save 10% overall time
+    try:
+        return list(
+            pool.imap_unordered(
+                lambda iterated: func(iterated, *lambda_args, **lambda_kwargs), items
+            )
+        )
+    finally:
+        pool.close()
+        pool.join()
+        pool.terminate()
 
 
 # todo: add test that we decompress (don't decompress??) .mp4 files correctly
