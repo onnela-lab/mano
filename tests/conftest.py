@@ -12,7 +12,8 @@ from cryptease import encrypt_to_stream, kdf as key_derivation_function
 Pytest configuration and shared fixtures for mano tests.
 """
 
-# TODO: move these constants and helpers to a common test utils file
+
+# these variables are mostly used in the backfill tests
 STUDY_ID = "abcdefghijklmnopqrstuvwx"  # 24 chars
 PARTICIPANT_ID = "12345678"
 DATA_STREAM_FOLDER = "accelerometer"

@@ -149,6 +149,14 @@ def CANNOT_ENCRYPT_MSG(path: str):
            "but cannot do so because no passphrase was provided."
 
 
+TOO_MANY_MULTITHREAD_ARGS = \
+    "Multiple multithreading parameters (strting with `--mt`) were provided, please provide only one."
+
+
+def BAD_MULTITHREADING_ERROR(arg: str) -> str:
+    return f"An invalid multithreading parameter `{arg}` was provided. " \
+            "Please provide a value like `--mt4` or `--mt10`."
+
 #
 # Deprecation warnings
 #

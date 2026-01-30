@@ -5,10 +5,11 @@ from os import name
 from os.path import abspath
 from sys import argv as command_line_args
 
-from mano.constants import InternalError, logger as log, BEIWE_EXTENSIONS_ANDED
+from mano.constants import BEIWE_EXTENSIONS_ANDED, GlobalSettings, InternalError, logger as log
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
     decompress_zst_files, validate_is_a_folder_or_valid_beiwe_data_file,
     validate_is_a_folder_or_zst_file)
+from mano.messages import BAD_MULTITHREADING_ERROR, TOO_MANY_MULTITHREAD_ARGS
 
 
 log.setLevel(logging.DEBUG)
@@ -21,6 +22,7 @@ DECOMPRESS = "decompress"
 DELETE_ZST = "--delete-zst"
 OVERWRITE = "--overwrite"
 DELETE_ORIGINAL = "--delete-original"
+MULTITHREAD_PREFIX = "--mt"
 
 
 PARAMETERS_BY_COMMAND = {
@@ -32,35 +34,56 @@ CLI_HELP_MESSAGE = f"""
 mano currently supports 2 commands: decompress and compress.
   Parameters inside [brackets] are optional.
   <Parameters in angle brackets> are required.
+  `text inside backticks are examples`
 
 ~File Management~
 
-"mano decompress <folder or file path> [{DELETE_ZST}] [{OVERWRITE}]"
-  This command will decompress all Beiwe (.csv and .wav) .zst files in the specified folder.
-  (You can specify the current folder with a single dot: `.`)
+
+"mano decompress <folder or file path> [{DELETE_ZST}] [{OVERWRITE}]" 
+  This command will decompress all compressed Beiwe data files ending in .zst to the specified folder
+  (Specify the current folder with a single dot: `.` or `./`)
+
 
 "mano compress <folder or file path> [-#] [{DELETE_ORIGINAL}] [{OVERWRITE}]"
-  This command will compress all Beiwe (.csv and .wav) files in the specified folder.
-  You can optionally provide a `-#` (like `-8`) to set a compression level.
-    (Default is 2, downloaded data is 2, maximum is 22, the maximum gains from
-    a higher value can be up to about 30% smaller. High values get very slow.)
+  This command will compress all Beiwe data files in the specified folder.
+
+  You can optionally provide a `-#` (like `-8`) to set a specific compression level.
+    (The default of 2 matches downloaded data, the maximum is 22, the maximum gains from
+    a higher value can be up to about 30% smaller. High values get _very_ slow.)
 
 
 Global Options - you can always provide these with any command:
-  add -y or --yes to skip all user interaction prompts.
+
+  Add  `-y`  or  `--yes`  to skip all user interaction prompts.
+
+  Add  `--mt#`  (where # is a number) to set the number of threads Mano will use.
+    For example  `--mt1`  and  `--mt10`  will set Mano to use 1 or 10 threads.
+    `--mt0`  will use all CPU threads available, and is the default behavior.
+    (Mano is usually limited by storage device speed, except when compressing at a high
+    compression level.)
+    Multithreading does not apply to data download operations.
+
+  Examples:
+
+    [Decompress]
+        `mano decompress ./abcde12345/ --delete-zst --overwrite` -y
+    This will skip confirmation and immediately decompress all .zst files in the `abcde12345/` 
+    folder and subfolders, deleting the .zst files, and overwriting any uncompressed files
+    that already exist and share that name.
+
+    [Compress]
+        `mano compress ./12345abcde/ -10 --delete-original` --mt4
+    This will prompt you to continue, then use 4 threads to compress all Beiwe data files in
+    the `./12345abcde/` folder and subfolders using compression level 10, and delete the
+    original uncompressed files.  If it encounters a file that when compressed would overwrite
+    an existing .zst file, Mano will raise an Error and stop execution.
+
 """  # retain final new line.
-
-
-# Global settings should default to values as if they were NOT called from the CLI
-# the main() function will set these values appropriately for CLI usage.
-class GlobalSettings:
-    skip_user_interaction: bool = True
 
 
 def main():
     # reset global settings to default CLI values
     GlobalSettings.skip_user_interaction = False
-    
     log.debug(f"mano received the following cli args: {sys.argv}")
     
     # Display help on no args, -h, --help
@@ -77,6 +100,7 @@ def main():
         GlobalSettings.skip_user_interaction = True
         args.remove("-y") if "-y" in args else args.remove("--yes")
     
+    extract_multithread_args(args)  # removes all --mt# args from args
     the_command = args.pop(0)
     
     # dispatch to the appropriate command
@@ -89,6 +113,31 @@ def main():
         exit(1)
     
     exit(0)
+
+
+# todo - some message indicating the number of threads being used
+# todo: build tests
+def extract_multithread_args(args: list[str]):
+    indices = [i for i, arg in enumerate(args) if arg.startswith(MULTITHREAD_PREFIX)]
+    indices.sort(reverse=True)  # reverse so we can remove items safely
+    mt_args = [args.pop(i) for i in indices]  # removes all the --mt args
+    
+    # return early if there were none, error out if there are multiple
+    if len(mt_args) == 0:
+        
+        return
+    if len(mt_args) > 1:
+        log.error(TOO_MANY_MULTITHREAD_ARGS)
+        exit(1)
+    
+    arg = mt_args[0]  # len is 1, string starting with "--mt"
+    try:
+        thread_count = int(arg[4:])
+    except ValueError:
+        log.error(BAD_MULTITHREADING_ERROR(arg))
+        exit(1)
+    
+    GlobalSettings.multithreading_count = thread_count
 
 
 #

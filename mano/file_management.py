@@ -19,7 +19,7 @@ from mypy.types import T
 from pyzstd import decompress
 
 from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
-    EncryptionKeyUnavailable, log, ParseError, SaveError, WriteError)
+    EncryptionKeyUnavailable, GlobalSettings, log, ParseError, SaveError, WriteError)
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
     DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG,
     PARSE_ERROR_TOO_MANY_MATCHES_MSG)
@@ -72,8 +72,7 @@ def iterate_beiwe_data_files_recursively(
             for file_path in files:
                 is_valid = False
                 
-                # ".lock" is always at the end
-                is_locked = file_path.endswith('.lock')
+                is_locked = file_path.endswith('.lock')  # ".lock" is always at the end
                 if is_locked:
                     file_path = file_path[:-5]
                 
@@ -152,8 +151,8 @@ def decompress_zst_files(target_path: str, delete_zsts: bool = False, overwrite:
     if target_path.endswith('.zst'):  # single file (not a directory)
         return decompress_one_zst_file(target_path, **kwargs)
     
-    files = iterate_beiwe_data_files_recursively(target_path, zst_only=True)
-    easy_threaded_iterate(decompress_one_zst_file, "decompression", files, **kwargs)
+    paths = iterate_beiwe_data_files_recursively(target_path, zst_only=True)
+    easy_threaded_iterate(decompress_one_zst_file, "decompression", paths, **kwargs)
 
 
 def decompress_one_zst_file(
@@ -166,7 +165,7 @@ def decompress_one_zst_file(
     
     it_exists = path_exists(decompressed_path)
     if not overwrite and it_exists:
-        log.warning(f"Skipping: `{full_path}`, file already exists.")
+        log.debug(f"Skipping: `{full_path}`, file already exists.")
         return
     
     with open(full_path, 'rb') as fo:
@@ -495,9 +494,37 @@ def determine_data_stream_from_internal_zip_filepath(file_path: str, participant
 #
 
 
+# TODO: build a higher level function with a name like consolidate that handles cleaning up
+#   messy folders with mixes of files.
+def parse_duplicate_files(
+    folder_path: str,
+    participant_id: str,
+    passphrase: str | None = None,
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """
+    Identify duplicates that do not conflict and duplicates that do conflict out of the possibilties
+    of files with no extra extensions, and those .lock .zst, and .zst.lock.
+    """
+    cannot_resolve = dict[str, list[str]]()
+    no_conflicts = dict[str, list[str]]()
+    duplicates, paths_to_hashes = find_duplicate_files(folder_path, participant_id, passphrase)
+    
+    # we don't need base path, its just the normalized path that has duplicate sources
+    for base_path, real_paths in duplicates.items():
+        assert len(real_paths) > 1, "fundamental logic error in duplicate detection"
+        
+        real_paths.sort()
+        hash_set = {paths_to_hashes[path] for path in real_paths}
+        if len(hash_set) > 1:
+            cannot_resolve[base_path] = real_paths
+        else:
+            no_conflicts[base_path] = real_paths
+    return cannot_resolve, no_conflicts
+
+
 def find_duplicate_files(
     folder_path: str, participant_id: str, passphrase: str | None = None
-) -> tuple[dict[str, list[str]], dict[bytes, list[str]]]:
+) -> tuple[dict[str, list[str]], dict[str, bytes]]:
     
     paths = iterate_beiwe_data_files_recursively(folder_path, include_zst=True, suppress_empty=True)
     paths_and_hashes = easy_threaded_iterate(
@@ -505,14 +532,14 @@ def find_duplicate_files(
     )
     
     base_to_real = defaultdict(list[str])
-    hash_to_base = defaultdict(list[str])
+    real_to_hash = dict[str, bytes]()
     for real_local_path, base_path, hash_val in paths_and_hashes:
         base_to_real[base_path].append(real_local_path)
-        hash_to_base[hash_val].append(base_path)
+        real_to_hash[real_local_path] = hash_val
     
-    duplicates_by_base_path = {k: v for k, v in base_to_real.items() if len(v) > 1}
-    duplicates_by_hash = {k: v for k, v in hash_to_base.items() if len(v) > 1}
-    return duplicates_by_base_path, duplicates_by_hash
+    duplicates = {k: v for k, v in base_to_real.items() if len(v) > 1}  # any multiple matches
+    real_to_hash = {k: v for k, v in real_to_hash.items() if k in duplicates}  # and their hashes
+    return duplicates, real_to_hash
 
 
 def _threadable_hash_and_path(
@@ -573,7 +600,7 @@ def _threadable_generate_registry_info(
 
 
 def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
-    """ Generate SHA1 hash of a regular or .zst file. """
+    """ Generate the SHA1 hash of a regular, .zst, .lock, or .zst.lock file. """
     
     log.debug(f'generating sha1 hash for file: `{path}`')
     
@@ -591,7 +618,7 @@ def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
 
 
 def generate_base64_sha1_hash(data: bytes) -> bytes:
-    # (for some reason it has a new line at the end)
+    # (for some reason this has a new line at the end)
     return base64_encodebytes(hashlib.sha1(data).digest()).strip()
 
 
@@ -710,15 +737,19 @@ def check_hash_cache_match(
     return generate_base64_sha1_hash(file_content) == sha1
 
 
-
 #
 # Threadpool Helpers
 #
 
-
-def get_reasonable_cpu_count() -> int:
-    count = cpu_count()
-    return max(1, count // 2) if count else 1
+def get_thread_count() -> int:
+    """ Usually the detail we are multithreading is i/o bound, but fast SSDs are becoming more
+    common virtually universal. Based on some testing on a _Very_ fast SSD our rate limit is more
+    usually _the speed at which python can emit tasks_ - which is quite silly. Observed behavior is
+    that at some point you hit a limit where adding more threads neither helps nor hurts. """
+    if GlobalSettings.multithreading_count == 0:
+        count = cpu_count() or 1  # unlikely but possibly None
+        return max(1, count)
+    return GlobalSettings.multithreading_count
 
 
 def setup_threadpool(multithread_count: int, name: str) -> ThreadPool:
@@ -737,7 +768,7 @@ def easy_threaded_iterate(
     **lambda_kwargs: Any,
 ) -> list[T]:
     """ Simple threaded iterator wrapper with logging. """
-    pool = setup_threadpool(get_reasonable_cpu_count(), name or "easy_threaded_iterator")
+    pool = setup_threadpool(get_thread_count(), name or "easy_threaded_iterator")
     items = list(iterable)  # iterating on file names like this can save 10% overall time
     try:
         return list(

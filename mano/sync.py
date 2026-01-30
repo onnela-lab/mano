@@ -16,8 +16,8 @@ from dateutil.parser import parse as dateutil_parse, ParserError
 from dateutil.tz import UTC
 from requests.models import Response
 
-from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, BACKFILL_WINDOW,
-    EARLIEST_POSSIBLE_DATA_DT, log, URL_COMPRESSED, URL_UNCOMPRESSED)
+from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, EARLIEST_POSSIBLE_DATA_DT,
+    GlobalSettings, log, URL_COMPRESSED, URL_UNCOMPRESSED)
 from mano.file_management import generate_registry_info, make_directories, save_archive
 from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_ERROR, BACKFILL_START_DATE_FUTURE_MSG,
     BACKFILL_UNPARSABLE_DATE_ERROR, COULD_NOT_PARSE_TIME_ERROR,
@@ -598,7 +598,7 @@ def _get_next_backfill_window_strings(timestamp: datetime) -> tuple[datetime, da
     """
     # strip down to the start of the day
     window_start = datetime(timestamp.year, timestamp.month, timestamp.day)
-    window_stop = window_start + timedelta(days=BACKFILL_WINDOW)
+    window_stop = window_start + timedelta(days=GlobalSettings.BACKFILL_WINDOW)
     log.debug(f'calculated next backfill window from timestamp `{window_start}` as {window_stop}')
     return window_start, window_stop
 
