@@ -30,86 +30,215 @@ under the open source BSD-3-Clause license.
 > If you are encountering any other issue **[Please Report Them Here](
 > https://github.com/onnela-lab/mano/issues/39)**
 
+
+
+<!-- break -->
+
+
+
+<div align="center">
+
 ## Table of contents
-1. [Requirements and Compatibility](#requirements-and-compatibility)
-2. [Installation](#installation)
-3. [Initial Setup](#initial-setup)
-4. [API For Keyring Access](#api-for-keyring-access)
-5. [API For Accessing Study Information](#api-for-accessing-study-information)
-6. [API For Downloading Data](#api-for-downloading-data)
+
+</div>
+
+1. __[Requirements and Compatibility](#requirements-and-compatibility)__
+2. __[Installation](#installation)__
+3. __[Initial Setup](#initial-setup)__
+4. __[Setup Your Keyring Object and Access Your Data](#setup-your-keyring-object-and-access-your-data)__
+5. __[API For Accessing Study Information](#api-for-accessing-study-information)__
+6. __[API For Downloading Data](#api-for-downloading-data)__
+
+
+<!-- break -->
+
+
 
 ## Requirements and Compatibility
-- Mano is compatible with modern versions of Python [at time of writing this means 3.10+]
+- [Please Report Any Issues You Encounter](https://github.com/onnela-lab/mano/issues/39)
+- Mano is compatible with modern versions of Python [at time of writing this means 3.11+]
 - Mano's CI runs on macOS (Unix), Ubuntu (Linux), and Windows.
-  - We have not historically had many Windows users, so [Please Report Any Issues You
-  Encounter](https://github.com/onnela-lab/mano/issues/39) with Windows compatibility.
-  - Mano should be fully compatible with the Linux Subsystem for Windows (WSL).
 
-### Old SSL Library Compatibility
-Beiwe servers _require_ modern, secure connections, so old versions of SSL/TLS libraries provided by
-your operating system may cause issues. The simplest known solution is to install one of the
-[Miniconda Python distributions](https://www.anaconda.com/docs/getting-started/miniconda/main),
-which bundles a more up to date version of OpenSSL.
+<hr>
+
+<details>
+<summary style="font-style: italic; font-weight: bold;" align=center>
+<h4>
+Click here if you encounter issues related to Old SSL Library Compatibility
+</h4>
+</summary>
+
+Beiwe servers _require_ modern, secure TLS encryption, so old versions of SSL/TLS libraries provided
+by your operating system or development/build environment may cause issues. If you encounter these
+issues you can install one of the [Miniconda Python
+distributions](https://www.anaconda.com/docs/getting-started/miniconda/main), which bundles a more
+up to date version of OpenSSL.
+
+</details>
+
+<hr>
+
+
+
+<!-- break -->
+
+
 
 ## Installation
-The simplest way to install `mano` is to just use `pip`
+To install Mano is to just use Python's standard package manager, `pip`
 
 ```bash
 pip install mano
 ```
+<hr>
 
 <details>
-<summary> Click For Developer Instructions </summary>
+<summary style="font-style: italic; font-weight: bold;" align=center>
+<h4>Click Here For Developer Setup Instructions</h4>
+</summary>
 
-For developers of `mano`, clone the repository, make sure you are on the `develop` branch, and
-set up a virtual environment.  In that environment run these commands:
+For developers of Mano:
+- Clone the repository with `git clone git@github.com:onnela-lab/mano.git`
+- `cd` into the cloned repository folder in your terminal
+- Ensure you are on the `develop` branch
+- Set up your python virtual environment running under Python 3.12 or higher
+
+In your virtual environment run these commands:
 
 ```bash
-pip install ".[dev]"  # installs all development dependencies.
-pip uninstall mano    # removes mano as an _installed_ package.
-mypy --install-types  # (typing dependencies should already be present.)
+pip install ".[dev]"    # installs all development dependencies.
+pip uninstall mano      # removes Mano as an _installed_ package so you only operate on local code.
+mypy --install-types    # Let mypy install any missing typing dependencies.
+```
+
+To confirm your development environment is set up correctly you can check that importing `mano` in a
+Python shell loads the local version with this code snippet. When in the root of the repo this should
+succeed, when run from anywhere else it should raise an `ImportError` or show the below Assertion
+error message if it finds an installed version of Mano.
+
+```python
+import mano
+from os.path import abspath, relpath
+manopath = relpath(mano.__file__)
+assert manopath == "mano/__init__.py", f"Mano was loaded from {abspath(mano.__file__)}, not local code." 
+```
+
+Before you make any changes you should run tests.
+- This is very easy, just run `pytest` from the root of the repository.
+- If anything fails on the `develop` or main branches please [report an
+  issue](https://github.com/onnela-lab/mano/issues/39) on GitHub.
+
+And finally, make sure you can run the Mano CLI Tool without installing the package, from the root
+of the repo by running this command.  It should print the help message.
+
+```bash
+python -m mano
 ```
 
 </details>
 
+<hr>
+
+
+
+
+<!-- break -->
+
+
+
 
 ## Initial Setup
-To interact with Beiwe and download files you will need your Beiwe Platform `url`, `username`,
-`password`, `access key`, and `secret key` in a JSON file. Don't worry, we're going to eventually
-encrypt this file. _(Note: we are phasing out the need for the `password` field, but Beiwe servers
-running an older version of the backend software may still require it.)_
+Mano requires special credentials from your Beiwe Platform website, and that you provide a name so
+that you can identify them.  These credentials can be generated by any user account on your Beiwe
+website with access to the study in question.
+
+The base credentials have a JSON structure like this, you can start by copying it into a JSON (or
+Python) file and changing "onnela-lab-example-credentials" to a real name of your choice.
 
 ```json
 {
-    "beiwe.onnela": {
+    "onnela-lab-example-credentials": {
         "URL": "...",
-        "USERNAME": "...",
-        "PASSWORD": "...",
         "ACCESS_KEY": "...",
         "SECRET_KEY": "..."
     }
 }
 ```
 
-> [!Tip]
-> You can also use the environment variables `BEIWE_URL`, `BEIWE_USERNAME`,
-> `BEIWE_PASSWORD`, `BEIWE_ACCESS_KEY`, and `BEIWE_SECRET_KEY` to store these settings. If you do,
-> load your keyring using `mano.keyring(None)`. You won't be able to use an environment variable for
-> storing study-specific secrets (next).
+- __`URL`__ should be the base url (the login page) for the Beiwe Platform website you log in to.
+- __`ACCESS_KEY`__ and __`SECRET_KEY`__ are 64-character alphanumeric credentials that you generate
+  on the Beiwe website:
+  - Log in, go to __Manage Credentials__ in the section on the upper-right of the page
+  - Scroll down to the API Credentials section, follow the directions to generate credentials.
+  - _It is a good idea to use the naming feature to label them the same as you choose here._
+  - Any credentials you generate are valid for all studies on which you are an authorized user.
+
+<hr>
+
+
+<details>
+<summary style="font-style: italic; font-weight: bold;" align="center">
+<h4>Click Here for instructions on using secured credentials with Mano </h4>
+</summary>
+
+When you installed Mano it also installed utility called __`cryptease`__. It provides a `crypt.py`
+CLI utility for easy file encryption and decryption. (Mano also uses this tool internally when you
+use the encryption feature.)
 
 > [!Note]
-> You generate, name and manage your access keys under the Manage Credentials section of your Beiwe
-> Platform website.
+> "`crypt.py`" _looks_ like a file name, but it is actually an executable command. You may have a
+> common but very old CLI program named simply "`crypt`" installed on your system, if so you should
+> not confuse them.
 
-If you wish to use `mano` to encrypt certain downloaded data stream files at rest, you should
-provide a study-specific passphrase (which you must generate) in an extra `SECRETS` section.
+You can use `crypt.py` to encrypt any file.
+- If you created a python file, start by copying credentials into a simple JSON file.
+  - we will name ours `my_credentials_file.json` for this example.
+- Enter the following command in your terminal. Replace `my_credentials_file.json` your own file.
+- The output path entered here, `~/.nrg-keyring.enc`, is the __default location__ where Mano will
+  look for encrypted credentials.
+
+> [!Note]
+
+> This task prompts you to enter a password in your terminal, __but no output__ will be shown as you
+> type it. This is normal behavior for password prompts in terminals. The backspace key still works
+> as normaly. You will be prompted to enter the password a second time in confirmation.
+
+```bash
+$ crypt.py --encrypt my_credentials_file.json --output-file ~/.nrg-keyring.enc
+```
+
+You can then check the file content and test the password you provided with this command:
+
+```bash
+$ crypt.py --decrypt ~/.nrg-keyring.enc  # this command accepts an optional --output-file argument too
+```
+
+This will print the decrypted content of the file to the terminal (assuming the password is
+correct).  _If this succeeds you should delete the unencrypted copy of your credentials file._
+
+We __strongly recommend__ recording your __Credentials File Passphrase__ in a password manager.
+
+</details>
+
+<hr>
+
+<details>
+<summary style="font-style: italic; font-weight: bold;" align="center">
+<h4>Click Here to view instructions for encrypting data files </h4>
+</summary>
+
+> [!Warning]
+> It is __Strongly Recommended__ that you use the encrypted credentials feature of Mano as
+> described in the previous section. If you do not, your __Encryption Passphrase__ will be stored
+> in plain text, rendering it pointless.
+
+TODO: the name of the key ("Beiwe Study Omega" below) is unclear and non-obvious. determine behavior and explain it.
+TODO: we have a 
 
 ```json
 {
-    "beiwe.onnela": {
+    "onnela-lab-example-credentials": {
         "URL": "...",
-        "USERNAME": "...",
-        "PASSWORD": "...",
         "ACCESS_KEY": "...",
         "SECRET_KEY": "...",
         "SECRETS": {
@@ -119,45 +248,104 @@ provide a study-specific passphrase (which you must generate) in an extra `SECRE
 }
 ```
 
-You don't want this file sitting around as plain text, so Mano requires you encrypt it. Mano uses
-the `crypt.py` utility from the `cryptease` library which was installed along with the `mano`
-package.
-
-```bash
-$ crypt.py --encrypt ~/.nrg-keyring.json --output-file ~/.nrg-keyring.enc
-```
-
 > [!Note]
-> "`crypt.py`" _looks_ like a file name, but it is an executable command. You may have a common CLI
-> program named simply "`crypt`" installed on your system (or even autocompleted in your CLI), it is
-> not the same thing and you should not confuse them.
+> Do not confuse __Encryption Passphrase__ and __Credentials File Passphrase__.
+> - __Do Not__ use the same value for both passphrases.
+> - __We Strongly Recommend__ using a password manager to store a secure backup of these values, if
+>   you lose them you will irretrievably lose access to your data and will have reconfigure and re-
+>   download all your data.
 
-It is up to you to decide where to store the encrypted version of this file, but we **strongly
-recommend** deleting the unencrypted version.
 
+</details>
 
-## API For Keyring Access
-Before making any API calls Mano must read in your keyring file. The first parameter is the name of
-the keyring section as shown above
+<hr>
+
+<details>
+<summary style="font-style: italic; font-weight: bold;" align="center">
+<h4>Click Here to view instructions for using environment variables for your credentials </h4>
+</summary>
+
+> [!Tip]
+> You can also use the environment variables `BEIWE_URL`, `BEIWE_USERNAME`,
+> `BEIWE_PASSWORD`, `BEIWE_ACCESS_KEY`, and `BEIWE_SECRET_KEY` to store these settings. If you do,
+> load your keyring using `mano.keyring(None)`. You won't be able to use an environment variable for
+> storing study-specific secrets (next).
+
+Environment Variables are most useful for automated scripts, but must use slightly different names
+because there may be generic environment variables using identical names on the system.
+- for __`URL`__ use __`BEIWE_URL`__
+- for __`ACCESS_KEY`__ use __`BEIWE_ACCESS_KEY`__
+- for __`ACCESS_KEY`__ use __`BEIWE_SECRET_KEY`__
+
+To load your `Keyring` object from data in environment variables, pass a Python `None` to
+`mano.keyring()` at the start of your Python script:
 
 ```python
 import mano
-Keyring = mano.keyring('beiwe.onnela')
+keyring = mano.keyring(None)
 ```
 
-Mano still requires that you provide the decryption key for your keyring file. By default it will
-prompt you to type it in directly, but there are two mechanisms for providing it programmatically.
-- Setting the environment variable `NRG_KEYRING_PASS` where Mano is running.
-- As the second argument to the `mano.keyring` function in your code.
-  - We recommend against placing the decryption key as text in your code, or in any file that gets
-  committed to a source control system like Git. This mechanism is provided so that you can
-  programmatically source it from another location.
-  - It's tough to know where to store a credential securely. If you are on your own computer we
+</details>
+
+<hr>
+
+
+
+<!-- break -->
+
+
+
+
+
+
+## Setup Your Keyring Object and Access Your Data
+
+Before making any Data Access API calls Mano must read in your keyring file. The first parameter is
+the name of the keyring section as shown above
+
+```python
+import mano
+keyring = mano.keyring("onnela-lab-example-credentials")
+```
+
+TODO: Test exact behavior here on when it prompts for the credential file passphrase, especiall in jupyter notebooks.
+
+#### If you are using an encrypted Keyring and do not provide it programmaticaly Mano will prompt you to
+type it in directly.
+
+There are two other mechanisms to provide it:
+- Setting an environment variable `NRG_KEYRING_PASS` where Mano is running.
+    - in most a Unix-style terminals you can run:
+    ```bash
+    export NRG_KEYRING_PASS="my_credential_file_passphrase"
+    ```
+    - in Windows Powershell you it is:
+    ```powershell
+    $env:NRG_KEYRING_PASS="my_credential_file_passphrase"
+    ```
+
+- As a second argument to the `mano.keyring` function in your code.
+    ```python
+    keyring = mano.keyring("onnela-lab-example-credentials", "my_credential_file_passphrase")
+    ```
+
+- We recommend against placing the decryption key as text in your code, or in any file that gets
+  committed to a source control system like Git.
+- It"s tough to know where to store a credential securely. If you are on your own computer we
   recommend using the full drive encryption capability of your operating system to secure it.
 
 > [!Important]
-> Non-interactive invocations of your code that do not have access to a decryption key
-> will probably cause your code to hang as it waits for user input that cannot happen.
+> Calling `mano.keyring` in a context where there is no terminal to prompt for user input will
+> usually cause your code to hang.
+
+
+
+
+<!-- break -->
+
+
+
+
 
 ## API For Accessing Study Information
 With your `Keyring` loaded you can now access information about your studies, users (a.k.a.
@@ -176,10 +364,71 @@ for setting in mano.device_settings(Keyring, study_id):
     print(setting)
 ```
 
+
+
+<!-- break -->
+
+
+
+
 ## API For Downloading Data
 With your `Keyring` loaded, you can download collected data from your Beiwe server and extract it to
 your filesystem using the `mano.sync` module. While we're at it, we will turn on more verbose
 logging so we can see what's happening.
+
+
+### Backfill
+
+
+By default `msync.download` attempts to download *all* of the data for the specified `user_id`,
+which could end up being prohibitively large. For this reason, the `msync.download` function exposes
+parameters for `data_streams`, `time_start`, and `time_end`. By using these parameters you can
+limit your download operation to those constraints.
+
+```python
+data_streams = ['accel', 'ios_log', 'gps']
+
+time_start = '2015-10-01T00:00:00'
+time_end = '2015-12-01T00:00:00'
+
+
+zf: zipfile.ZipFile = msync.download(
+    Keyring,
+    study_id,
+    participant_id,
+    data_streams=data_streams,
+    time_start=time_start,
+    time_end=time_end,
+)
+zf.extractall(output_folder)  # Does exactly what it says
+```
+
+> [!Note]
+> The full list of data stream keys is: `accelerometer`, `app_log`, `audio_recordings`, `bluetooth`,
+> `calls`, `devicemotion`, `gps`, `gyro`, `identifiers`, `ios_log`, `magnetometer`, `power_state`,
+> `proximity`, `reachability`, `survey_answers`, `survey_timings`, `texts`, and `wifi`.
+
+Eventually you may find yourself day-dreaming about a `backfill` function that will slide a window
+from some arbitrary starting point to the present time in order to download all of your data in more
+digestible chunks. You'll be happy to know that the `mano.sync` module exposes a function for this.
+
+```python
+start_date = '2015-01-01T00:00:00'
+
+msync.backfill(
+    Keyring,
+    study_id,
+    participant_id,
+    output_folder,
+    start_date=start_date,
+    lock=lock_streams,
+    passphrase=passphrase,
+)
+```
+
+> [!Note]
+> If you don't pass anything for the `lock` argument, you will not need `passphrase` either.
+
 
 > [!Note]
 > The `msync.download` function returns a [Python Standard Library `zipfile.ZipFile`](
@@ -231,53 +480,3 @@ msync.save(
     passphrase=data_encryption_key,
 )
 ```
-
-### Backfill
-By default `msync.download` attempts to download *all* of the data for the specified `user_id`,
-which could end up being prohibitively large. For this reason, the `msync.download` function exposes
-parameters for `data_streams`, `time_start`, and `time_end`. By using these parameters you can
-limit your download operation to those constraints.
-
-```python
-data_streams = ['accel', 'ios_log', 'gps']
-
-time_start = '2015-10-01T00:00:00'
-time_end = '2015-12-01T00:00:00'
-
-
-zf: zipfile.ZipFile = msync.download(
-    Keyring,
-    study_id,
-    participant_id,
-    data_streams=data_streams,
-    time_start=time_start,
-    time_end=time_end,
-)
-zf.extractall(output_folder)  # Does exactly what it says
-```
-
-> [!Note]
-> The full list of data stream keys is: `accelerometer`, `app_log`, `audio_recordings`, `bluetooth`,
-> `calls`, `devicemotion`, `gps`, `gyro`, `identifiers`, `ios_log`, `magnetometer`, `power_state`,
-> `proximity`, `reachability`, `survey_answers`, `survey_timings`, `texts`, and `wifi`.
-
-Eventually you may find yourself day-dreaming about a `backfill` function that will slide a window
-from some arbitrary starting point to the present time in order to download all of your data in more
-digestible chunks. You'll be happy to know that the `mano.sync` module exposes a function for this.
-
-```python
-start_date = '2015-01-01T00:00:00'
-
-msync.backfill(
-    Keyring,
-    study_id,
-    participant_id,
-    output_folder,
-    start_date=start_date,
-    lock=lock_streams,
-    passphrase=passphrase,
-)
-```
-
-> [!Note]
-> If you don't pass anything for the `lock` argument, you will not need `passphrase` either.
