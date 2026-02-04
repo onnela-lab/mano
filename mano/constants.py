@@ -97,7 +97,7 @@ BACKEND_PYZSTD_PARAMS = {
 #TODO: add more protections and "intelligence" to determine if a file is a beiwe data file.
 #TODO: how could we handle locked files? they would need to be decrypted-compress-encrypted
 BEIWE_FILE_EXTENSIONS = [
-    '.csv',
+    '.csv',  # micro-optimization to have this at thetop
     '.wav',
     '.json',  # The platform provides some json data, but it is too dangerous to include.
     '.mp4',   # Mp4 files are already compressed... that's their gorram purpose.
@@ -107,7 +107,6 @@ COMPRESSABLE_FILE_EXTENSIONS = ['.csv', '.wav']
 # Yeah we COULD just type out these two-item lists, but instead we will dynamically generate them.
 BEIWE_EXTENSIONS_ANDED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, and {BEIWE_FILE_EXTENSIONS[-1]}'
 BEIWE_EXTENSIONS_ORED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, or {BEIWE_FILE_EXTENSIONS[-1]}'
-BEIWE_EXTENSIONS_MESSAGE = f"No files ending in {BEIWE_EXTENSIONS_ORED} found in directory"
 
 
 #

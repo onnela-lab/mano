@@ -18,11 +18,11 @@ from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function
 from mypy.types import T
 from pyzstd import decompress
 
-from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_EXTENSIONS_MESSAGE, BEIWE_FILE_EXTENSIONS,
-    EncryptionKeyUnavailable, GlobalSettings, log, ParseError, SaveError, WriteError)
+from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
+    GlobalSettings, log, ParseError, SaveError, WriteError)
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
-    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, PARSE_ERROR_NO_MATCH_MSG,
-    PARSE_ERROR_TOO_MANY_MATCHES_MSG)
+    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, NO_VALID_FILES_MSG,
+    PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
 def make_directories(path: str):
@@ -63,35 +63,29 @@ def iterate_beiwe_data_files_recursively(
     data files.  constants.BEIWE_FILE_EXTENSIONS for valid extensions.
     The zst_only flag will switch to only yielding .zst files.
     """
-    any_valid_files = False  # two error cases we want to have separate messages for
-    anything_at_all = False
+    if zst_only and include_zst:
+        raise ValueError("cannot set both zst_only and include_zst set to True")
+    
+    valid_file_count = False  # two tracked cases for separate messages for
+    any_file_count = False
+    
+    # If these cases are inside the for-loop it is awful. Creating some functions and picking one is
+    # cleaner. And faster, which matters because this loop limits our multithreaded task dispatch.
+    validate_path: Callable[[str], bool] = check_is_valid_beiwe_data_file  # only regular files
+    if zst_only:
+        validate_path = check_zst_only  # only get the .zst files
+    elif include_zst:
+        validate_path = check_include_zst  # only get both .zst and regular files
+    
     try:
         for root, _, files in walk_directory(directory_path):
-            anything_at_all = True
-            
-            for file_path in files:
-                is_valid = False
-                
-                is_locked = file_path.endswith('.lock')  # ".lock" is always at the end
-                if is_locked:
-                    file_path = file_path[:-5]
-                
-                if zst_only:
-                    is_valid = file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
-                elif include_zst:
-                    if file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4]):
-                        is_valid = True
-                    elif check_is_valid_beiwe_data_file(file_path):
-                        is_valid = True
-                else:
-                    is_valid = check_is_valid_beiwe_data_file(file_path)
-                
-                if is_valid:
-                    any_valid_files = True
-                    if is_locked:
-                        file_path += '.lock'
-                    yield path_join(root, file_path)
-    
+            any_file_count += 1
+            # .lock extension is always after .csv and .zst, strip it before testing validity
+            # yield if it validates, flip the files-found flag
+            for fp in files:
+                if validate_path(fp[:-5] if fp.endswith('.lock') else fp):
+                    valid_file_count += 1
+                    yield path_join(root, fp)
     except Exception as e:
         # All other file system related errors seem to subclass OSError, we'll be broader.
         log.error(f"There was an issue accessing files in: `{directory_path}`: {e}")
@@ -100,18 +94,22 @@ def iterate_beiwe_data_files_recursively(
     if suppress_empty:  # don't check for errors if caller doesn't care
         return
     
-    if not anything_at_all:  # walk doesn't error on empty dirs.
+    if not any_file_count:  # walk doesn't error on empty dirs.
         log.error(msg := f"No such directory: `{directory_path}`")
         raise FileNotFoundError(msg)
     
-    if not any_valid_files:
+    if not valid_file_count:
         # there were files, but not of the correct type
-        if zst_only:
-            msg = f"No `.zst` files found in directory `{directory_path}` or its subdirectories."
-        else:
-            msg = f"{BEIWE_EXTENSIONS_MESSAGE}: `{directory_path}` or its subdirectories."
-        log.error(msg)
+        log.error(msg := NO_VALID_FILES_MSG(directory_path, zst_only))
         raise FileNotFoundError(msg)
+
+
+def check_zst_only(file_path: str) -> bool:
+    return file_path.endswith('.zst') and check_is_valid_beiwe_data_file(file_path[:-4])
+
+
+def check_include_zst(file_path: str) -> bool:
+    return check_is_valid_beiwe_data_file(file_path) or check_zst_only(file_path)
 
 
 def bytes_to_human_filesize(b: bytes) -> str:

@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from typing import Any
 
-from mano.constants import APIError, BASE_24HR_TIME_FORMAT, log, UnParsableTimeError
+from mano.constants import (APIError, BASE_24HR_TIME_FORMAT, BEIWE_EXTENSIONS_ORED, log,
+    UnParsableTimeError)
 
 
 """
@@ -76,6 +77,13 @@ def COULD_NOT_PARSE_TIME_ERROR(prefix: str, dt: datetime | str | None) -> ValueE
 
 
 # General string formatting functions
+
+def NO_VALID_FILES_MSG(directory_path: str, zst_only: bool):
+    if zst_only:
+        return f"No `.zst` files found in directory `{directory_path}` or its subdirectories."
+    
+    return f"No files with {BEIWE_EXTENSIONS_ORED} found in directory " \
+            f"`{directory_path}` or its subdirectories."
 
 
 def NO_TIME_MSG(prefix: str):

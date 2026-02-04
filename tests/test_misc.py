@@ -10,11 +10,11 @@ from pyzstd import decompress
 
 import mano
 from mano import mano_cli
-from mano.constants import BEIWE_EXTENSIONS_MESSAGE, logger as log, UTC
+from mano.constants import logger as log, UTC
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
-from mano.messages import TIME_REQUIRED_ERROR
+from mano.messages import NO_VALID_FILES_MSG, TIME_REQUIRED_ERROR
 from mano.sync import validate_datetime, validate_required_datetime
 from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES, generate_compressed_zst_files,
     generate_uncompressed_zst_files, generate_valid_compress_test_files,
@@ -294,12 +294,11 @@ def test_empty_folder(tmp_path: Path):
     rgx_compat_path = base_path_str.replace("\\", "\\\\")  # for Windows paths compatibility
     
     # this is the error for when it had nothing with the right extensions
-    with pytest.raises(FileNotFoundError, match=f"{BEIWE_EXTENSIONS_MESSAGE}: `{rgx_compat_path}`"):
+    with pytest.raises(FileNotFoundError, match=NO_VALID_FILES_MSG(rgx_compat_path, False)):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
             log.error(f"TEST: Unexpected file found while running test 3: {fp}")  # debugging helper
     
-    msg2 = f"No `.zst` files found in directory `{rgx_compat_path}` or its subdirectories."
-    with pytest.raises(FileNotFoundError, match=msg2):
+    with pytest.raises(FileNotFoundError, match=NO_VALID_FILES_MSG(rgx_compat_path, True)):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
             log.error(f"TEST: Unexpected file found while running test 4: {fp}")  # debugging helper
 
