@@ -531,7 +531,7 @@ def find_duplicate_files(
         _threadable_hash_and_path, "generating hashes", paths, participant_id, passphrase
     )
     
-    base_to_real = defaultdict(list[str])
+    base_to_real: defaultdict[str, list[str]] = defaultdict(list[str])
     real_to_hash = dict[str, bytes]()
     for real_local_path, base_path, hash_val in paths_and_hashes:
         base_to_real[base_path].append(real_local_path)

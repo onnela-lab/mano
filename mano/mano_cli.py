@@ -39,7 +39,7 @@ mano currently supports 2 commands: decompress and compress.
 ~File Management~
 
 
-"mano decompress <folder or file path> [{DELETE_ZST}] [{OVERWRITE}]" 
+"mano decompress <folder or file path> [{DELETE_ZST}] [{OVERWRITE}]"
   This command will decompress all compressed Beiwe data files ending in .zst to the specified folder
   (Specify the current folder with a single dot: `.` or `./`)
 
@@ -67,7 +67,7 @@ Global Options - you can always provide these with any command:
 
     [Decompress]
         `mano decompress ./abcde12345/ --delete-zst --overwrite` -y
-    This will skip confirmation and immediately decompress all .zst files in the `abcde12345/` 
+    This will skip confirmation and immediately decompress all .zst files in the `abcde12345/`
     folder and subfolders, deleting the .zst files, and overwriting any uncompressed files
     that already exist and share that name.
 
