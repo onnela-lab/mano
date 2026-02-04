@@ -10,53 +10,18 @@ import requests
 from lxml import html
 from lxml.html import HtmlElement
 
-from mano.constants import (AmbiguousStudyIDError, APIError, IntervalError, KeyringError,
-    logger as log, LoginError, ScrapeError, StudyIDError, StudyNameError, StudySettingsError)
+from mano.constants import (AmbiguousStudyIDError, APIError, Config, DATA_STREAMS, IntervalError,
+    KeyringError, LOCALE, logger as log, LoginError, ScrapeError, StudyIDError, StudyNameError,
+    StudySettingsError, TIME_FORMAT)
 
 
-# historical namespace items
-from mano.constants import Config, DATA_STREAMS, LOCALE, TIME_FORMAT  # noqa # type: ignore
-
-
-def interval(x: str) -> int:
+def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
     """
-    Convert an interval e.g., 1d, 12h, into seconds
-    """
-    x = x.lower()
-    
-    # validate and extract - any number of digits followed by single character s m h d
-    result = re.split("^([0-9]+)([smhd]$)", x)
-    if len(result) != 4:
-        raise IntervalError(f"invalid interval '{x}'")
-    
-    value, units = result[1], result[2]
-    try:
-        value = int(value)
-    except ValueError as e:
-        raise IntervalError(f"invalid interval '{x}': {e}") from None
-    
-    # convert to seconds using datetime
-    if units == "d":
-        offset = timedelta(days=value)
-    elif units == "h":
-        offset = timedelta(hours=value)
-    elif units == "m":
-        offset = timedelta(minutes=value)
-    elif units == "s":
-        offset = timedelta(seconds=value)
-    else:
-        raise IntervalError(f"invalid interval unit '{units}'")
-    
-    return int(offset.total_seconds())
-
-
-def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
-    """
-    Request a list of studies
+    Request the name and study ID of all studies that the provided keyring has access to.
     """
     # setup
-    url = Keyring['URL'].rstrip('/') + '/get-studies/v1'
-    payload = {'access_key': Keyring['ACCESS_KEY'], 'secret_key': Keyring['SECRET_KEY']}
+    url = keyring['URL'].rstrip('/') + '/get-studies/v1'
+    payload = {'access_key': keyring['ACCESS_KEY'], 'secret_key': keyring['SECRET_KEY']}
     
     # request
     resp = requests.post(url, data=payload, stream=True)
@@ -69,7 +34,7 @@ def studies(Keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
         yield study_name, study_id
 
 
-def keyring(
+def load_keyring(
     deployment: str | None,
     keyring_file: str = '~/.nrg-keyring.enc',
     passphrase: str | None = None
@@ -84,6 +49,7 @@ def keyring(
     # if no deployment string was provided, get keyring from environment
     if deployment is None:
         return keyring_from_env()
+    
     # if no passphrase was provided, get it from the environment or prompt
     if passphrase is None:
         if 'NRG_KEYRING_PASS' in os.environ:
@@ -120,7 +86,7 @@ def keyring_from_env() -> dict[str, str]:
     Keyring = dict[str, str]()
     try:
         Keyring['URL'] = os.environ['BEIWE_URL']
-        Keyring['USERNAME'] = os.environ['BEIWE_USERNAME']
+        Keyring['USERNAME'] = os.environ['BEIWE_USERNAME']  # TODO: need to finish removing this...
         Keyring['PASSWORD'] = os.environ['BEIWE_PASSWORD']
         Keyring['ACCESS_KEY'] = os.environ['BEIWE_ACCESS_KEY']
         Keyring['SECRET_KEY'] = os.environ['BEIWE_SECRET_KEY']
@@ -129,16 +95,16 @@ def keyring_from_env() -> dict[str, str]:
     return Keyring
 
 
-def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | None:
+def expand_study_id(keyring: dict[str, str], segment: str) -> tuple[str, str] | None:
     """
     Expand a Study ID segment to the full Study ID
-
+    
     :param Keyring: Keyring dictionary
     :param segment: First characters from a Study ID
     :returns: Complete Study name and ID
     """
     ids = list[tuple[str, str]]()
-    for study_name, study_id in studies(Keyring):
+    for study_name, study_id in fetch_accessible_studies(keyring):
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
     if not ids:
@@ -150,19 +116,19 @@ def expand_study_id(Keyring: dict[str, str], segment: str) -> tuple[str, str] | 
         raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
 
 
-def users(Keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
+def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
     """
     Request a list of users within a study
-
+    
     :param Keyring: Keyring dictionary
     :param study_id: Study ID
     :returns: Generator of (study_name, study_id)
     :rtype: generator
     """
-    url = Keyring['URL'].rstrip('/') + '/get-users/v1'
+    url = keyring['URL'].rstrip('/') + '/get-users/v1'
     payload = {
-        'access_key': Keyring['ACCESS_KEY'],
-        'secret_key': Keyring['SECRET_KEY'],
+        'access_key': keyring['ACCESS_KEY'],
+        'secret_key': keyring['SECRET_KEY'],
         'study_id': study_id
     }
     
@@ -174,55 +140,93 @@ def users(Keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
     yield from json.loads(resp.content)
 
 
-def studyid(Keyring: dict[str, str], name: str) -> str:
+#
+## Utility Functions
+#
+
+
+def studyid(keyring: dict[str, str], name: str) -> str:
     """
     Get the Study ID for a given Study Name
-
+    
     :param Keyring: Keyring dictionary
     :param name: Study name
     :returns: Study ID
     """
-    for study_name, study_id in studies(Keyring):
+    for study_name, study_id in fetch_accessible_studies(keyring):
         if name == study_name:
             return study_id
     raise StudyIDError(f'study not found {name}')
 
 
-def studyname(Keyring: dict[str, str], sid: str) -> str:
+def studyname(keyring: dict[str, str], sid: str) -> str:
     """
     Get the Study Name for a given Study ID
-
+    
     :param Keyring: Keyring dictionary
     :param sid: Study ID
     :returns: Study Name
     """
-    for study_name, study_id in studies(Keyring):
+    for study_name, study_id in fetch_accessible_studies(keyring):
         if sid == study_id:
             return study_name
     raise StudyNameError(f'study not found {sid}')
 
 
+def interval(x: str) -> int:
+    """
+    Convert an interval e.g., 1d, 12h, into seconds
+    """
+    x = x.lower()
+    
+    # validate and extract - any number of digits followed by single character s m h d
+    result = re.split("^([0-9]+)([smhd]$)", x)
+    if len(result) != 4:
+        raise IntervalError(f"invalid interval '{x}'")
+    
+    value, units = result[1], result[2]
+    try:
+        value = int(value)
+    except ValueError as e:
+        raise IntervalError(f"invalid interval '{x}': {e}") from None
+    
+    # convert to seconds using datetime
+    if units == "d":
+        offset = timedelta(days=value)
+    elif units == "h":
+        offset = timedelta(hours=value)
+    elif units == "m":
+        offset = timedelta(minutes=value)
+    elif units == "s":
+        offset = timedelta(seconds=value)
+    else:
+        raise IntervalError(f"invalid interval unit '{units}'")
+    
+    return int(offset.total_seconds())
+
+
+
 #
-## Old to-be-deprecated functionality, replace with API calls
+## Old to-be-rewritten functionality, replace with API calls
 #
 
 
 # FIXME: this function depends on the HTML structure of the Beiwe website, AND the content of the
 # page may not accurately represent the state of data collected by the study. beiwe-backend now has
 # an issue for this, #320
-def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
+def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
     """
     Get device settings for a Study
-
+    
     :param Keyring: Keyring namespace
     :param study_id: Study ID
     :returns: Generator of sensor (name, setting)
     """
     # get login cookies
-    cookies = login(Keyring)
+    cookies = login(keyring)
     
     # request choose_study html page
-    url = Keyring['URL'].rstrip('/') + f'/device_settings/{study_id}'
+    url = keyring['URL'].rstrip('/') + f'/device_settings/{study_id}'
     resp = requests.get(url, cookies=cookies)
     if resp.status_code != requests.codes.OK:
         raise StudySettingsError(f'response not ok ({resp.status_code}) for url={resp.url}')
@@ -247,7 +251,7 @@ def device_settings(Keyring: dict[str, str], study_id: str) -> Generator[tuple[s
 
 
 # FIXME: this function is the login to the beiwe website, a detail we want to drop entirely
-def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
+def login(keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     """
     Programmatic login to the Beiwe website (returns cookies)
 
@@ -255,11 +259,24 @@ def login(Keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     :returns: Cookies
     """
     # setup
-    url = Keyring['URL'].rstrip('/') + '/validate_login'
-    payload = {'username': Keyring['USERNAME'], 'password': Keyring['PASSWORD']}
+    url = keyring['URL'].rstrip('/') + '/validate_login'
+    payload = {'username': keyring['USERNAME'], 'password': keyring['PASSWORD']}
     # request
     resp = requests.post(url, data=payload)
     if resp.status_code != requests.codes.OK:
         raise LoginError(f'response not ok ({resp.status_code}) for {resp.url}')
     # there is a redirect after login
     return resp.history[0].cookies
+
+
+#
+##  Old function aliases and variables we need to keep in the namespace for backward compatibility
+#
+studies = fetch_accessible_studies             # noqa
+users = fetch_users_in_study                   # noqa
+keyring = load_keyring                         # noqa
+device_settings = fetch_study_device_settings  # noqa
+Config = Config                                # noqa
+DATA_STREAMS = DATA_STREAMS                    # noqa
+LOCALE = LOCALE                                # noqa
+TIME_FORMAT = TIME_FORMAT                      # noqa

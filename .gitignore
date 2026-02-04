@@ -14,3 +14,4 @@ __pycache__/
 mano.egg-info/
 
 .vscode/
+private

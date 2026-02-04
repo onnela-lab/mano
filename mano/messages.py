@@ -64,7 +64,7 @@ def NOT_200_OK_ERROR(status_code: int, url: str) -> APIError:
 
 
 def TIME_REQUIRED_ERROR(prefix: str) -> ValueError:
-    msg = f"{prefix} - a required date and time parameter was not provided."
+    msg = f"{prefix} - a required date-time parameter was not provided."
     log.error(msg)
     return ValueError(msg)
 
@@ -95,6 +95,17 @@ def TIME_NOT_UTC_MSG(prefix: str, dt: datetime, ending: str):
     dt_str = full_dt_format(dt)
     return f"{prefix} - The Beiwe platform expects times to be in the UTC timezone `{dt_str}` {ending}"
 
+
+def TIME_IS_TOO_EARLY_MSG(prefix: str, dt: datetime):
+    dt_str = full_dt_format(dt)
+    return f"{prefix} - The provided datetime `{dt_str}` is before the earliest possible " \
+            "time for any Beiwe data."
+
+
+def TIME_IS_TOO_LATE_MSG(prefix: str, dt: datetime):
+    dt_str = full_dt_format(dt)
+    return f"{prefix} - The provided datetime `{dt_str}` is too far in the future. " \
+            "This input can only send junk queries to the Beiwe Data Access API."
 
 # SPECIFIC formatting functions
 
@@ -148,6 +159,14 @@ def CANNOT_ENCRYPT_MSG(path: str):
     return f"Mano encountered a request to encrypt a file ({path}) " \
            "but cannot do so because no passphrase was provided."
 
+
+TOO_MANY_MULTITHREAD_ARGS = \
+    "Multiple multithreading parameters (strting with `--mt`) were provided, please provide only one."
+
+
+def BAD_MULTITHREADING_ERROR(arg: str) -> str:
+    return f"An invalid multithreading parameter `{arg}` was provided. " \
+            "Please provide a value like `--mt4` or `--mt10`."
 
 #
 # Deprecation warnings

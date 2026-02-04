@@ -9,22 +9,18 @@ import pyzstd
 from dateutil.tz import UTC
 
 
-# URL endpoints
-URL_UNCOMPRESSED = '/get-data/v1'
-URL_COMPRESSED = '/get-data/v2'
+# Global settings object
+# the main() function sets these values appropriately during CLI usage.
+class GlobalSettings:
+    skip_user_interaction: bool = True   # main() in CLI sets this to False when appropriate.
+    multithreading_count: int = 0        # zero or negative means use the number of CPU cores.
+    
+    BACKFILL_WINDOW = 20
 
-# read configuration file
-# TODO: document the config file / configuration options (at all).
-Config = os.path.join(os.path.dirname(__file__), 'config.json')
-with open(Config, 'rb') as fo:
-    Config = json.load(fo)
 
-# TODO: source this locale from the system
-LOCALE = str(Config['locale'])
-locale.setlocale(locale.LC_ALL, LOCALE)
-
-DATA_STREAMS = Config['data_streams']  # historical variable name, cannot/do not change
-
+#
+# The Beiwe Data Streams
+#
 
 class DataStreams:
     ACCELEROMETER = "accelerometer"
@@ -47,7 +43,7 @@ class DataStreams:
     WIFI = "wifi"
 
 
-ALL_DATA_STREAMS = {
+ALL_DATA_STREAMS = [
     DataStreams.ACCELEROMETER,
     DataStreams.AUDIO_RECORDING,
     DataStreams.ANDROID_LOG_FILE,
@@ -66,7 +62,11 @@ ALL_DATA_STREAMS = {
     DataStreams.SURVEY_TIMINGS,
     DataStreams.TEXTS_LOG,
     DataStreams.WIFI,
-}
+]
+
+# URL endpoint extensions for the Beiwe data access API
+URL_UNCOMPRESSED = '/get-data/v1'
+URL_COMPRESSED = '/get-data/v2'
 
 #
 # Anything Related to Time
@@ -75,15 +75,11 @@ ALL_DATA_STREAMS = {
 BASE_24HR_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # isoformat but with space instead of T
 FULL_DT_FORMAT = "%Y-%m-%d %H:%M:%S (%Z)"  # with timezone _name_
 FULL_DT_FORMAT_NO_TZ = "%Y-%m-%d %H:%M:%S"
-
-TIME_FORMAT = Config['time_format']  # This will probably get removed because we always want isoformat
 API_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"  # isoformat without timezone, YYYY-MM-DDThh:mm:ss
 
 # this is the earliest possible date for data out of any Beiwe study
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
 EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
-
-BACKFILL_WINDOW = 20
 
 # pyzstd custom parameters
 # Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
@@ -156,3 +152,21 @@ coloredlogs.install(
 
 # The logger
 log = logger = logging.getLogger("mano")
+
+
+# old configuration code
+
+# TODO: document the config file / configuration options (at all).
+
+# TODO: I don't think this is very useful.
+# Read in the universal configuration file
+Config = os.path.join(os.path.dirname(__file__), 'config.json')  # historical variable name
+with open(Config, 'rb') as fo:
+    Config = json.load(fo)
+
+# TODO: source this locale from the system?
+LOCALE = str(Config['locale'])  # historical variable name, cannot/do not change
+locale.setlocale(locale.LC_ALL, LOCALE)
+
+DATA_STREAMS = Config['data_streams']  # historical variable name, cannot/do not change
+TIME_FORMAT = Config['time_format']  # This will probably get removed because we always want isoformat

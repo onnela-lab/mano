@@ -23,11 +23,11 @@ def main():
     parser.add_argument('--keyring-section', default='beiwe.onnela')
     args = parser.parse_args()
 
-    Keyring = mano.keyring(args.keyring_section)
+    Keyring = mano.load_keyring(args.keyring_section)
 
-    for study in mano.studies(Keyring):
+    for study in mano.fetch_accessible_studies(Keyring):
         study_name, study_id = study
-        for user_id in mano.users(Keyring, study_id):
+        for user_id in mano.fetch_users_in_study(Keyring, study_id):
             logger.info('downloading study=%s, user=%s', study_name, user_id)
             output_folder = os.path.join(args.output_base, study_name)
             msync.backfill(Keyring, study_id, user_id, output_folder, start_date=args.backfill_start)
