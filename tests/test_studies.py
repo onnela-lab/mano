@@ -17,7 +17,7 @@ def test_studies(keyring: dict[str, str], mock_studies_response: str):
         content_type='text/html; charset=utf-8'
     )
     studies = set[tuple[str, str]]()
-    for study in mano.studies(keyring):
+    for study in mano.fetch_accessible_studies(keyring):
         studies.add(study)
     
     assert studies == expected_studies

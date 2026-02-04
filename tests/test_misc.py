@@ -31,7 +31,7 @@ def test_users(keyring: dict[str, str], mock_users_response: str):
         content_type='text/html; charset=utf-8'
     )
     users = set[str]()
-    for user in mano.users(keyring, 'STUDY_ID'):
+    for user in mano.fetch_users_in_study(keyring, 'STUDY_ID'):
         users.add(user)
     assert users == expected_users
 
@@ -122,6 +122,13 @@ def test_validate_datetime_string_with_timezone_timeshifts():
     dt_expected = datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC)  # shifted to UTC
     dt_should_be_utc_0_0_0 = validate_datetime(dt_from_str, "_")
     assert dt_should_be_utc_0_0_0 == dt_expected
+
+
+def test_validate_datetime_too_something():
+    with pytest.raises(ValueError, match=".*is before the earliest possible.*"):
+        validate_datetime("2010-01-01T00:00:00Z", "_")
+    with pytest.raises(ValueError, match=".*is too far in the future.*"):
+        validate_datetime("2100-01-01T00:00:00Z", "_")
 
 
 #

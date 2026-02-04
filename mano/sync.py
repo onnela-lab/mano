@@ -23,9 +23,9 @@ from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_ERROR, BACKFILL_START_DA
     BACKFILL_UNPARSABLE_DATE_ERROR, COULD_NOT_PARSE_TIME_ERROR,
     DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, full_dt_format, INVALID_DATA_STREAMS_MSG, NO_TIME_MSG,
     NOT_200_OK_ERROR, PICK_USER_PARTICIPANT_PLURAL_MSG, PICK_USER_PARTICIPANT_SINGLE_MSG,
-    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG,
-    TIME_PARSED_MSG, TIME_REQUIRED_ERROR, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_ERROR)
+    PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG, TIME_IS_TOO_EARLY_MSG,
+    TIME_IS_TOO_LATE_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG, TIME_REQUIRED_ERROR,
+    USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG, X_IS_NOT_A_Y_ERROR)
 
 
 # historical namespace items
@@ -41,7 +41,7 @@ RequestPayload = dict[str, str | list[str] | dict[str, str]]
 
 
 def download(
-    Keyring: dict[str, str],                   # Your loaded credentials (see documentation).
+    keyring: dict[str, str],                   # Your loaded credentials (see documentation).
     study_id: str,                             # The target Study ID.
     
     # Data Filters
@@ -67,7 +67,7 @@ def download(
     # Required parameters
     #
     
-    :param Keyring: Credentials dictionary - See documentation for details on how to safely store
+    :param keyring: Credentials dictionary - See documentation for details on how to safely store
         and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
     
     :param study_id: The Study ID to download data from
@@ -167,8 +167,8 @@ def download(
     if progress:
         log.warning(PROGRESS_DEPRECATION_MSG)
     
-    if not isinstance(Keyring, dict):
-        raise X_IS_NOT_A_Y_ERROR("Keyring", dict, Keyring, "download")
+    if not isinstance(keyring, dict):
+        raise X_IS_NOT_A_Y_ERROR("keyring", dict, keyring, "download")
     if not isinstance(study_id, str):
         raise X_IS_NOT_A_Y_ERROR("study_id", str, study_id, "download")
     if not isinstance(participant_ids, (list, type(None), str)):
@@ -212,19 +212,21 @@ def download(
     validate_data_streams(data_streams, "download - `data_streams`")
     
     return _download(
-        Keyring, study_id, compressed, data_streams, registry, time_start, time_end, participant_ids
+        keyring, study_id, compressed, data_streams, registry, time_start, time_end, participant_ids
     )
 
+# todo: this needs to validate the output directory
+# todo: does backfill actually stop at the provided end date? I think it does batch+20
 
 def backfill(
     # Required parameters:
-    Keyring: dict[str, str],                        # Your loaded credentials (see documentation).
+    keyring: dict[str, str],                        # Your loaded credentials (see documentation).
     study_id: str,                                  # The target Study ID.
     participant_id: str,                            # The target participant's ID.
     output_dir: str,                                # Directory to save downloaded data.
+    start_date: str | datetime | date,   # Date/time to start backfill from.
     
     # Optional parameters:
-    start_date: str | datetime | date = EARLIEST_POSSIBLE_DATA_DT,   # Date/time to start backfill from.
     end_date: str | datetime | date | None = None,  # Date/time to stop backfill at.
     data_streams: list[str] | None = None,          # List of data streams to backfill.
     lock: list[str] | None = None,                  # List of files to lock during backfill.
@@ -259,7 +261,7 @@ def backfill(
     # Required parameters
     #
     
-    :param Keyring: Credentials dictionary - See documentation for details on how to safely store
+    :param keyring: Credentials dictionary - See documentation for details on how to safely store
         and load your Beiwe API credentials at https://github.com/onnela-lab/mano/
     
     :param study_id: The Study ID to download data from
@@ -299,7 +301,7 @@ def backfill(
     :param lock: A list of data streams to "lock" (encrypt) during backfill.
         If None or an empty list is provided no data streams will be encrypted.
     
-    :param passphrase: The encryption key _for your Keyring_ to then access the decryption keys.
+    :param passphrase: The encryption key _for your keyring_ to then access the decryption keys.
         If None is provided no encryption will be performed.
         Must be paired with a non-empty `lock` parameter.
     
@@ -318,8 +320,8 @@ def backfill(
         participant_id = user_id
     
     # Type checking messages
-    if not isinstance(Keyring, dict):
-        raise X_IS_NOT_A_Y_ERROR("Keyring", dict, Keyring, "backfill")
+    if not isinstance(keyring, dict):
+        raise X_IS_NOT_A_Y_ERROR("keyring", dict, keyring, "backfill")
     if not isinstance(study_id, str):
         raise X_IS_NOT_A_Y_ERROR("study_id", str, study_id, "backfill")
     if not isinstance(participant_id, (str, type(None))):
@@ -393,7 +395,7 @@ def backfill(
     
     # this is just a this wrapper to provide documentation for usage of Mano's backfill functionality
     _backfill_participant(
-        Keyring,
+        keyring,
         study_id,
         participant_id,
         output_dir,
@@ -435,7 +437,7 @@ def save(
 
 
 def _download(
-    Keyring: dict[str, str],
+    keyring: dict[str, str],
     study_id: str,
     compressed: bool,
     data_streams: list[str],
@@ -448,13 +450,13 @@ def _download(
     Internal function to handle download logic, do not call directly.
     """
     # base url for beiwe instance
-    url = normalize_url(Keyring['URL']) + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
+    url = normalize_url(keyring['URL']) + (URL_COMPRESSED if compressed else URL_UNCOMPRESSED)
     log.debug(f'download URL: {url}')
     
     # setup request payload
     payload: RequestPayload = {
-        "access_key": Keyring["ACCESS_KEY"],
-        "secret_key": Keyring["SECRET_KEY"],
+        "access_key": keyring["ACCESS_KEY"],
+        "secret_key": keyring["SECRET_KEY"],
         "study_id": study_id,  # required
     }
     if data_streams:
@@ -513,7 +515,7 @@ def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
 
 
 def _backfill_participant(
-    Keyring: dict[str, str],
+    keyring: dict[str, str],
     study_id: str,
     participant_id: str,
     output_dir: str,
@@ -552,7 +554,7 @@ def _backfill_participant(
         log.info(f'Checking for backfill window {start} - {end}...')
         
         archive = download(
-            Keyring,
+            keyring,
             study_id=study_id,
             participant_ids=[participant_id],
             data_streams=data_streams,
@@ -694,6 +696,14 @@ def validate_datetime(dt: str | datetime | date | None, msg_prefix: str) -> date
         new_dt = dt.astimezone(UTC)
         log.warning(TIME_NOT_UTC_MSG(msg_prefix, dt, f"has been time-shifted to `{full_dt_format(new_dt)}`."))
         dt = new_dt
+    
+    if dt < EARLIEST_POSSIBLE_DATA_DT:
+        log.error(msg := TIME_IS_TOO_EARLY_MSG(msg_prefix, dt))
+        raise ValueError(msg)
+    
+    if dt > (datetime.now(tz=UTC) + timedelta(days=GlobalSettings.BACKFILL_WINDOW)):
+        log.error(msg := TIME_IS_TOO_LATE_MSG(msg_prefix, dt))
+        raise ValueError(msg)
     
     return dt
 

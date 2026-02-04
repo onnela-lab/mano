@@ -17,6 +17,7 @@ class GlobalSettings:
     
     BACKFILL_WINDOW = 20
 
+
 #
 # The Beiwe Data Streams
 #
@@ -42,7 +43,7 @@ class DataStreams:
     WIFI = "wifi"
 
 
-ALL_DATA_STREAMS = {
+ALL_DATA_STREAMS = [
     DataStreams.ACCELEROMETER,
     DataStreams.AUDIO_RECORDING,
     DataStreams.ANDROID_LOG_FILE,
@@ -61,7 +62,7 @@ ALL_DATA_STREAMS = {
     DataStreams.SURVEY_TIMINGS,
     DataStreams.TEXTS_LOG,
     DataStreams.WIFI,
-}
+]
 
 # URL endpoint extensions for the Beiwe data access API
 URL_UNCOMPRESSED = '/get-data/v1'
