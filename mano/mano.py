@@ -275,6 +275,7 @@ def login(keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
 studies = fetch_accessible_studies             # noqa
 users = fetch_users_in_study                   # noqa
 keyring = load_keyring                         # noqa
+Keyring = load_keyring                         # noqa
 device_settings = fetch_study_device_settings  # noqa
 Config = Config                                # noqa
 DATA_STREAMS = DATA_STREAMS                    # noqa
