@@ -20,6 +20,57 @@ from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES, generate_compr
     generate_uncompressed_zst_files, generate_valid_compress_test_files,
     generate_valid_decompress_test_files)
 
+# run throught the test here, go through the test messages, check the message, check if there is duplication with other tests
+# commit for the tests in test_studies, another for tests in test_misc. and then change to having a test_endpoints file that combines them
+# Eli -- I want you to do this in seperate stages, commit, then push on my branch with the new tests, and then move them into one file as seperate commit.
+@responses.activate
+def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
+    responses.post(
+        keyring['URL'] + '/get-users/v1',
+        body=mock_users_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    users = list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
+    assert set(users) == {"tgsidhm", "lholbc5", "yxzxtwr"}
+
+
+@responses.activate
+def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-users/v1',
+        body='Internal Server Error',
+        status=500,
+    )
+    with pytest.raises(mano.APIError, match="500"):
+        list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
+
+
+@responses.activate
+def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
+    responses.post(
+        keyring['URL'] + '/get-users/v1',
+        body=mock_users_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    list(mano.fetch_users_in_study(keyring, 'MY_STUDY_ID'))
+    request_body = responses.calls[0].request.body
+    assert request_body is not None
+    assert 'study_id=MY_STUDY_ID' in str(request_body)
+
+
+@responses.activate
+def test_fetch_users_in_study_server_returns_dict_yields_keys(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-users/v1',
+        body='{"error": "no users"}', 
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    with pytest.raises((ValueError, mano.APIError)):
+        list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
+
 
 @responses.activate
 def test_users(keyring: dict[str, str], mock_users_response: str):
@@ -84,7 +135,6 @@ def test_device_settings():
 
 
 def test_datetime_validation():
-    # test very basic string match - we aren't testing the breadth of dateutil here
     assert validate_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_datetime("2023-01-01 00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_required_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
@@ -106,7 +156,6 @@ def test_validate_datetime_no_error_on_none():
 def test_validate_datetime_timezone_UTC_required():
     dt_wo_tz = datetime(2023, 1, 1, tzinfo=None)
     dt_w_utc = datetime(2023, 1, 1, tzinfo=UTC)
-    # we do silently convert naive to UTC for the user, because the backend is in UTC
     assert validate_datetime(dt_wo_tz, "_") == dt_w_utc
 
 
@@ -131,11 +180,6 @@ def test_validate_datetime_too_something():
         validate_datetime("2100-01-01T00:00:00Z", "_")
 
 
-#
-# Very miscellaneous
-#
-
-
 def test_interval():
     assert mano.interval("10s") == 10
     assert mano.interval("5m") == 300
@@ -151,8 +195,6 @@ def test_interval():
     with pytest.raises(mano.IntervalError, match="invalid interval 'y'"):
         mano.interval("y")
     
-    # there's a regex that catches it first
-    # with pytest.raises(mano.IntervalError, match="invalid interval unit '10x'"):
     with pytest.raises(mano.IntervalError, match="invalid interval '10x'"):
         mano.interval("10x")
     
@@ -178,10 +220,6 @@ def test_compress_general():
     compressed_bytes = compress_general(original_bytes, level=19)  # take it slow
     assert decompress(compressed_bytes) == original_bytes
     assert len(compressed_bytes) < len(original_bytes)
-
-
-# (tmp_path is a built-in pytest fixture, it creates a temporary directory for the test)
-# test compress
 
 
 def test_compress_one_zst_file_defaults(tmp_path: Path):
@@ -224,9 +262,6 @@ def test_compress_one_zst_file_custom_level(tmp_path: Path):
     assert len(compressed_bytes) < len(original_bytes)
 
 
-# test decompress
-
-
 def test_decompress_one_zst_file_defaults(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     decompress_one_zst_file(str(compressed_path))
@@ -257,15 +292,10 @@ def test_decompress_one_zst_file_delete_zst(tmp_path: Path):
     assert original_bytes == uncompressed_path.read_bytes()
 
 
-# test file iteration
-
-
 def test_iterate_valid_data_files(tmp_path: Path):
-    # create some valid and invalid files
     valid_files = ["data1.csv", "audio.wav"]
     invalid_files = ["document.txt", "image.jpg", "archive.zip", "script.py"]
     
-    # make them exist
     for filename in valid_files + invalid_files:
         (tmp_path / filename).write_text("test content")
     
@@ -279,11 +309,11 @@ def test_iterate_valid_data_files(tmp_path: Path):
 def test_iterate_no_such_folder():
     with pytest.raises(FileNotFoundError, match="No such directory: `this/path/does/not/exist`"):
         for fp in iterate_beiwe_data_files_recursively("this/path/does/not/exist"):
-            log.error(f"Unexpected file found while running test 1: {fp}")  # debugging helper
+            log.error(f"Unexpected file found while running test 1: {fp}")
     
     with pytest.raises(FileNotFoundError, match="No such directory: `this/path/does/not/exist`"):
         for fp in iterate_beiwe_data_files_recursively("this/path/does/not/exist", zst_only=True):
-            log.error(f"Unexpected file found while running test 2: {fp}")  # debugging helper
+            log.error(f"Unexpected file found while running test 2: {fp}")
 
 
 def test_empty_folder(tmp_path: Path):
@@ -291,16 +321,15 @@ def test_empty_folder(tmp_path: Path):
     restricted_dir.mkdir()
     
     base_path_str = str(tmp_path)
-    rgx_compat_path = base_path_str.replace("\\", "\\\\")  # for Windows paths compatibility
+    rgx_compat_path = base_path_str.replace("\\", "\\\\")
     
-    # this is the error for when it had nothing with the right extensions
     with pytest.raises(FileNotFoundError, match=NO_VALID_FILES_MSG(rgx_compat_path, False)):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path)):
-            log.error(f"TEST: Unexpected file found while running test 3: {fp}")  # debugging helper
+            log.error(f"TEST: Unexpected file found while running test 3: {fp}")
     
     with pytest.raises(FileNotFoundError, match=NO_VALID_FILES_MSG(rgx_compat_path, True)):
         for fp in iterate_beiwe_data_files_recursively(str(tmp_path), zst_only=True):
-            log.error(f"TEST: Unexpected file found while running test 4: {fp}")  # debugging helper
+            log.error(f"TEST: Unexpected file found while running test 4: {fp}")
 
 
 def test_iterate_recursive(tmp_path: Path):
@@ -340,9 +369,6 @@ def test_iterate_lock_files(tmp_path: Path):
     assert both == {str(f) for f in lock_files}
 
 
-# full compress/decompress tests
-
-
 def test_full_decompress_decompresses(tmp_path: Path):
     zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
     decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False)
@@ -354,7 +380,7 @@ def common_full_decompress(
 ):
     correct_uncompressed_file_paths = {str(path).rsplit(".zst")[0] for path in zst_files}
     
-    for path in non_zst_files:  # add the valid never-were-compressed files too (iterate picks them up)
+    for path in non_zst_files:
         if path.suffix in [".csv", ".wav"]:
             correct_uncompressed_file_paths.add(str(path))
     
@@ -376,7 +402,6 @@ def test_full_compress_compresses(tmp_path: Path):
 
 
 def test_full_compress_multithread_works(tmp_path: Path):
-    # as above, but with multithreading
     compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
     compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False)
     common_full_compress(tmp_path, original_bytes, compressable_files)
@@ -416,7 +441,6 @@ def test_full_compress_delete_original_deletes_originals(tmp_path: Path):
 
 def test_full_compress_overwrites(tmp_path: Path):
     compressable_files, _uncompressable_files, decompressed_data = generate_valid_compress_test_files(tmp_path)
-    # create dummy .zst files to be overwritten
     for path in compressable_files:
         (path.parent / (path.name + ".zst")).write_bytes(b"super secret data")
     
@@ -429,7 +453,6 @@ def test_full_compress_overwrites(tmp_path: Path):
 
 def test_full_decompress_overwrites(tmp_path: Path):
     zst_files, _non_zst_files, decompressed_data = generate_valid_decompress_test_files(tmp_path)
-    # create dummy uncompressed files to be overwritten
     for path in zst_files:
         Path(str(path).rsplit(".zst")[0]).write_bytes(b"super secret data")
     
@@ -441,7 +464,6 @@ def test_full_decompress_overwrites(tmp_path: Path):
 
 
 def test_full_compress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
-    # simulate an error during compression
     _compressable_files, _uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
     mocker.patch("mano.file_management.compress_one_zst_file", side_effect=Exception("Simulated compression error"))
     with pytest.raises(Exception, match="Simulated compression error"):
@@ -449,20 +471,13 @@ def test_full_compress_raises_an_error_during_real_execution_1_thread(tmp_path: 
 
 
 def test_full_decompress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
-    # simulate an error during decompression
     _zst_files, _non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
     mocker.patch("mano.file_management.decompress_one_zst_file", side_effect=Exception("Simulated decompression error"))
     with pytest.raises(Exception, match="Simulated decompression error"):
         decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False)
 
 
-#
-# test mano CLI commands
-#
-
-
 def _setup_mock_compress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
-    # mocks the function call and sets up `input` to let us run the function without breaking
     _, _, _ = generate_uncompressed_zst_files(tmp_path)
     mock_input = mocker.patch("mano.mano_cli.input")
     mock_input.return_value = "y"
@@ -470,16 +485,10 @@ def _setup_mock_compress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
 
 
 def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
-    # mocks the function call and sets up `input` to let us run the function without breaking
     _, _, _ = generate_compressed_zst_files(tmp_path)
     mock_input = mocker.patch("mano.mano_cli.input")
     mock_input.return_value = "y"
     return mocker.patch("mano.mano_cli.decompress_zst_files")
-
-
-#
-# compress tests
-#
 
 
 def test_mano_cli_compress_all(tmp_path: Path, mocker: MockerFixture):
@@ -521,9 +530,6 @@ def test_compress_with_custom_level(tmp_path: Path, mocker: MockerFixture):
         str(tmp_path), delete_original=False, overwrite=False, compression_level=19
     )
 
-#
-# decompress tests
-#
 
 def test_mano_cli_decompress_all(tmp_path: Path, mocker: MockerFixture):
     mock_decompress_zst_files = _setup_mock_decompress(mocker, tmp_path)
@@ -559,9 +565,6 @@ def test_mano_cli_decompress_only_overwrite(tmp_path: Path, mocker: MockerFixtur
     )
 
 
-# test cli helpers
-
-
 def test_confirm_command_doesnt_block_when_it_shouldnt(mocker: MockerFixture):
     global_settings = mocker.patch("mano.mano_cli.GlobalSettings")
     global_settings.skip_user_interaction = False
@@ -574,3 +577,61 @@ def test_confirm_command_doesnt_block_when_it_shouldnt(mocker: MockerFixture):
     global_settings.skip_user_interaction = True
     mano_cli.confirm_command(*[""])
     mock_input.assert_not_called()
+
+
+
+
+
+def test_interval_negative_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval("-5m")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("-1h")
+
+
+def test_interval_with_spaces_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval(" 5m")  
+    with pytest.raises(mano.IntervalError):
+        mano.interval("5m ") 
+    with pytest.raises(mano.IntervalError):
+        mano.interval("5 m") 
+
+
+def test_interval_unit_only_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval("m")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("s")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("h")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("d")
+
+
+def test_interval_float_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval("1.5h")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("0.5m")
+
+
+def test_interval_whitespace_only_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval(" ")
+
+
+def test_interval_multiple_units_raises_error():
+    with pytest.raises(mano.IntervalError):
+        mano.interval("1h30m")
+    with pytest.raises(mano.IntervalError):
+        mano.interval("1hh")
+
+
+def test_interval_uppercase_all_units():
+    assert mano.interval("10S") == 10
+    assert mano.interval("5M") == 300
+    assert mano.interval("2H") == 7200
+    assert mano.interval("1D") == 86400
+
+
