@@ -537,7 +537,7 @@ def test_old_style_backfill_file_is_ignored(
     tmp_path: Path,
     mock_zip_data_compressed: bytes,
 ):
-    """ Test that backfill_participant works when there is a parseable .backfill file. """
+    """ tests that we ignore the old deprecated backfill file. """
     mock_download = mocker.patch(
         'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
