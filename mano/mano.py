@@ -10,9 +10,15 @@ import requests
 from lxml import html
 from lxml.html import HtmlElement
 
-from mano.constants import (AmbiguousStudyIDError, APIError, Config, DATA_STREAMS, IntervalError,
-    KeyringError, LOCALE, logger as log, LoginError, ScrapeError, StudyIDError, StudyNameError,
-    StudySettingsError, TIME_FORMAT)
+from mano.constants import (AmbiguousStudyIDError, APIError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
+    BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
+    LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, ScrapeError, StudyIDError,
+    StudyNameError, StudySettingsError, TIME_FORMAT, URL, USERNAME)
+
+
+# TODO: remove username and password from the keyring, display a deprecation warning if they are present
+ENV_KEYS = [BEIWE_URL, BEIWE_USERNAME, BEIWE_PASSWORD, BEIWE_ACCESS_KEY, BEIWE_SECRET_KEY]
+KEYRING_KEYS = [USERNAME, PASSWORD, URL, "ACCESS_KEY", "SECRET_KEY"]
 
 
 def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
@@ -20,13 +26,13 @@ def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, st
     Request the name and study ID of all studies that the provided keyring has access to.
     """
     # setup
-    url = keyring['URL'].rstrip('/') + '/get-studies/v1'
-    payload = {'access_key': keyring['ACCESS_KEY'], 'secret_key': keyring['SECRET_KEY']}
+    url = keyring["URL"].rstrip("/") + "/get-studies/v1"
+    payload = {"access_key": keyring["ACCESS_KEY"], "secret_key": keyring["SECRET_KEY"]}
     
     # request
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
-        raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
+        raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
     response: dict[str, str] = json.loads(resp.content)
     
     # yield each study name and id
@@ -36,7 +42,7 @@ def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, st
 
 def load_keyring(
     deployment: str | None,
-    keyring_file: str = '~/.nrg-keyring.enc',
+    keyring_file: str = "~/.nrg-keyring.enc",
     passphrase: str | None = None
 ) -> dict[str, str]:
     """
@@ -52,17 +58,17 @@ def load_keyring(
     
     # if no passphrase was provided, get it from the environment or prompt
     if passphrase is None:
-        if 'NRG_KEYRING_PASS' in os.environ:
-            passphrase = os.environ['NRG_KEYRING_PASS']
+        if NRG_KEYRING_PASS in os.environ:
+            passphrase = os.environ[NRG_KEYRING_PASS]
         else:
-            passphrase = getpass.getpass('enter keyring passphrase: ')
+            passphrase = getpass.getpass("enter keyring passphrase: ")
     
     # get keyring file using cryptease
     keyring_file = os.path.expanduser(keyring_file)
     
-    with open(keyring_file, 'rb') as fo:
+    with open(keyring_file, "rb") as fo:
         key = crypt.key_from_file(fo, passphrase)
-        content = b''
+        content = b""
         
         # crypt.decrypt cannot be None
         for chunk in crypt.decrypt(fo, key):  # type: ignore
@@ -83,16 +89,25 @@ def keyring_from_env() -> dict[str, str]:
     Construct keyring from environment variables
     :returns: Keyring
     """
-    Keyring = dict[str, str]()
+    keyring = dict[str, str]()
     try:
-        Keyring['URL'] = os.environ['BEIWE_URL']
-        Keyring['USERNAME'] = os.environ['BEIWE_USERNAME']  # TODO: need to finish removing this...
-        Keyring['PASSWORD'] = os.environ['BEIWE_PASSWORD']
-        Keyring['ACCESS_KEY'] = os.environ['BEIWE_ACCESS_KEY']
-        Keyring['SECRET_KEY'] = os.environ['BEIWE_SECRET_KEY']
-    except KeyError as e:
-        raise KeyringError(f'environment variable not found: {e}') from None
-    return Keyring
+        keyring[URL] = os.environ[BEIWE_URL]
+        keyring[USERNAME] = os.environ[BEIWE_USERNAME]  # TODO: need to finish removing this...
+        keyring[PASSWORD] = os.environ[BEIWE_PASSWORD]
+        keyring["ACCESS_KEY"] = os.environ[BEIWE_ACCESS_KEY]
+        keyring["SECRET_KEY"] = os.environ[BEIWE_SECRET_KEY]
+    except KeyError:
+        missing_keys = [k for k in ENV_KEYS if k not in os.environ]
+        for k in missing_keys:
+            log.error(f"environment variable `{k}` is not set")
+        raise KeyringError(f"environment variable(s) not found: {', '.join(missing_keys)}") from None
+    
+    # strings
+    empty_keys = [k for k in KEYRING_KEYS if k in keyring and not keyring[k]]
+    if empty_keys:
+        raise KeyringError(f"the environment variable(s) `{'`, `'.join(empty_keys)}` are present but empty.")
+    
+    return keyring
 
 
 def expand_study_id(keyring: dict[str, str], segment: str) -> tuple[str, str] | None:
@@ -107,13 +122,14 @@ def expand_study_id(keyring: dict[str, str], segment: str) -> tuple[str, str] | 
     for study_name, study_id in fetch_accessible_studies(keyring):
         if study_id.startswith(segment):
             ids.append((study_name, study_id))
+    
     if not ids:
-        log.warning(f'no study was found for study id segment {segment}')
+        log.warning(f"no study was found for study id segment {segment}")
         return None
     elif len(ids) == 1:
         return ids[0]
     else:
-        raise AmbiguousStudyIDError(f'study id is not unique enough {segment}')
+        raise AmbiguousStudyIDError(f"study id is not unique enough {segment}")
 
 
 def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> Generator[str, None, None]:
@@ -125,17 +141,17 @@ def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> Generator[st
     :returns: Generator of (study_name, study_id)
     :rtype: generator
     """
-    url = keyring['URL'].rstrip('/') + '/get-users/v1'
+    url = keyring["URL"].rstrip("/") + "/get-users/v1"
     payload = {
-        'access_key': keyring['ACCESS_KEY'],
-        'secret_key': keyring['SECRET_KEY'],
-        'study_id': study_id
+        "access_key": keyring["ACCESS_KEY"],
+        "secret_key": keyring["SECRET_KEY"],
+        "study_id": study_id
     }
     
     resp = requests.post(url, data=payload, stream=True)
     
     if resp.status_code != requests.codes.OK:
-        raise APIError(f'response not ok ({resp.status_code}) {resp.url}')
+        raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
     
     yield from json.loads(resp.content)
 
@@ -156,7 +172,7 @@ def studyid(keyring: dict[str, str], name: str) -> str:
     for study_name, study_id in fetch_accessible_studies(keyring):
         if name == study_name:
             return study_id
-    raise StudyIDError(f'study not found {name}')
+    raise StudyIDError(f"study not found {name}")
 
 
 def studyname(keyring: dict[str, str], sid: str) -> str:
@@ -170,7 +186,7 @@ def studyname(keyring: dict[str, str], sid: str) -> str:
     for study_name, study_id in fetch_accessible_studies(keyring):
         if sid == study_id:
             return study_name
-    raise StudyNameError(f'study not found {sid}')
+    raise StudyNameError(f"study not found {sid}")
 
 
 def interval(x: str) -> int:
@@ -226,10 +242,10 @@ def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> Gener
     cookies = login(keyring)
     
     # request choose_study html page
-    url = keyring['URL'].rstrip('/') + f'/device_settings/{study_id}'
+    url = keyring["URL"].rstrip("/") + f"/device_settings/{study_id}"
     resp = requests.get(url, cookies=cookies)
     if resp.status_code != requests.codes.OK:
-        raise StudySettingsError(f'response not ok ({resp.status_code}) for url={resp.url}')
+        raise StudySettingsError(f"response not ok ({resp.status_code}) for url={resp.url}")
     
     # parse html page
     tree: HtmlElement = html.fromstring(resp.content)
@@ -239,7 +255,7 @@ def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> Gener
     elements: list[HtmlElement] = tree.xpath(expr)
     
     if not elements:
-        raise ScrapeError(f'zero anchor elements returned from expression: {expr}')
+        raise ScrapeError(f"zero anchor elements returned from expression: {expr}")
     
     # yield each setting name and value
     for e in elements:
@@ -259,12 +275,12 @@ def login(keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     :returns: Cookies
     """
     # setup
-    url = keyring['URL'].rstrip('/') + '/validate_login'
-    payload = {'username': keyring['USERNAME'], 'password': keyring['PASSWORD']}
+    url = keyring["URL"].rstrip("/") + "/validate_login"
+    payload = {"username": keyring["USERNAME"], "password": keyring["PASSWORD"]}
     # request
     resp = requests.post(url, data=payload)
     if resp.status_code != requests.codes.OK:
-        raise LoginError(f'response not ok ({resp.status_code}) for {resp.url}')
+        raise LoginError(f"response not ok ({resp.status_code}) for {resp.url}")
     # there is a redirect after login
     return resp.history[0].cookies
 

@@ -169,3 +169,17 @@ locale.setlocale(locale.LC_ALL, LOCALE)
 
 DATA_STREAMS = Config['data_streams']  # historical variable name, cannot/do not change
 TIME_FORMAT = Config['time_format']  # This will probably get removed because we always want isoformat
+
+
+## Keyring constants
+BEIWE_URL = "BEIWE_URL"
+BEIWE_USERNAME = "BEIWE_USERNAME"
+BEIWE_PASSWORD = "BEIWE_PASSWORD"
+BEIWE_ACCESS_KEY = "BEIWE_ACCESS_KEY"
+BEIWE_SECRET_KEY = "BEIWE_SECRET_KEY"
+
+USERNAME = "USERNAME"
+PASSWORD = "PASSWORD"
+URL = "URL"
+
+NRG_KEYRING_PASS = "NRG_KEYRING_PASS"
