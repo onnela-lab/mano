@@ -22,6 +22,15 @@ from mano.mano import (
     StudyNameError,
     StudySettingsError,
     TIME_FORMAT,
+    
+    studies,
+    users,
+    Keyring,
+    device_settings,
+    Config,
+    DATA_STREAMS,
+    LOCALE,
+    TIME_FORMAT,
 )
 
 from mano import constants
@@ -59,5 +68,14 @@ __all__ = [
     "StudyNameError",
     "StudySettingsError",
     "sync",
+    "TIME_FORMAT",
+    
+    "studies",
+    "users",
+    "Keyring",
+    "device_settings",
+    "Config",
+    "DATA_STREAMS",
+    "LOCALE",
     "TIME_FORMAT",
 ]

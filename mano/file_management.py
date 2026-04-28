@@ -10,12 +10,11 @@ from os import (chmod, cpu_count, makedirs as _make_directories, remove as delet
     replace as replace_file, walk as walk_directory)
 from os.path import dirname, exists as path_exists, expanduser, isdir, join as path_join
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import Any, TypeVar
 from zipfile import ZipFile
 
 import pyzstd
 from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
-from mypy.types import T
 from pyzstd import decompress
 
 from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
@@ -23,6 +22,9 @@ from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, Encryp
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
     DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, NO_VALID_FILES_MSG,
     PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
+
+
+T = TypeVar("T")
 
 
 def make_directories(path: str):
