@@ -937,7 +937,6 @@ def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
             start_date=start_date,
             passphrase=12345,  # type: ignore
             lock=["gps"]  # lock is required if passphrase is used
-            
         )
     with pytest.raises(TypeError, match=".*user_id.*str.*"):
         sync.backfill(
@@ -1090,6 +1089,35 @@ def test_backfill__future_does_not_call_backfill_participant(
     )
     mock_backfill_participant.assert_not_called()
 
+
+def test_backfill_end_date_before_start_date_raises(
+    mocker: MockerFixture, tmp_path: Path, keyring: dict[str, str]
+):
+    """ Test that backfill raises when end_date is before start_date. """
+    mock_backfill_participant = mocker.patch('mano.sync._backfill_participant')  # prevent actual download
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    with pytest.raises(ValueError, match=".*must come after.*"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date=today,
+            end_date=yesterday,
+        )
+    
+    # and the equality case
+    with pytest.raises(ValueError, match=".*must come after.*"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date=today,
+            end_date=today,
+        )
+    mock_backfill_participant.assert_not_called()
 
 #
 # test backfill hashing and file management components

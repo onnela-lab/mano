@@ -58,6 +58,14 @@ def BACKFILL_LOCK_AND_PASSPHRASE_ERROR(parameter_a: str, parameter_b: str) -> Va
     return ValueError(msg)
 
 
+def END_DATE_BEFORE_START_ERROR(start_date: datetime, end_date: datetime) -> ValueError:
+    start_str = full_dt_format(start_date)
+    end_str = full_dt_format(end_date)
+    return ValueError(
+        f"end_date ({end_str}) must come after after `start_date` ({start_str})."
+    )
+
+
 def NOT_200_OK_ERROR(status_code: int, url: str) -> APIError:
     msg = f"Did not receive HTTP 200 OK. Received status code: `{status_code}` - {url}"
     log.error(msg)
