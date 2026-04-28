@@ -647,6 +647,7 @@ def iterate_with_spinner(
 # Validation
 #
 
+
 def normalize_url(url: str) -> str:
     """ Ensure URL is https and has no trailing slashes. """
     url = url.strip()

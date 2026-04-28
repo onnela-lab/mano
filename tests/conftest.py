@@ -208,7 +208,7 @@ def expected_compressed_filenames() -> set[tuple[str, int]]:
 
 @pytest.fixture
 def mock_studies_response():
-    """Mock API response for get-studies/v1 endpoint"""
+    """ Mock API response for get-studies/v1 endpoint """
     return  '{"123lrVdb0g6tf3PeJr5ZtZC8": "Project A", "123U93wwgS18aLDIwdYXTXsr": "Project B"}'
 
 
