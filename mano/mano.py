@@ -10,15 +10,16 @@ import requests
 from lxml import html
 from lxml.html import HtmlElement
 
-from mano.constants import (AmbiguousStudyIDError, APIError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
-    BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
-    LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, ScrapeError, StudyIDError,
-    StudyNameError, StudySettingsError, TIME_FORMAT, URL, USERNAME)
+from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, APIError, BEIWE_ACCESS_KEY,
+    BEIWE_PASSWORD, BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS,
+    IntervalError, KeyringError, LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD,
+    ScrapeError, SECRET_KEY, StudyIDError, StudyNameError, StudySettingsError, TIME_FORMAT, URL,
+    USERNAME)
 
 
 # TODO: remove username and password from the keyring, display a deprecation warning if they are present
 ENV_KEYS = [BEIWE_URL, BEIWE_USERNAME, BEIWE_PASSWORD, BEIWE_ACCESS_KEY, BEIWE_SECRET_KEY]
-KEYRING_KEYS = [USERNAME, PASSWORD, URL, "ACCESS_KEY", "SECRET_KEY"]
+KEYRING_KEYS = [USERNAME, PASSWORD, URL, ACCESS_KEY, SECRET_KEY]
 
 
 def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, str], None, None]:
@@ -27,7 +28,7 @@ def fetch_accessible_studies(keyring: dict[str, str]) -> Generator[tuple[str, st
     """
     # setup
     url = keyring["URL"].rstrip("/") + "/get-studies/v1"
-    payload = {"access_key": keyring["ACCESS_KEY"], "secret_key": keyring["SECRET_KEY"]}
+    payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]}
     
     # request
     resp = requests.post(url, data=payload, stream=True)
@@ -94,7 +95,7 @@ def keyring_from_env() -> dict[str, str]:
         keyring[URL] = os.environ[BEIWE_URL]
         keyring[USERNAME] = os.environ[BEIWE_USERNAME]  # TODO: need to finish removing this...
         keyring[PASSWORD] = os.environ[BEIWE_PASSWORD]
-        keyring["ACCESS_KEY"] = os.environ[BEIWE_ACCESS_KEY]
+        keyring[ACCESS_KEY] = os.environ[BEIWE_ACCESS_KEY]
         keyring["SECRET_KEY"] = os.environ[BEIWE_SECRET_KEY]
     except KeyError:
         missing_keys = [k for k in ENV_KEYS if k not in os.environ]
@@ -143,7 +144,7 @@ def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> Generator[st
     """
     url = keyring["URL"].rstrip("/") + "/get-users/v1"
     payload = {
-        "access_key": keyring["ACCESS_KEY"],
+        "access_key": keyring[ACCESS_KEY],
         "secret_key": keyring["SECRET_KEY"],
         "study_id": study_id
     }
