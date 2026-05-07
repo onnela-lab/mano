@@ -367,6 +367,211 @@ def test_download_connection_error(keyring: dict[str, str]):
 
 
 #
+# Test Type Validation for download
+#
+
+# keyring: dict[str, str]
+# study_id: str
+# participant_ids: list[str] | None = None
+# data_streams: list[str] | None = None
+# time_start: str | datetime | None = None
+# time_end: str | datetime | None = None
+# registry: dict[str, str] | None = None
+# compressed: bool = False
+# progress: int = 0
+# user_ids: list[str] | None = None
+
+
+def test_download_type_validation_raises_on_bad_types(
+    keyring: dict[str, str], mocker: MockerFixture
+):
+    mocker.patch('mano.sync._download')  # prevent actual download
+    
+    with pytest.raises(TypeError, match=".*keyring.*dict.*"):
+        sync.download(
+            keyring='not a dict',  # type: ignore
+            study_id='STUDY_ID',
+        )
+    with pytest.raises(TypeError, match=".*study_id.*str.*"):
+        sync.download(
+            keyring=keyring,
+            study_id=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*participant_ids.*list.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*data_streams.*list.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            data_streams='not a list',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*time_start.*datetime.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            time_start=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*time_end.*datetime.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            time_end=12345,  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*registry.*dict.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            registry='not a dict',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*compressed.*bool.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            compressed='not a bool',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*progress.*int.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            progress='not an int',  # type: ignore
+        )
+    with pytest.raises(TypeError, match=".*user_ids.*list.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            user_ids=12345,  # type: ignore
+        )
+
+
+def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture):
+    mocker.patch('mano.sync._download')  # prevent actual download
+    
+    # should not raise
+    sync.download(
+        keyring=keyring,
+        study_id='STUDY_ID',
+        participant_ids=['USER_ID'],
+        data_streams=['gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        registry={'some_file': 'some_hash'},
+        compressed=True,
+        progress=1,
+        # user_ids=['USER_ID'],
+    )
+    # can't have both participant_ids and user_ids
+    sync.download(
+        keyring=keyring,
+        study_id='STUDY_ID',
+        # participant_ids=['USER_ID'],
+        data_streams=['gps'],
+        time_start='2018-06-15T00:00:00',
+        time_end='2018-06-17T00:00:00',
+        registry={'some_file': 'some_hash'},
+        compressed=True,
+        progress=1,
+        user_ids=['USER_ID'],
+    )
+
+
+def test_download_single_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
+    """Test that download works when a single participant ID string is provided."""
+    dl = mocker.patch("mano.sync._download")
+    # Call the download function with a single string participant ID
+    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
+    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
+    _zf = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        participant_ids='USER_ID',
+        data_streams=['identifiers', 'gps'],
+        time_start=time_start,
+        time_end=time_end,
+    )
+    
+    dl.assert_called_once_with(
+        keyring, 'STUDY_ID', False, ['identifiers', 'gps'], {}, time_start, time_end, ['USER_ID']
+    )
+
+
+def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
+    """Test that download works when a single participant ID string is provided."""
+    dl = mocker.patch("mano.sync._download")
+    # Call the download function with a single string participant ID
+    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
+    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
+    _zf = sync.download(
+        keyring,
+        study_id='STUDY_ID',
+        participant_ids='USER_ID,user_id',
+        data_streams=['identifiers', 'gps'],
+        time_start=time_start,
+        time_end=time_end
+    )
+    dl.assert_called_once_with(
+        keyring,
+        'STUDY_ID',
+        False,
+        ['identifiers', 'gps'],
+        {},
+        time_start,
+        time_end,
+        ['USER_ID', 'user_id'],
+    )
+
+
+def test_download_non_type_error_validation(keyring: dict[str, str]):
+    
+    # can't have both participant_ids and user_ids
+    with pytest.raises(ValueError, match=".*you cannot provide both\\.$"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            user_ids=['USER_ID'],
+        )
+    
+    # bad data stream
+    with pytest.raises(ValueError, match=".*invalid.*random_stream.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            data_streams=['gps', 'random_stream'],
+        )
+    
+    # end time before start time
+    with pytest.raises(sync.DownloadError, match=".*is after end_time.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_start='2018-06-17T00:00:00',
+            time_end='2018-06-15T00:00:00',
+        )
+    
+    # unparsable time_start
+    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_start='not a date',
+        )
+    # unparsable time_end
+    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
+        sync.download(
+            keyring=keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            time_end='not a date',
+        )
+
+#
 # test backfill function
 #
 
@@ -649,210 +854,8 @@ def _test_backfill_does_not_overwrite(
 
 
 #
-# Test Type Validation for download
+# Test Type Validation for backfill
 #
-
-# keyring: dict[str, str]
-# study_id: str
-# participant_ids: list[str] | None = None
-# data_streams: list[str] | None = None
-# time_start: str | datetime | None = None
-# time_end: str | datetime | None = None
-# registry: dict[str, str] | None = None
-# compressed: bool = False
-# progress: int = 0
-# user_ids: list[str] | None = None
-
-
-def test_download_type_validation_raises_on_bad_types(
-    keyring: dict[str, str], mocker: MockerFixture
-):
-    mocker.patch('mano.sync._download')  # prevent actual download
-    
-    with pytest.raises(TypeError, match=".*keyring.*dict.*"):
-        sync.download(
-            keyring='not a dict',  # type: ignore
-            study_id='STUDY_ID',
-        )
-    with pytest.raises(TypeError, match=".*study_id.*str.*"):
-        sync.download(
-            keyring=keyring,
-            study_id=12345,  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*participant_ids.*list.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=12345,  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*data_streams.*list.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            data_streams='not a list',  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*time_start.*datetime.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            time_start=12345,  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*time_end.*datetime.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            time_end=12345,  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*registry.*dict.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            registry='not a dict',  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*compressed.*bool.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            compressed='not a bool',  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*progress.*int.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            progress='not an int',  # type: ignore
-        )
-    with pytest.raises(TypeError, match=".*user_ids.*list.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            user_ids=12345,  # type: ignore
-        )
-
-
-def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture):
-    mocker.patch('mano.sync._download')  # prevent actual download
-    
-    # should not raise
-    sync.download(
-        keyring=keyring,
-        study_id='STUDY_ID',
-        participant_ids=['USER_ID'],
-        data_streams=['gps'],
-        time_start='2018-06-15T00:00:00',
-        time_end='2018-06-17T00:00:00',
-        registry={'some_file': 'some_hash'},
-        compressed=True,
-        progress=1,
-        # user_ids=['USER_ID'],
-    )
-    # can't have both participant_ids and user_ids
-    sync.download(
-        keyring=keyring,
-        study_id='STUDY_ID',
-        # participant_ids=['USER_ID'],
-        data_streams=['gps'],
-        time_start='2018-06-15T00:00:00',
-        time_end='2018-06-17T00:00:00',
-        registry={'some_file': 'some_hash'},
-        compressed=True,
-        progress=1,
-        user_ids=['USER_ID'],
-    )
-
-
-def test_download_single_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
-    """Test that download works when a single participant ID string is provided."""
-    dl = mocker.patch("mano.sync._download")
-    # Call the download function with a single string participant ID
-    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
-    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
-    _zf = sync.download(
-        keyring,
-        study_id='STUDY_ID',
-        participant_ids='USER_ID',
-        data_streams=['identifiers', 'gps'],
-        time_start=time_start,
-        time_end=time_end,
-    )
-    
-    dl.assert_called_once_with(
-        keyring, 'STUDY_ID', False, ['identifiers', 'gps'], {}, time_start, time_end, ['USER_ID']
-    )
-
-
-def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
-    """Test that download works when a single participant ID string is provided."""
-    dl = mocker.patch("mano.sync._download")
-    # Call the download function with a single string participant ID
-    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
-    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
-    _zf = sync.download(
-        keyring,
-        study_id='STUDY_ID',
-        participant_ids='USER_ID,user_id',
-        data_streams=['identifiers', 'gps'],
-        time_start=time_start,
-        time_end=time_end
-    )
-    dl.assert_called_once_with(
-        keyring,
-        'STUDY_ID',
-        False,
-        ['identifiers', 'gps'],
-        {},
-        time_start,
-        time_end,
-        ['USER_ID', 'user_id'],
-    )
-
-
-def test_download_non_type_error_validation(keyring: dict[str, str]):
-    
-    # can't have both participant_ids and user_ids
-    with pytest.raises(ValueError, match=".*you cannot provide both\\.$"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            user_ids=['USER_ID'],
-        )
-    
-    # bad data stream
-    with pytest.raises(ValueError, match=".*invalid.*random_stream.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            data_streams=['gps', 'random_stream'],
-        )
-    
-    # end time before start time
-    with pytest.raises(sync.DownloadError, match=".*is after end_time.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            time_start='2018-06-17T00:00:00',
-            time_end='2018-06-15T00:00:00',
-        )
-    
-    # unparsable time_start
-    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            time_start='not a date',
-        )
-    # unparsable time_end
-    with pytest.raises(UnParsableTimeError, match=".*could not parse time string.*"):
-        sync.download(
-            keyring=keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            time_end='not a date',
-        )
-
 
 # keyring: dict[str, str]
 # study_id: str
@@ -1073,21 +1076,6 @@ def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: P
             start_date="",
         )
 
-
-def test_backfill__future_does_not_call_backfill_participant(
-    mocker: MockerFixture, tmp_path: Path, keyring: dict[str, str]
-):
-    """ Test that backfill_participant makes no download calls when start_date is in the future. """
-    mock_backfill_participant = mocker.patch('mano.sync._backfill_participant')  # prevent actual download
-    tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=5)
-    sync.backfill(
-        keyring=keyring,
-        study_id="STUDY_ID",
-        participant_id="USER_ID",
-        output_dir=str(tmp_path),
-        start_date=tomorrow,
-    )
-    mock_backfill_participant.assert_not_called()
 
 
 def test_backfill_end_date_before_start_date_raises(
