@@ -267,6 +267,28 @@ def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> Gener
         yield e.name, e.value
 
 
+def fetch_study_settings_test(keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
+    """
+    Get device settings for a Study via the API
+    
+    :param keyring: Keyring dictionary
+    :param study_id: Study ID
+    :returns: Generator of (name, setting)
+    """
+    url = keyring["URL"].rstrip("/") +"/get-study-settings/v1"
+    payload = {
+        "access_key": keyring[ACCESS_KEY],
+        "secret_key": keyring[SECRET_KEY],
+        "study_id": study_id,
+    }
+    
+    resp = requests.post(url, data=payload, stream=True)
+    if resp.status_code != requests.codes.OK:
+        raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
+    
+    yield from json.loads(resp.content)["device_settings"].items()
+
+
 # FIXME: this function is the login to the beiwe website, a detail we want to drop entirely
 def login(keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
     """

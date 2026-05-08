@@ -199,3 +199,58 @@ def test_interval_uppercase_all_units():
     assert mano.interval("5M") == 300
     assert mano.interval("2H") == 7200
     assert mano.interval("1D") == 86400
+
+
+@responses.activate
+def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
+    responses.post(
+        keyring['URL'] + '/get-study-settings/v1',
+        body=mock_study_settings_response,
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    result = dict(mano.fetch_study_settings_test(keyring, '0eb8ZGulAYf6c8smypun87PM'))
+    assert result['gps'] is True
+    assert result['bluetooth'] is False
+    assert result['gps_on_duration_seconds'] == 60
+    assert result['gps_off_duration_seconds'] == 600
+    assert result['accelerometer_frequency'] == 10
+    assert result['accelerometer_on_duration_seconds'] == 10
+    assert result['accelerometer_off_duration_seconds'] == 10
+    assert result['seconds_before_auto_logout'] == 600
+    assert result['upload_data_files_frequency_seconds'] == 3600
+    assert result['heartbeat_timer_minutes'] == 60
+
+
+@responses.activate
+def test_fetch_study_settings_test_500_raises_api_error(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-study-settings/v1',
+        body='Internal Server Error',
+        status=500,
+    )
+    with pytest.raises(mano.APIError, match="500"):
+        list(mano.fetch_study_settings_test(keyring, 'STUDY_ID'))
+
+
+@responses.activate
+def test_fetch_study_settings_test_400_raises_api_error(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-study-settings/v1',
+        body='Bad Request',
+        status=400,
+    )
+    with pytest.raises(mano.APIError, match="400"):
+        list(mano.fetch_study_settings_test(keyring, 'STUDY_ID'))
+
+
+@responses.activate
+def test_fetch_study_settings_test_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-study-settings/v1',
+        body='{"device_settings": {}}',
+        status=200,
+        content_type='text/html; charset=utf-8'
+    )
+    result = list(mano.fetch_study_settings_test(keyring, 'STUDY_ID'))
+    assert result == []

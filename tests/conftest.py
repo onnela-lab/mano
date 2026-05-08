@@ -294,3 +294,32 @@ def generate_valid_decompress_test_files(tmp_path: Path) -> tuple[list[Path], li
         filepath.write_bytes(DECOMPRESSED_BYTES)
     
     return zst_files, non_zst_files, DECOMPRESSED_BYTES
+
+import json
+@pytest.fixture
+def mock_study_settings_response():
+    return json.dumps({
+        "surveys": {},
+        "interventions": [],
+        "device_settings": {
+            "accelerometer": True, "gps": True, "calls": True, "texts": True,
+            "wifi": True, "bluetooth": False, "power_state": True,
+            "use_anonymized_hashing": True, "use_gps_fuzzing": True,
+            "call_clinician_button_enabled": False, "call_research_assistant_button_enabled": False,
+            "ambient_audio": False, "proximity": False, "gyro": False,
+            "magnetometer": False, "devicemotion": False, "reachability": True,
+            "allow_upload_over_cellular_data": False,
+            "accelerometer_off_duration_seconds": 10, "accelerometer_on_duration_seconds": 10,
+            "accelerometer_frequency": 10, "gps_off_duration_seconds": 600,
+            "gps_on_duration_seconds": 60, "bluetooth_on_duration_seconds": 60,
+            "bluetooth_total_duration_seconds": 300, "bluetooth_global_offset_seconds": 0,
+            "check_for_new_surveys_frequency_seconds": 3600,
+            "create_new_data_files_frequency_seconds": 900,
+            "seconds_before_auto_logout": 600, "upload_data_files_frequency_seconds": 3600,
+            "wifi_log_frequency_seconds": 300, "gyro_off_duration_seconds": 600,
+            "gyro_on_duration_seconds": 60, "gyro_frequency": 10,
+            "magnetometer_off_duration_seconds": 600, "magnetometer_on_duration_seconds": 60,
+            "devicemotion_off_duration_seconds": 600, "devicemotion_on_duration_seconds": 60,
+            "heartbeat_timer_minutes": 60, "resend_period_minutes": 0,
+        },
+    })

@@ -7,6 +7,7 @@ from mano.mano import (
     expand_study_id,
     fetch_accessible_studies,
     fetch_study_device_settings,
+    fetch_study_settings_test,
     fetch_users_in_study,
     interval,
     IntervalError,
