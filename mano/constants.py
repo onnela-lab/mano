@@ -15,7 +15,7 @@ class GlobalSettings:
     skip_user_interaction: bool = True   # main() in CLI sets this to False when appropriate.
     multithreading_count: int = 0        # zero or negative means use the number of CPU cores.
     
-    BACKFILL_WINDOW = 20
+    backfill_window = 20
 
 
 #
