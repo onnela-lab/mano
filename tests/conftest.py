@@ -1,7 +1,7 @@
 from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
-
+import json
 import pytest
 import pyzstd
 import responses
@@ -295,7 +295,28 @@ def generate_valid_decompress_test_files(tmp_path: Path) -> tuple[list[Path], li
     
     return zst_files, non_zst_files, DECOMPRESSED_BYTES
 
-import json
+@pytest.fixture
+def mock_interventions_response():
+    return json.dumps({
+        "participant1": {"intervention1": {"Enrollment date": "2024-01-01"}},
+        "participant2": {"intervention1": {"Enrollment date": None}},
+    })
+
+
+@pytest.fixture
+def mock_survey_history_response():
+    return json.dumps({
+        "abc123survey": [{"archive_start": "2024-01-01T00:00:00+00:00", "survey_json": []}],
+    })
+
+
+@pytest.fixture
+def mock_participant_table_response():
+    return json.dumps([
+        {"Patient ID": "abc123", "Status": "Active", "OS Type": "iOS"},
+    ])
+
+
 @pytest.fixture
 def mock_study_settings_response():
     return json.dumps({

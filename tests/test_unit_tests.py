@@ -202,6 +202,64 @@ def test_interval_uppercase_all_units():
 
 
 @responses.activate
+def test_fetch_interventions_returns_data(keyring: dict[str, str], mock_interventions_response: str):
+    responses.post(keyring['URL'] + '/get-interventions/v1', body=mock_interventions_response, status=200)
+    result = dict(mano.fetch_interventions(keyring, 'STUDY_ID'))
+    assert "participant1" in result
+    assert "participant2" in result
+
+
+@responses.activate
+def test_fetch_interventions_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-interventions/v1', body='{}', status=200)
+    result = list(mano.fetch_interventions(keyring, 'STUDY_ID'))
+    assert result == []
+
+
+@responses.activate
+def test_fetch_survey_history_returns_data(keyring: dict[str, str], mock_survey_history_response: str):
+    responses.post(keyring['URL'] + '/get-survey-history/v1', body=mock_survey_history_response, status=200)
+    result = dict(mano.fetch_survey_history(keyring, 'STUDY_ID'))
+    assert "abc123survey" in result
+
+
+@responses.activate
+def test_fetch_survey_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-survey-history/v1', body='{}', status=200)
+    result = list(mano.fetch_survey_history(keyring, 'STUDY_ID'))
+    assert result == []
+
+
+@responses.activate
+def test_fetch_study_settings_returns_all_keys(keyring: dict[str, str], mock_study_settings_response: str):
+    responses.post(keyring['URL'] + '/get-study-settings/v1', body=mock_study_settings_response, status=200)
+    result = dict(mano.fetch_study_settings(keyring, 'STUDY_ID'))
+    assert "surveys" in result
+    assert "device_settings" in result
+    assert "interventions" in result
+
+
+@responses.activate
+def test_fetch_participant_table_data_returns_rows(keyring: dict[str, str], mock_participant_table_response: str):
+    responses.post(keyring['URL'] + '/get-participant-table-data/v1', body=mock_participant_table_response, status=200)
+    result = list(mano.fetch_participant_table_data(keyring, 'STUDY_ID'))
+    assert len(result) == 1
+    assert result[0]['Patient ID'] == 'abc123'
+
+
+@responses.activate
+def test_fetch_participant_table_data_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='[]', status=200)
+    result = list(mano.fetch_participant_table_data(keyring, 'STUDY_ID'))
+    assert result == []
+
+
+def test_fetch_participant_table_data_invalid_format_raises(keyring: dict[str, str]):
+    with pytest.raises(ValueError, match="json_table"):
+        list(mano.fetch_participant_table_data(keyring, 'STUDY_ID', data_format='json_table'))
+
+
+@responses.activate
 def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',

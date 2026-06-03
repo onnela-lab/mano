@@ -15,4 +15,4 @@ mano.egg-info/
 
 .vscode/
 private
-tests/test_real.py
+.claude/
