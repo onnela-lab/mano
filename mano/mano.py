@@ -130,6 +130,33 @@ def fetch_participant_table_data(keyring: dict[str, str], study_id: str, data_fo
         yield from json.loads(resp.content)
 
 
+def fetch_summary_statistics(
+    keyring: dict[str,str],
+    study_id: str,
+    end_date:str | None = None,
+    start_date:str | None = None,
+    fields: str | None = None,
+) -> Generator[dict, None, None]:
+    """
+    Get summary statistics for a study.
+
+    :param keyring: Keyring dictionary
+    :param study_id: Study ID
+    :param end_date: Last date to include, format YYYY-MM-DD
+    :param start_date: First date to include, format YYYY-MM-DD
+    :param fields: Comma-separated list of fields to return
+    :returns: Generator of summary statistic dictionaries
+    """
+    params={'study_id': study_id}
+    if end_date is not None:
+        params["end_date"] = end_date
+    if start_date is not None:
+        params["start_date"] = start_date
+    if fields is not None:
+        params["fields"] = fields
+    yield from _api_post(keyring, "/get-summary-statistics/v1", params)
+
+
 #
 ## Keyring
 #

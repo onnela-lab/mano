@@ -318,6 +318,14 @@ def mock_participant_table_response():
 
 
 @pytest.fixture
+def mock_summary_statistics_response():
+    return json.dumps([
+        {"date": "2024-01-01", "participant_id": "abc123", "beiwe_id": "abc123"},
+        {"date": "2024-01-02", "participant_id": "abc123", "beiwe_id": "abc123"},
+    ])
+
+
+@pytest.fixture
 def mock_study_settings_response():
     return json.dumps({
         "surveys": {},
