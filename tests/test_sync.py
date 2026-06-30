@@ -980,7 +980,7 @@ def test_second_backfill_call_does_not_overwrite_files_from_first_call(
                 for subfolder in folder.iterdir():
                     if subfolder.is_dir():
                         for file in subfolder.iterdir():
-                            if file.is_file():  # o hay checking if its a file makes metadata 
+                            if file.is_file():  # o hay checking if its a file makes metadata
                                 yield file      # stable. obviously!  (wtf)
     
     def do_backfill():

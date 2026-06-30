@@ -160,7 +160,7 @@ def test_studyid_case_sensitive(keyring: dict[str, str], mock_studies_response: 
         content_type='text/html; charset=utf-8'
     )
     with pytest.raises(mano.StudyIDError):
-        mano.studyid(keyring, 'project a') 
+        mano.studyid(keyring, 'project a')
 
 
 @responses.activate
@@ -223,7 +223,7 @@ def test_fetch_users_in_study_empty_list_yields_nothing(keyring: dict[str, str])
     assert results == []
 
 # Test correctness, the way it corrently works.
-@responses.activate 
+@responses.activate
 def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
