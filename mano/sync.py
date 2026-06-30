@@ -35,6 +35,13 @@ from mano.constants import APIError, DownloadError, ParseError, SaveError, Write
 
 # very verbose type hint(s)
 RequestPayload = dict[str, str | list[str] | dict[str, str]]
+DOWNLOAD_RETRY_ATTEMPTS = 3
+DOWNLOAD_TIMEOUT = (10, 60)
+RETRYABLE_DOWNLOAD_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
 
 # todo: how exactly does the registry parameter work on the download function.
 #TODO: implement registry file generation and other management tools.
@@ -488,21 +495,44 @@ def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
     """ Internal function to handle download logic, do not call directly. """
     
     show_progress = log.getEffectiveLevel() >= logging.INFO
-    content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
-    
-    # submit download request
-    resp = requests.post(url, data=payload, stream=True)
-    if resp.status_code != requests.codes.OK:
-        raise NOT_200_OK_ERROR(resp.status_code, resp.url)
-    
-    log.info('Server responded, downloading zip data... ')
-    MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
-    
-    MBps = MB / (t_end - t_start)
-    if f"{t_end - t_start:.2f}" == "0.00":
-        log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
-    else:
-        log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s) for {MB:.2f} MB.')
+    content = BytesIO()
+    for attempt in range(1, DOWNLOAD_RETRY_ATTEMPTS + 1):
+        content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
+        
+        try:
+            # submit download request
+            with requests.post(
+                url, data=payload, stream=True, timeout=DOWNLOAD_TIMEOUT
+            ) as resp:
+                if resp.status_code != requests.codes.OK:
+                    if 500 <= resp.status_code < 600 and attempt < DOWNLOAD_RETRY_ATTEMPTS:
+                        log.warning(
+                            f"download request failed with status code {resp.status_code}; "
+                            f"retrying attempt {attempt + 1} of {DOWNLOAD_RETRY_ATTEMPTS}"
+                        )
+                        continue
+                    raise NOT_200_OK_ERROR(resp.status_code, resp.url)
+                
+                log.info('Server responded, downloading zip data... ')
+                MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
+        except RETRYABLE_DOWNLOAD_EXCEPTIONS as e:
+            if attempt == DOWNLOAD_RETRY_ATTEMPTS:
+                raise
+            log.warning(
+                f"download request failed with {type(e).__name__}; "
+                f"retrying attempt {attempt + 1} of {DOWNLOAD_RETRY_ATTEMPTS}"
+            )
+            continue
+        
+        MBps = MB / (t_end - t_start)
+        if f"{t_end - t_start:.2f}" == "0.00":
+            log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
+        else:
+            log.info(
+                f'Download took {t_end - t_start:.2f} seconds '
+                f'(average of {MBps:.2f} MB/s) for {MB:.2f} MB.'
+            )
+        break
     
     # load response content into a zipfile object
     try:
