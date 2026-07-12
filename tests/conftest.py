@@ -318,6 +318,11 @@ def mock_participant_table_response():
 
 
 @pytest.fixture
+def mock_participant_table_csv_response():
+    return "Patient ID,Status,OS Type\r\nabc123,Active,iOS\r\n"
+
+
+@pytest.fixture
 def mock_summary_statistics_response():
     return json.dumps([
         {"date": "2024-01-01", "participant_id": "abc123", "beiwe_id": "abc123"},

@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 import responses
@@ -9,6 +10,7 @@ from mano import (
     IntervalError,
     fetch_interventions,
     fetch_participant_table_data,
+    fetch_participant_table_data_csv,
     fetch_study_settings,
     fetch_study_settings_test,
     fetch_summary_statistics,
@@ -265,9 +267,49 @@ def test_fetch_participant_table_data_empty_returns_nothing(keyring: dict[str, s
     assert result == []
 
 
-def test_fetch_participant_table_data_invalid_format_raises(keyring: dict[str, str]):
-    with pytest.raises(ValueError, match="json_table"):
-        list(fetch_participant_table_data(keyring, 'STUDY_ID', data_format='json_table'))
+@responses.activate
+def test_fetch_participant_table_data_non_list_raises(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='{}', status=200)
+    with pytest.raises(ValueError, match="expected a list"):
+        list(fetch_participant_table_data(keyring, 'STUDY_ID'))
+
+
+#
+# fetch_participant_table_data_csv tests
+#
+
+
+@responses.activate
+def test_fetch_participant_table_data_csv_writes_file(
+    keyring: dict[str, str], tmp_path: Path, mock_participant_table_csv_response: str
+):
+    responses.post(
+        keyring['URL'] + '/get-participant-table-data/v1', body=mock_participant_table_csv_response, status=200
+    )
+    file_path = tmp_path / "participants.csv"
+    fetch_participant_table_data_csv(keyring, 'STUDY_ID', str(file_path))
+    assert file_path.read_bytes() == mock_participant_table_csv_response.encode()
+
+
+@responses.activate
+def test_fetch_participant_table_data_csv_creates_missing_directories(
+    keyring: dict[str, str], tmp_path: Path, mock_participant_table_csv_response: str
+):
+    responses.post(
+        keyring['URL'] + '/get-participant-table-data/v1', body=mock_participant_table_csv_response, status=200
+    )
+    file_path = tmp_path / "subdir" / "nested" / "participants.csv"
+    fetch_participant_table_data_csv(keyring, 'STUDY_ID', str(file_path))
+    assert file_path.read_bytes() == mock_participant_table_csv_response.encode()
+
+
+@responses.activate
+def test_fetch_participant_table_data_csv_raises_on_error(keyring: dict[str, str], tmp_path: Path):
+    responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='error', status=500)
+    file_path = tmp_path / "participants.csv"
+    with pytest.raises(APIError, match="500"):
+        fetch_participant_table_data_csv(keyring, 'STUDY_ID', str(file_path))
+    assert not file_path.exists()
 
 
 @responses.activate

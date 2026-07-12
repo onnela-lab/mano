@@ -15,6 +15,7 @@ from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, APIError, BEIWE_A
     IntervalError, KeyringError, LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD,
     ScrapeError, SECRET_KEY, StudyIDError, StudyNameError, StudySettingsError, TIME_FORMAT, URL,
     USERNAME)
+from mano.file_management import make_directories
 
 
 # TODO: remove username and password from the keyring, display a deprecation warning if they are present
@@ -27,7 +28,9 @@ KEYRING_KEYS = [USERNAME, PASSWORD, URL, ACCESS_KEY, SECRET_KEY]
 #
 def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
     url = keyring["URL"].rstrip("/") + endpoint
-    payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]} | (params or {})
+    payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]}
+    if params:
+        payload.update(params)
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
@@ -75,7 +78,10 @@ def fetch_survey_history(keyring: dict[str, str], study_id: str) -> Generator[tu
     :param study_id: Study ID
     :returns: Generator of (survey_id, survey_history_data)
     """
-    yield from _api_post(keyring, "/get-survey-history/v1", {"study_id": study_id}).items()
+    result = _api_post(keyring, "/get-survey-history/v1", {"study_id": study_id})
+    if not isinstance(result, dict):
+        raise ValueError(f"expected a dict of survey history data, got {type(result).__name__}")
+    yield from result.items()
 
 
 def fetch_study_settings(keyring: dict[str, str], study_id: str) -> Generator[tuple[str, str], None, None]:
@@ -100,34 +106,46 @@ def fetch_study_settings_test(keyring: dict[str, str], study_id: str) -> Generat
     yield from _api_post(keyring, "/get-study-settings/v1", {"study_id": study_id})["device_settings"].items()
 
 
-def fetch_participant_table_data(keyring: dict[str, str], study_id: str, data_format: str = "json") -> Generator:
+def fetch_participant_table_data(keyring: dict[str, str], study_id: str) -> Generator[dict, None, None]:
     """
-    Get participant table data for a study.
+    Get participant table data for a study as JSON.
 
     :param keyring: Keyring dictionary
     :param study_id: Study ID
-    :param data_format: One of "json" or "csv"
-    :returns: Generator of participant row dicts (json) or raw csv string (csv)
+    :returns: Generator of participant row dicts
     """
-    if data_format not in ("json", "csv"):
-        raise ValueError(f"data_format must be 'json' or 'csv', got '{data_format}'")
+    result = _api_post(keyring, "/get-participant-table-data/v1", {"study_id": study_id, "data_format": "json"})
+    if not isinstance(result, list):
+        raise ValueError(f"expected a list of participant rows, got {type(result).__name__}")
+    yield from result
 
+
+def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, file_path: str) -> None:
+    """
+    Get participant table data for a study as CSV and write it to a file.
+
+    :param keyring: Keyring dictionary
+    :param study_id: Study ID
+    :param file_path: Path of the file to write the CSV data to
+    """
     url = keyring["URL"].rstrip("/") + "/get-participant-table-data/v1"
     payload = {
         "access_key": keyring[ACCESS_KEY],
         "secret_key": keyring[SECRET_KEY],
         "study_id": study_id,
-        "data_format": data_format,
+        "data_format": "csv",
     }
 
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
 
-    if data_format == "csv":
-        yield resp.content.decode()
-    else:
-        yield from json.loads(resp.content)
+    directory = os.path.dirname(file_path)
+    if directory:
+        make_directories(directory)
+
+    with open(file_path, "wb") as fo:
+        fo.write(resp.content)
 
 
 def fetch_summary_statistics(
