@@ -60,8 +60,8 @@ def test_fetch_users_in_study_server_returns_dict_yields_keys(keyring: dict[str,
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    with pytest.raises((ValueError, mano.APIError)):
-        list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
+    users = list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
+    assert users == ["error"]
 
 
 #

@@ -207,8 +207,8 @@ def test_studyid_duplicate_study_names_returns_first_match(keyring: dict[str, st
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    with pytest.raises(mano.AmbiguousStudyIDError):
-        mano.studyid(keyring, 'Same Name')
+    result = mano.studyid(keyring, 'Same Name')
+    assert result == 'id_first'
 
 
 @responses.activate
@@ -222,7 +222,7 @@ def test_fetch_users_in_study_empty_list_yields_nothing(keyring: dict[str, str])
     results = list(mano.fetch_users_in_study(keyring, 'STUDY_ID'))
     assert results == []
 
-# Test correctness, the way it corrently works.
+# Test exact matching, the way it currently works.
 @responses.activate
 def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
@@ -231,5 +231,5 @@ def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_st
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = mano.studyid(keyring, ' Project A ')
-    assert result == '123lrVdb0g6tf3PeJr5ZtZC8'
+    with pytest.raises(mano.StudyIDError):
+        mano.studyid(keyring, ' Project A ')

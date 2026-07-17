@@ -72,6 +72,16 @@ def NOT_200_OK_ERROR(status_code: int, url: str) -> APIError:
     return APIError(msg)
 
 
+def DOWNLOAD_RETRY_STATUS_MSG(status_code: int, attempt: int, max_attempts: int) -> str:
+    return f"download request failed with status code {status_code}; " \
+        f"retrying attempt {attempt} of {max_attempts}"
+
+
+def DOWNLOAD_RETRY_EXCEPTION_MSG(error: BaseException, attempt: int, max_attempts: int) -> str:
+    return f"download request failed with {type(error).__name__}; " \
+        f"retrying attempt {attempt} of {max_attempts}"
+
+
 def TIME_REQUIRED_ERROR(prefix: str) -> ValueError:
     msg = f"{prefix} - a required date-time parameter was not provided."
     log.error(msg)

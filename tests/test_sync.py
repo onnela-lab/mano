@@ -261,72 +261,60 @@ def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: di
     assert 'user_ids=USER_ID' in request.body
 
 
-def test_download_connection_error_retries_and_succeeds(
-    keyring: dict[str, str], mock_zip_data_uncompressed: bytes
-):
-    """Test that download retries connection errors."""
-    with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.POST,
-            'https://studies.beiwe.org/get-data/v1',
-            body=requests.exceptions.ConnectionError("Network connection lost")
-        )
-        rsps.add(
-            responses.POST,
-            'https://studies.beiwe.org/get-data/v1',
-            body=mock_zip_data_uncompressed,
-            status=200,
-            content_type='application/zip'
-        )
-        
-        zf = sync.download(
-            keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            data_streams=['identifiers', 'gps'],
-            time_start='2018-06-15T00:00:00',
-            time_end='2018-06-17T00:00:00'
-        )
-        
-        assert isinstance(zf, ZipFile)
-        assert len(rsps.calls) == 2
-
-
-def test_download_timeout_error_retries_and_succeeds(
-    keyring: dict[str, str], mock_zip_data_uncompressed: bytes
-):
-    """Test that download retries timeout errors."""
-    with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.POST,
-            'https://studies.beiwe.org/get-data/v1',
-            body=requests.exceptions.Timeout("Request timed out")
-        )
-        rsps.add(
-            responses.POST,
-            'https://studies.beiwe.org/get-data/v1',
-            body=mock_zip_data_uncompressed,
-            status=200,
-            content_type='application/zip'
-        )
-        
-        zf = sync.download(
-            keyring,
-            study_id='STUDY_ID',
-            participant_ids=['USER_ID'],
-            data_streams=['identifiers', 'gps'],
-            time_start='2018-06-15T00:00:00',
-            time_end='2018-06-17T00:00:00'
-        )
-        
-        assert isinstance(zf, ZipFile)
-        assert len(rsps.calls) == 2
-
-
-def test_download_partial_content_then_error_retries_and_succeeds(
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+        requests.exceptions.ConnectTimeout,
+        requests.exceptions.ReadTimeout,
+    ],
+)
+def test_download_request_exception_retries_and_succeeds(
     keyring: dict[str, str],
     mock_zip_data_uncompressed: bytes,
-    mocker: MockerFixture
+    exception_type: type[requests.exceptions.RequestException],
+):
+    """Test retryable exceptions raised while submitting the request."""
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=exception_type("Transient request failure")
+        )
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=mock_zip_data_uncompressed,
+            status=200,
+            content_type='application/zip'
+        )
+        
+        zf = sync.download(
+            keyring,
+            study_id='STUDY_ID',
+            participant_ids=['USER_ID'],
+            data_streams=['identifiers', 'gps'],
+            time_start='2018-06-15T00:00:00',
+            time_end='2018-06-17T00:00:00'
+        )
+        
+        assert isinstance(zf, ZipFile)
+        assert len(rsps.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        requests.exceptions.ChunkedEncodingError,
+        requests.exceptions.ContentDecodingError,
+    ],
+)
+def test_download_stream_exception_retries_and_succeeds(
+    keyring: dict[str, str],
+    mock_zip_data_uncompressed: bytes,
+    mocker: MockerFixture,
+    exception_type: type[requests.exceptions.RequestException],
 ):
     """Test that download retries failures while streaming response content."""
     original_iterate_with_spinner = sync.iterate_with_spinner
@@ -334,9 +322,7 @@ def test_download_partial_content_then_error_retries_and_succeeds(
     
     def streaming_failure_then_success(resp, content, show_progress):
         if iterate_with_spinner.call_count == 1:
-            raise requests.exceptions.ChunkedEncodingError(
-                "Connection broken: Invalid chunk encoding"
-            )
+            raise exception_type("Transient streaming failure")
         return original_iterate_with_spinner(resp, content, show_progress)
     
     iterate_with_spinner.side_effect = streaming_failure_then_success
@@ -369,6 +355,38 @@ def test_download_partial_content_then_error_retries_and_succeeds(
         assert isinstance(zf, ZipFile)
         assert len(rsps.calls) == 2
         assert iterate_with_spinner.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        requests.exceptions.ProxyError,
+        requests.exceptions.SSLError,
+    ],
+)
+def test_download_configuration_connection_error_does_not_retry(
+    keyring: dict[str, str],
+    exception_type: type[requests.exceptions.ConnectionError],
+):
+    """Test ConnectionError subclasses that normally require configuration changes."""
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=exception_type("Non-retryable connection failure")
+        )
+
+        with pytest.raises(exception_type, match="Non-retryable connection failure"):
+            sync.download(
+                keyring,
+                study_id='STUDY_ID',
+                participant_ids=['USER_ID'],
+                data_streams=['identifiers', 'gps'],
+                time_start='2018-06-15T00:00:00',
+                time_end='2018-06-17T00:00:00'
+            )
+
+        assert len(rsps.calls) == 1
 
 
 def test_download_500_error_retries_and_succeeds(
