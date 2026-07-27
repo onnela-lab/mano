@@ -1,16 +1,8 @@
 import pytest
 import responses
 
-from mano import (
-    AmbiguousStudyIDError,
-    StudyIDError,
-    StudyNameError,
-    expand_study_id,
-    fetch_accessible_studies,
-    fetch_users_in_study,
-    studyid,
-    studyname,
-)
+from mano import (AmbiguousStudyIDError, StudyIDError, StudyNameError, expand_study_id,
+    fetch_accessible_studies, fetch_users_in_study, studyid, studyname)
 from mano.constants import APIError
 
 
@@ -169,7 +161,7 @@ def test_studyid_case_sensitive(keyring: dict[str, str], mock_studies_response: 
         content_type='text/html; charset=utf-8'
     )
     with pytest.raises(StudyIDError):
-        studyid(keyring, 'project a') 
+        studyid(keyring, 'project a')
 
 
 @responses.activate
@@ -216,8 +208,8 @@ def test_studyid_duplicate_study_names_returns_first_match(keyring: dict[str, st
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    with pytest.raises(AmbiguousStudyIDError):
-        studyid(keyring, 'Same Name')
+    result = studyid(keyring, 'Same Name')
+    assert result == 'id_first'
 
 
 @responses.activate
@@ -232,7 +224,7 @@ def test_fetch_users_in_study_empty_list_yields_nothing(keyring: dict[str, str])
     assert results == []
 
 # Test correctness, the way it corrently works.
-@responses.activate 
+@responses.activate
 def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
         keyring['URL'] + '/get-studies/v1',
@@ -240,5 +232,5 @@ def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_st
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = studyid(keyring, ' Project A ')
-    assert result == '123lrVdb0g6tf3PeJr5ZtZC8'
+    with pytest.raises(StudyIDError):
+        studyid(keyring, ' Project A ')

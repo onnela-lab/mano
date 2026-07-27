@@ -5,19 +5,9 @@ import pytest
 import responses
 from dateutil.tz import gettz
 
-from mano import (
-    APIError,
-    IntervalError,
-    fetch_interventions,
-    fetch_participant_table_data,
-    fetch_participant_table_data_csv,
-    fetch_study_settings,
-    fetch_study_settings_test,
-    fetch_summary_statistics,
-    fetch_survey_history,
-    fetch_users_in_study,
-    interval,
-)
+from mano import (APIError, IntervalError, fetch_interventions, fetch_participant_table_data,
+    fetch_participant_table_data_csv, fetch_study_settings, fetch_study_settings_test,
+    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study, interval)
 from mano.constants import UTC
 from mano.messages import TIME_REQUIRED_ERROR
 from mano.sync import validate_datetime, validate_required_datetime
@@ -404,7 +394,7 @@ def test_fetch_summary_statistics_sends_study_id(keyring: dict[str, str], mock_s
 @responses.activate
 def test_fetch_summary_statistics_sends_optional_params(keyring: dict[str, str], mock_summary_statistics_response: str):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
-    list(fetch_summary_statistics(keyring, 'STUDY_ID', start_date='2024-01-01', end_date='2024-01-31', fields='beiwe_id'))
+    fetch_summary_statistics(keyring, 'STUDY_ID', start_date='2024-01-01', end_date='2024-01-31', fields='beiwe_id')
     body = str(responses.calls[0].request.body)
     assert 'start_date=2024-01-01' in body
     assert 'end_date=2024-01-31' in body
