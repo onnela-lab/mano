@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-import mano
+from mano import load_keyring
 from mano.mano import ENV_KEYS, KeyringError
 
 DIR = os.path.dirname(__file__)
@@ -14,7 +14,7 @@ def test_keyring(keyring: dict[str, str]):
     try:
         os.environ["NRG_KEYRING_PASS"] = "foobar"
         f = os.path.join(DIR, "keyring.enc")
-        ans = mano.load_keyring("beiwe.onnela", keyring_file=f)
+        ans = load_keyring("beiwe.onnela", keyring_file=f)
         assert ans == keyring
     finally:
         os.environ.clear()
@@ -28,7 +28,7 @@ def test_keyring_empty_environment():
             if k in os.environ:
                 del os.environ[k]
         with pytest.raises(KeyringError, match=r".*environment variable\(s\) not found:.*"):
-            _ = mano.load_keyring(None)
+            _ = load_keyring(None)
     finally:
         os.environ.clear()
         os.environ.update(_environ)
@@ -40,7 +40,7 @@ def test_keyring_empty_string_environment_all():
         for k in ENV_KEYS:
             os.environ[k] = ""
         with pytest.raises(KeyringError, match=".*are present but empty.$"):
-            _ = mano.load_keyring(None)
+            _ = load_keyring(None)
     finally:
         os.environ.clear()
         os.environ.update(_environ)
@@ -54,7 +54,7 @@ def test_keyring_empty_string_environment_one_by_one():
         for k in ENV_KEYS:
             os.environ[k] = ""
             with pytest.raises(KeyringError):
-                _ = mano.load_keyring(None)
+                _ = load_keyring(None)
             os.environ[k] = "x"
     finally:
         os.environ.clear()
@@ -67,7 +67,7 @@ def test_keyring_wrong_password():
         os.environ["NRG_KEYRING_PASS"] = "**wrong**"
         f = os.path.join(DIR, "keyring.enc")
         with pytest.raises(KeyringError):
-            _ = mano.load_keyring("beiwe.onnela", keyring_file=f)
+            _ = load_keyring("beiwe.onnela", keyring_file=f)
     finally:
         os.environ.clear()
         os.environ.update(_environ)
@@ -79,7 +79,7 @@ def test_keyring_missing_file():
         os.environ["NRG_KEYRING_PASS"] = "foobar"
         f = os.path.join(DIR, "no-such-file.enc")
         with pytest.raises(IOError):
-            _ = mano.load_keyring("beiwe.onnela", keyring_file=f)
+            _ = load_keyring("beiwe.onnela", keyring_file=f)
     finally:
         os.environ.clear()
         os.environ.update(_environ)
@@ -93,7 +93,7 @@ def test_keyring_from_env(keyring: dict[str, str]):
         os.environ["BEIWE_PASSWORD"] = keyring["PASSWORD"]
         os.environ["BEIWE_ACCESS_KEY"] = keyring["ACCESS_KEY"]
         os.environ["BEIWE_SECRET_KEY"] = keyring["SECRET_KEY"]
-        ans = mano.load_keyring(None)
+        ans = load_keyring(None)
         assert ans == keyring
     finally:
         os.environ.clear()
@@ -108,7 +108,7 @@ def test_keyring_from_env_missing(keyring: dict[str, str]):
         os.environ["BEIWE_ACCESS_KEY"] = keyring["ACCESS_KEY"]
         os.environ["BEIWE_SECRET_KEY"] = keyring["SECRET_KEY"]
         with pytest.raises(KeyringError):
-            _ = mano.load_keyring(None)
+            _ = load_keyring(None)
     finally:
         os.environ.clear()
         os.environ.update(_environ)

@@ -1,7 +1,7 @@
 from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
-
+import json
 import pytest
 import pyzstd
 import responses
@@ -294,3 +294,66 @@ def generate_valid_decompress_test_files(tmp_path: Path) -> tuple[list[Path], li
         filepath.write_bytes(DECOMPRESSED_BYTES)
     
     return zst_files, non_zst_files, DECOMPRESSED_BYTES
+
+@pytest.fixture
+def mock_interventions_response():
+    return json.dumps({
+        "participant1": {"intervention1": {"Enrollment date": "2024-01-01"}},
+        "participant2": {"intervention1": {"Enrollment date": None}},
+    })
+
+
+@pytest.fixture
+def mock_survey_history_response():
+    return json.dumps({
+        "abc123survey": [{"archive_start": "2024-01-01T00:00:00+00:00", "survey_json": []}],
+    })
+
+
+@pytest.fixture
+def mock_participant_table_response():
+    return json.dumps([
+        {"Patient ID": "abc123", "Status": "Active", "OS Type": "iOS"},
+    ])
+
+
+@pytest.fixture
+def mock_participant_table_csv_response():
+    return "Patient ID,Status,OS Type\r\nabc123,Active,iOS\r\n"
+
+
+@pytest.fixture
+def mock_summary_statistics_response():
+    return json.dumps([
+        {"date": "2024-01-01", "participant_id": "abc123", "beiwe_id": "abc123"},
+        {"date": "2024-01-02", "participant_id": "abc123", "beiwe_id": "abc123"},
+    ])
+
+
+@pytest.fixture
+def mock_study_settings_response():
+    return json.dumps({
+        "surveys": {},
+        "interventions": [],
+        "device_settings": {
+            "accelerometer": True, "gps": True, "calls": True, "texts": True,
+            "wifi": True, "bluetooth": False, "power_state": True,
+            "use_anonymized_hashing": True, "use_gps_fuzzing": True,
+            "call_clinician_button_enabled": False, "call_research_assistant_button_enabled": False,
+            "ambient_audio": False, "proximity": False, "gyro": False,
+            "magnetometer": False, "devicemotion": False, "reachability": True,
+            "allow_upload_over_cellular_data": False,
+            "accelerometer_off_duration_seconds": 10, "accelerometer_on_duration_seconds": 10,
+            "accelerometer_frequency": 10, "gps_off_duration_seconds": 600,
+            "gps_on_duration_seconds": 60, "bluetooth_on_duration_seconds": 60,
+            "bluetooth_total_duration_seconds": 300, "bluetooth_global_offset_seconds": 0,
+            "check_for_new_surveys_frequency_seconds": 3600,
+            "create_new_data_files_frequency_seconds": 900,
+            "seconds_before_auto_logout": 600, "upload_data_files_frequency_seconds": 3600,
+            "wifi_log_frequency_seconds": 300, "gyro_off_duration_seconds": 600,
+            "gyro_on_duration_seconds": 60, "gyro_frequency": 10,
+            "magnetometer_off_duration_seconds": 600, "magnetometer_on_duration_seconds": 60,
+            "devicemotion_off_duration_seconds": 600, "devicemotion_on_duration_seconds": 60,
+            "heartbeat_timer_minutes": 60, "resend_period_minutes": 0,
+        },
+    })

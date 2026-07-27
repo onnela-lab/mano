@@ -219,6 +219,7 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 ~Error Code Guide~
 
 400 codes mean something about the request was malformed.
+
 404 codes mean something provided could not be found.
 
 404 codes include:
@@ -238,3 +239,19 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 - the study id provided was not one the user is authorized on
 
 """
+def API_400_ERROR(status: int, url: str):
+    return f"Bad request (400) to `{url}` - check your access_key, \
+    secret_key are correct and not expired, check your study _id is valid and without typo"
+
+def API_404_ERROR(status: int, url:str, study_id:str | None=None, participation_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (404) to `{url}` - study `{study_id}` does not exist "
+    if participation_id is not None:
+        return f"Not Found (404) to `{url}` - participant `{participation_id}` does not exist"
+    return f"Not Found (404) to `{url}` - the provided data stream was not valid, check against the \
+        values in DATA_STREAMS which is a fixed list of valid sensor/data type names"
+
+def API_403_ERROR(status: int, url: str, study_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (403) to `{url}` - study `{study_id}` may not exist or you do not have authorization for it"
+    
