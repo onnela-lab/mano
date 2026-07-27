@@ -604,7 +604,7 @@ def _get_next_backfill_window_strings(timestamp: datetime) -> tuple[datetime, da
     """
     # strip down to the start of the day
     window_start = datetime(timestamp.year, timestamp.month, timestamp.day)
-    window_stop = window_start + timedelta(days=GlobalSettings.BACKFILL_WINDOW)
+    window_stop = window_start + timedelta(days=GlobalSettings.backfill_window)
     log.debug(f'calculated next backfill window from timestamp `{window_start}` as {window_stop}')
     return window_start, window_stop
 
@@ -706,7 +706,7 @@ def validate_datetime(dt: str | datetime | date | None, msg_prefix: str) -> date
         log.error(msg := TIME_IS_TOO_EARLY_MSG(msg_prefix, dt))
         raise ValueError(msg)
     
-    if dt > (datetime.now(tz=UTC) + timedelta(days=GlobalSettings.BACKFILL_WINDOW)):
+    if dt > (datetime.now(tz=UTC) + timedelta(days=GlobalSettings.backfill_window)):
         log.error(msg := TIME_IS_TOO_LATE_MSG(msg_prefix, dt))
         raise ValueError(msg)
     

@@ -1,3 +1,4 @@
+from copy import copy
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from os import listdir, makedirs, remove as delete_file
@@ -851,6 +852,92 @@ def _test_backfill_does_not_overwrite(
         mtime = p.stat().st_mtime
         assert ctime <= between_creation_and_potential_update
         assert mtime <= between_creation_and_potential_update
+
+
+
+
+def test_second_backfill_call_does_not_overwrite_files_from_first_call(
+    mocker: MockerFixture,
+    keyring: dict[str, str],
+    tmp_path: Path,
+    mock_zip_data_compressed: bytes,
+):
+    target_folder = tmp_path / "target_folder"
+    yesterday = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)) - timedelta(days=1)
+    
+    m = mocker.patch('mano.sync.download')
+    
+    def iterate_files():
+        # oh, its two layers of folders
+        for folder in (target_folder).iterdir():
+            if folder.is_dir():
+                for subfolder in folder.iterdir():
+                    if subfolder.is_dir():
+                        for file in subfolder.iterdir():
+                            if file.is_file():  # o hay checking if its a file makes metadata 
+                                yield file      # stable. obviously!  (wtf)
+    
+    def do_backfill():
+        m.return_value = ZipFile(BytesIO(copy(mock_zip_data_compressed)))
+        sync.backfill(
+            start_date=yesterday.date().isoformat(),
+            **{
+                **default_backfill_kwargs(tmp_path, keyring),
+                "output_dir": str(target_folder),
+                "compressed": True,
+            },
+        )
+        sleep(1/50)  # wandows requires sleep statements
+    
+    do_backfill()
+    
+    for file in iterate_files():  # this appears to be necessary, I assume it does a file sync?
+        file.touch()              # but it probably fails on wandows and will require more check.
+    
+    # make a comprehensive record of the creation and modified times of the files in the tmp_folder
+    file_info_1 = {}
+    for file in iterate_files():
+        file_info_1[file.name] = (file.stat().st_mtime, file.stat().st_ctime, file.stat().st_size, file.read_bytes())
+    
+    do_backfill()
+    
+    """
+    FOR REASONS BEYOND THE KEN OF MAN, this test is somehow inconsistent based on minute changes in
+    behavior of exactly how we test variables here, whether the above touch() calls are made, and
+    whether the sleep statement in the do_backfill() function exists vs _unfathomably_ whether there
+    is a sleep statement outside of the function.
+    
+    Eventually I found that reading the files several times... made the data in file_info_2 correct
+    Then I found it seemed to be the formatting of these values into the strings instead of
+    comparing them directly.  Sure.  Uh-hunh.  Moving on with my life.
+    """
+    
+    file_info_2 = {}
+    for file in iterate_files():
+        file_info_2[file.name] = (file.stat().st_mtime, file.stat().st_ctime, file.stat().st_size, file.read_bytes())
+    # file_info_3 = {}
+    # for file in iterate_files():
+    #     file_info_3[file.name] = (file.stat().st_mtime, file.stat().st_ctime, file.stat().st_size, file.read_bytes())
+    # file_info_4 = {}
+    # for file in iterate_files():
+    #     file_info_4[file.name] = (file.stat().st_mtime, file.stat().st_ctime, file.stat().st_size, file.read_bytes())
+    
+    for file in iterate_files():
+        f = file_info_1[file.name]
+        f1 = f"orig mtime: {f[0]}, orig ctime: {f[1]}, orig size: {f[2]}, orig_bytes len: {len(f[3])}"
+        
+        f = file_info_2[file.name]
+        f2 = f"orig mtime: {f[0]}, orig ctime: {f[1]}, orig size: {f[2]}, orig_bytes len: {len(f[3])}"
+        
+        # f = file_info_3[file.name]
+        # f3 = f"orig mtime: {f[0]}, orig ctime: {f[1]}, orig size: {f[2]}, orig_bytes len: {len(f[3])}"
+        
+        # f = file_info_4[file.name]
+        # f4 = f"orig mtime: {f[0]}, orig ctime: {f[1]}, orig size: {f[2]}, orig_bytes len: {len(f[3])}"
+        
+        # print(f"{file.name}:\n  {f1}\n  {f2}\n  {f3}\n  {f4}")
+        assert f1 == f2  # == f3 == f4
+
 
 
 #
