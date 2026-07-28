@@ -127,9 +127,9 @@ For developers of Mano:
 In your virtual environment run these commands:
 
 ```bash
-pip install ".[dev]"    # installs all development dependencies.
-pip uninstall mano      # removes Mano as an _installed_ package so you only operate on local code.
-mypy --install-types    # Let mypy install any missing typing dependencies.
+# install mano and its dependencies in "editable" mode. (Makes the environment link to this folder.)
+pip install --editable ".[dev]"
+mypy --install-types             # Let mypy install any missing typing dependencies.
 ```
 
 To confirm your development environment is set up correctly you can check that importing `mano` in a
