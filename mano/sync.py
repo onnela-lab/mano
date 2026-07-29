@@ -12,22 +12,23 @@ from time import perf_counter
 
 import orjson
 import requests
-from dateutil.parser import parse as dateutil_parse, ParserError
+from dateutil.parser import ParserError, parse as dateutil_parse
 from dateutil.tz import UTC
 from requests.models import Response
 
 from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, EARLIEST_POSSIBLE_DATA_DT,
-    GlobalSettings, log, URL_COMPRESSED, URL_UNCOMPRESSED)
+    NON_RETRYABLE_DOWNLOAD_EXCEPTIONS, RETRYABLE_DOWNLOAD_EXCEPTIONS, URL_COMPRESSED,
+    URL_UNCOMPRESSED, GlobalSettings, log)
 from mano.file_management import generate_registry_info, make_directories, save_archive
 from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_ERROR, BACKFILL_START_DATE_FUTURE_MSG,
     BACKFILL_UNPARSABLE_DATE_ERROR, COULD_NOT_PARSE_TIME_ERROR,
-    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, DOWNLOAD_RETRY_EXCEPTION_MSG,
-    DOWNLOAD_RETRY_STATUS_MSG, END_DATE_BEFORE_START_ERROR, full_dt_format, INVALID_DATA_STREAMS_MSG,
-    NO_TIME_MSG, NOT_200_OK_ERROR, PICK_USER_PARTICIPANT_PLURAL_MSG,
+    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, DOWNLOAD_RETRY_EXCEPTION_MSG, DOWNLOAD_RETRY_STATUS_MSG,
+    DOWNLOAD_SERVER_RESPONSE_MSG, DOWNLOAD_TIMING_MSG, END_DATE_BEFORE_START_ERROR,
+    INVALID_DATA_STREAMS_MSG, NO_TIME_MSG, NOT_200_OK_ERROR, PICK_USER_PARTICIPANT_PLURAL_MSG,
     PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG,
     TIME_IS_TOO_EARLY_MSG, TIME_IS_TOO_LATE_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG,
     TIME_REQUIRED_ERROR, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_ERROR)
+    X_IS_NOT_A_Y_ERROR, full_dt_format)
 
 
 # historical namespace items
@@ -36,19 +37,6 @@ from mano.constants import APIError, DownloadError, ParseError, SaveError, Write
 
 # very verbose type hint(s)
 RequestPayload = dict[str, str | list[str] | dict[str, str]]
-DOWNLOAD_RETRY_ATTEMPTS = 3
-# Requests interprets this tuple as (connect timeout, read inactivity timeout), in seconds.
-DOWNLOAD_TIMEOUT = (10, 60)
-NON_RETRYABLE_DOWNLOAD_EXCEPTIONS = (
-    requests.exceptions.ProxyError,
-    requests.exceptions.SSLError,
-)
-RETRYABLE_DOWNLOAD_EXCEPTIONS = (
-    requests.exceptions.ConnectionError,
-    requests.exceptions.Timeout,
-    requests.exceptions.ChunkedEncodingError,
-    requests.exceptions.ContentDecodingError,
-)
 
 # todo: how exactly does the registry parameter work on the download function.
 #TODO: implement registry file generation and other management tools.
@@ -500,45 +488,38 @@ def _download(
 
 def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
     """ Internal function to handle download logic, do not call directly. """
-    
+
+    download_retry_attempts = GlobalSettings.download_retry_attempts
+    download_timeout = GlobalSettings.download_timeout
     show_progress = log.getEffectiveLevel() >= logging.INFO
     content = BytesIO()
-    for attempt in range(1, DOWNLOAD_RETRY_ATTEMPTS + 1):
+    for attempt in range(1, download_retry_attempts + 1):
         content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
         
         try:
             # submit download request
             with requests.post(
-                url, data=payload, stream=True, timeout=DOWNLOAD_TIMEOUT
+                url, data=payload, stream=True, timeout=download_timeout
             ) as resp:
                 if resp.status_code != requests.codes.OK:
-                    if 500 <= resp.status_code < 600 and attempt < DOWNLOAD_RETRY_ATTEMPTS:
+                    if 500 <= resp.status_code < 600 and attempt < download_retry_attempts:
                         log.warning(DOWNLOAD_RETRY_STATUS_MSG(
-                            resp.status_code, attempt + 1, DOWNLOAD_RETRY_ATTEMPTS
+                            resp.status_code, attempt + 1, download_retry_attempts
                         ))
                         continue
                     raise NOT_200_OK_ERROR(resp.status_code, resp.url)
-                
-                log.info('Server responded, downloading zip data... ')
+
+                log.info(DOWNLOAD_SERVER_RESPONSE_MSG)
                 MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
         except NON_RETRYABLE_DOWNLOAD_EXCEPTIONS:
             raise
         except RETRYABLE_DOWNLOAD_EXCEPTIONS as e:
-            if attempt == DOWNLOAD_RETRY_ATTEMPTS:
+            if attempt == download_retry_attempts:
                 raise
-            log.warning(DOWNLOAD_RETRY_EXCEPTION_MSG(
-                e, attempt + 1, DOWNLOAD_RETRY_ATTEMPTS
-            ))
+            log.warning(DOWNLOAD_RETRY_EXCEPTION_MSG(e, attempt + 1, download_retry_attempts))
             continue
-        
-        MBps = MB / (t_end - t_start)
-        if f"{t_end - t_start:.2f}" == "0.00":
-            log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
-        else:
-            log.info(
-                f'Download took {t_end - t_start:.2f} seconds '
-                f'(average of {MBps:.2f} MB/s) for {MB:.2f} MB.'
-            )
+
+        log.info(DOWNLOAD_TIMING_MSG(MB, t_start, t_end))
         break
     
     # load response content into a zipfile object
@@ -641,7 +622,7 @@ def _get_next_backfill_window_strings(timestamp: datetime) -> tuple[datetime, da
     """
     # strip down to the start of the day
     window_start = datetime(timestamp.year, timestamp.month, timestamp.day)
-    window_stop = window_start + timedelta(days=GlobalSettings.BACKFILL_WINDOW)
+    window_stop = window_start + timedelta(days=GlobalSettings.backfill_window)
     log.debug(f'calculated next backfill window from timestamp `{window_start}` as {window_stop}')
     return window_start, window_stop
 
@@ -743,7 +724,7 @@ def validate_datetime(dt: str | datetime | date | None, msg_prefix: str) -> date
         log.error(msg := TIME_IS_TOO_EARLY_MSG(msg_prefix, dt))
         raise ValueError(msg)
     
-    if dt > (datetime.now(tz=UTC) + timedelta(days=GlobalSettings.BACKFILL_WINDOW)):
+    if dt > (datetime.now(tz=UTC) + timedelta(days=GlobalSettings.backfill_window)):
         log.error(msg := TIME_IS_TOO_LATE_MSG(msg_prefix, dt))
         raise ValueError(msg)
     

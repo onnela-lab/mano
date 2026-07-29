@@ -1,8 +1,8 @@
 from datetime import date, datetime
 from typing import Any
 
-from mano.constants import (APIError, BASE_24HR_TIME_FORMAT, BEIWE_EXTENSIONS_ORED, log,
-    UnParsableTimeError)
+from mano.constants import (BASE_24HR_TIME_FORMAT, BEIWE_EXTENSIONS_ORED, APIError,
+    UnParsableTimeError, log)
 
 
 """
@@ -80,6 +80,21 @@ def DOWNLOAD_RETRY_STATUS_MSG(status_code: int, attempt: int, max_attempts: int)
 def DOWNLOAD_RETRY_EXCEPTION_MSG(error: BaseException, attempt: int, max_attempts: int) -> str:
     return f"download request failed with {type(error).__name__}; " \
         f"retrying attempt {attempt} of {max_attempts}"
+
+
+DOWNLOAD_SERVER_RESPONSE_MSG = "Server responded, downloading zip data... "
+
+
+def DOWNLOAD_TIMING_MSG(downloaded_mb: float, start_time: float, end_time: float) -> str:
+    elapsed_seconds = end_time - start_time
+    if f"{elapsed_seconds:.2f}" == "0.00":
+        return f"Download took {elapsed_seconds:.2f} seconds, no data was downloaded."
+
+    average_mbps = downloaded_mb / elapsed_seconds
+    return (
+        f"Download took {elapsed_seconds:.2f} seconds "
+        f"(average of {average_mbps:.2f} MB/s) for {downloaded_mb:.2f} MB."
+    )
 
 
 def TIME_REQUIRED_ERROR(prefix: str) -> ValueError:
@@ -229,6 +244,7 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 ~Error Code Guide~
 
 400 codes mean something about the request was malformed.
+
 404 codes mean something provided could not be found.
 
 404 codes include:
@@ -248,3 +264,18 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 - the study id provided was not one the user is authorized on
 
 """
+def API_400_ERROR(status: int, url: str):
+    return f"Bad request (400) to `{url}` - check your access_key, \
+    secret_key are correct and not expired, check your study _id is valid and without typo"
+
+def API_404_ERROR(status: int, url:str, study_id:str | None=None, participation_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (404) to `{url}` - study `{study_id}` does not exist "
+    if participation_id is not None:
+        return f"Not Found (404) to `{url}` - participant `{participation_id}` does not exist"
+    return f"Not Found (404) to `{url}` - the provided data stream was not valid, check against the \
+        values in DATA_STREAMS which is a fixed list of valid sensor/data type names"
+
+def API_403_ERROR(status: int, url: str, study_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (403) to `{url}` - study `{study_id}` may not exist or you do not have authorization for it"

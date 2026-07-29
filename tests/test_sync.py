@@ -14,7 +14,7 @@ from pyzstd import decompress
 from responses import RequestsMock
 
 from mano import sync
-from mano.constants import APIError, UnParsableTimeError, UTC
+from mano.constants import UTC, APIError, UnParsableTimeError
 from mano.messages import NOT_200_OK_ERROR
 from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_COMPRESSED,
     FILE_CONTENT_ENCRYPTED_COMPRESSED, FILE_CONTENT_ENCRYPTED_UNCOMPRESSED,
@@ -263,6 +263,7 @@ def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: di
 
 @pytest.mark.parametrize(
     "exception_type",
+    # Include Timeout subclasses explicitly so the test documents their retry behavior.
     [
         requests.exceptions.ConnectionError,
         requests.exceptions.Timeout,
@@ -305,6 +306,7 @@ def test_download_request_exception_retries_and_succeeds(
 
 @pytest.mark.parametrize(
     "exception_type",
+    # These errors occur after a successful response starts streaming and may be transient.
     [
         requests.exceptions.ChunkedEncodingError,
         requests.exceptions.ContentDecodingError,
@@ -317,6 +319,7 @@ def test_download_stream_exception_retries_and_succeeds(
     exception_type: type[requests.exceptions.RequestException],
 ):
     """Test that download retries failures while streaming response content."""
+    # A retry must discard the partial response body before writing the next attempt.
     original_iterate_with_spinner = sync.iterate_with_spinner
     iterate_with_spinner = mocker.patch('mano.sync.iterate_with_spinner')
     
@@ -359,6 +362,7 @@ def test_download_stream_exception_retries_and_succeeds(
 
 @pytest.mark.parametrize(
     "exception_type",
+    # Proxy and TLS failures usually require configuration changes, so retrying will not help.
     [
         requests.exceptions.ProxyError,
         requests.exceptions.SSLError,
@@ -447,7 +451,7 @@ def test_download_400_error_does_not_retry(keyring: dict[str, str]):
 def test_download_repeated_500_error_raises_api_error(keyring: dict[str, str]):
     """Test that download raises after repeated 500-level HTTP responses."""
     with responses.RequestsMock() as rsps:
-        for _ in range(sync.DOWNLOAD_RETRY_ATTEMPTS):
+        for _ in range(sync.GlobalSettings.download_retry_attempts):
             rsps.add(
                 responses.POST,
                 url := 'https://studies.beiwe.org/get-data/v1',
@@ -465,13 +469,13 @@ def test_download_repeated_500_error_raises_api_error(keyring: dict[str, str]):
                 time_end='2018-06-17T00:00:00'
             )
         
-        assert len(rsps.calls) == sync.DOWNLOAD_RETRY_ATTEMPTS
+        assert len(rsps.calls) == sync.GlobalSettings.download_retry_attempts
 
 
 def test_download_repeated_connection_error_reraises(keyring: dict[str, str]):
     """Test that download raises after repeated connection errors."""
     with responses.RequestsMock() as rsps:
-        for _ in range(sync.DOWNLOAD_RETRY_ATTEMPTS):
+        for _ in range(sync.GlobalSettings.download_retry_attempts):
             rsps.add(
                 responses.POST,
                 'https://studies.beiwe.org/get-data/v1',
@@ -488,7 +492,7 @@ def test_download_repeated_connection_error_reraises(keyring: dict[str, str]):
                 time_end='2018-06-17T00:00:00'
             )
         
-        assert len(rsps.calls) == sync.DOWNLOAD_RETRY_ATTEMPTS
+        assert len(rsps.calls) == sync.GlobalSettings.download_retry_attempts
 
 
 #
