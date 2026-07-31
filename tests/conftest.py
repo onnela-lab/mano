@@ -340,7 +340,7 @@ def mock_study_settings_response():
             "wifi": True, "bluetooth": False, "power_state": True,
             "use_anonymized_hashing": True, "use_gps_fuzzing": True,
             "call_clinician_button_enabled": False, "call_research_assistant_button_enabled": False,
-            "ambient_audio": False, "proximity": False, "gyro": False,
+            "proximity": False, "gyro": False,
             "magnetometer": False, "devicemotion": False, "reachability": True,
             "allow_upload_over_cellular_data": False,
             "accelerometer_off_duration_seconds": 10, "accelerometer_on_duration_seconds": 10,
