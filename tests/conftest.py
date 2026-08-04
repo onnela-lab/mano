@@ -214,7 +214,7 @@ def mock_studies_response():
 
 @pytest.fixture
 def mock_users_response():
-    """Mock API response for get-users/v1 endpoint"""
+    """Mock API response for get-participants/v1 endpoint"""
     return '["tgsidhm", "lholbc5", "yxzxtwr"]'
 
 

@@ -21,7 +21,7 @@ from mano.sync import validate_datetime, validate_required_datetime
 @responses.activate
 def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
@@ -33,7 +33,7 @@ def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_
 @responses.activate
 def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body='Internal Server Error',
         status=500,
     )
@@ -44,7 +44,7 @@ def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str
 @responses.activate
 def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
@@ -58,7 +58,7 @@ def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users
 @responses.activate
 def test_fetch_users_in_study_server_returns_dict_yields_keys(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body='{"error": "no users"}',
         status=200,
         content_type='text/html; charset=utf-8'

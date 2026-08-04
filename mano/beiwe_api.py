@@ -36,7 +36,8 @@ def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> list[str]:
     :param study_id: Study ID
     :returns: List of participant IDs
     """
-    result = _api_post(keyring, "/get-users/v1", {"study_id": study_id})
+    # get-users was deprecated, using get-participants
+    result = _api_post(keyring, "/get-participants/v1", {"study_id": study_id})
     if not isinstance(result, list):
         raise ValueError(f"expected a list of participant IDs, got {type(result).__name__}")
     return result
