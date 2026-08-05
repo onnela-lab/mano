@@ -428,7 +428,7 @@ With your Keyring loaded you can query the server for information about studies 
 
 ```python
 
-from mano import fetch_accessible_studies, fetch_study_device_settings, fetch_users_in_study
+from mano import fetch_accessible_studies, device_settings, fetch_users_in_study
 
 # print out a list of studies you have access to
 for study_name, study_id in fetch_accessible_studies(keyring):  
@@ -439,28 +439,59 @@ for participant_id in fetch_users_in_study(keyring, study_id):
     print(participant_id)
 
 # and print out the device settings for that study
-for setting in fetch_study_device_settings(keyring, study_id):
+for setting in device_settings(keyring, study_id):
     print(setting)
 ```
 
 You can find all the data streams available on the Beiwe Platform by importing `ALL_DATA_STREAMS`
-from `mano.constants`.  To get any specific data stream import the `DataStream` class.
+from `mano.constants`.  To get any specific data stream import the `DataStreams` class.
 
 ```python
 from pprint import pprint
-from mano.constants import DataStream, ALL_DATA_STREAMS
+from mano.constants import DataStreams, ALL_DATA_STREAMS
 
 print("All the underlying data stream strings:")
 pprint("-", ALL_DATA_STREAMS)
 
 print("An example specific data stream:")
-print("-", DataStream.ACCELEROMETER)  # etc.
+print("-", DataStreams.ACCELEROMETER)  # etc.
 ```
 
-The full list of data stream options on the `DataStream` class is `ACCELEROMETER`,
+The full list of data stream options on the `DataStreams` class is `ACCELEROMETER`,
 `AUDIO_RECORDING`, `ANDROID_LOG_FILE`, `BLUETOOTH`, `CALL_LOG`, `DEVICEMOTION`, `GPS`, `GYRO`,
 `IDENTIFIERS`, `IOS_LOG_FILE`, `MAGNETOMETER`, `POWER_STATE`, `PROXIMITY`, `REACHABILITY`,
 `SURVEY_ANSWERS`, `SURVEY_TIMINGS`, `TEXTS_LOG`, and `WIFI`
+
+Beyond the studies/participants/device-settings lookups above, a handful of other read-only queries
+are available for pulling study metadata and stats:
+
+```python
+from mano import (
+    fetch_interventions, fetch_survey_history, fetch_participant_table_data,
+    fetch_participant_table_data_csv, fetch_summary_statistics,
+)
+
+# intervention date data for every participant in the study
+for participant_id, intervention_data in fetch_interventions(keyring, study_id):
+    print(participant_id, intervention_data)
+
+# the edit history of every survey in the study
+for survey_id, history in fetch_survey_history(keyring, study_id):
+    print(survey_id, history)
+
+# the participant table (the same data shown on the study's participants page) as JSON
+for row in fetch_participant_table_data(keyring, study_id):
+    print(row)
+
+# ...or write that same participant table straight to a CSV file
+fetch_participant_table_data_csv(keyring, study_id, "./participants.csv")
+
+# daily summary statistics, optionally filtered by date range and/or field list
+for day in fetch_summary_statistics(
+    keyring, study_id, start_date="2024-01-01", end_date="2024-01-31"
+):
+    print(day)
+```
 
 
 
@@ -570,15 +601,15 @@ A simple usage of `download` that only queries a few data streams over a limited
 
 from zipfile import ZipFile        # this is part of the Python Standard Library
 from mano.sync import download
-from mano.constants import DataStream
+from mano.constants import DataStreams
 
 keyring = {...}  # load your keyring however you like
 
 study_id = "your_studys_id_string"
 target_output_folder = f"/path/to/that/{study_id}/"
 
-# select data streams using the DataStream class
-data_streams = [DataStream.ACCELEROMETER, DataStream.IOS_LOG, DataStream.GPS]
+# select data streams using the DataStreams class
+data_streams = [DataStreams.ACCELEROMETER, DataStreams.IOS_LOG_FILE, DataStreams.GPS]
 
 # and let's set the time ranges using strings
 time_start = '2015-10-01T00:00:00'
@@ -667,10 +698,10 @@ You can also pass these parameters to `backfill()` and it will use them internal
 
 ```python
 from zipfile import ZipFile
-from mano.constants import DataStream
+from mano.constants import DataStreams
 from mano.sync import backfill, download, save
 
-lock_and_download_streams = [DataStream.GPS, DataStream.AUDIO_RECORDINGS]
+lock_and_download_streams = [DataStreams.GPS, DataStreams.AUDIO_RECORDING]
 
 
 # for backfill to handle automatically:
@@ -696,7 +727,7 @@ zf: ZipFile = download(
 # grab your encryption key out of the keyring
 data_encryption_key = keyring["SECRETS"]["Study Name"]
 
-msync.save(
+save(
     zf,
     participant_id,
     output_folder,
