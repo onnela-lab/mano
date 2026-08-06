@@ -5,9 +5,10 @@ import pytest
 import responses
 from dateutil.tz import gettz
 
-from mano import (APIError, IntervalError, fetch_interventions, fetch_participant_table_data,
+from mano import APIError, interval, IntervalError
+from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
     fetch_participant_table_data_csv, fetch_study_settings, fetch_study_settings_test,
-    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study, interval)
+    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
 from mano.constants import UTC
 from mano.messages import TIME_REQUIRED_ERROR
 from mano.sync import validate_datetime, validate_required_datetime

@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 
 import requests
@@ -18,7 +18,7 @@ def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | N
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
-    return json.loads(resp.content)
+    return orjson.loads(resp.content)
 
 
 def fetch_accessible_studies(keyring: dict[str, str]) -> list[tuple[str, str]]:

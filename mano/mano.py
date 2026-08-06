@@ -8,12 +8,6 @@ import cryptease as crypt
 import requests
 
 from mano.beiwe_api import fetch_accessible_studies, fetch_study_settings_test, fetch_users_in_study
-from mano.beiwe_api import fetch_interventions  # noqa: F401  (unused here, re-exported for backward compatibility)
-from mano.beiwe_api import fetch_participant_table_data  # noqa: F401
-from mano.beiwe_api import fetch_participant_table_data_csv  # noqa: F401
-from mano.beiwe_api import fetch_study_settings  # noqa: F401
-from mano.beiwe_api import fetch_summary_statistics  # noqa: F401
-from mano.beiwe_api import fetch_survey_history  # noqa: F401
 from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
     BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
     LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, SECRET_KEY, StudyIDError,

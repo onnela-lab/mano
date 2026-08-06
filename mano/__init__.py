@@ -6,13 +6,13 @@
 # was required to resolve this.
 import mano.sync as sync
 from mano import constants, mano_cli
-from mano.mano import (DATA_STREAMS, LOCALE, TIME_FORMAT, AmbiguousStudyIDError, APIError, Config,
-    IntervalError, Keyring, KeyringError, LoginError, ScrapeError, StudyIDError, StudyNameError,
-    StudySettingsError, device_settings, expand_study_id, fetch_accessible_studies,
-    fetch_interventions, fetch_participant_table_data, fetch_participant_table_data_csv,
-    fetch_study_settings, fetch_study_settings_test, fetch_summary_statistics, fetch_survey_history,
-    fetch_users_in_study, interval, keyring_from_env, load_keyring, login, studies, studyid,
-    studyname, users)
+from mano.beiwe_api import (fetch_accessible_studies, fetch_interventions,
+    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_study_settings,
+    fetch_study_settings_test, fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
+from mano.mano import (AmbiguousStudyIDError, APIError, Config, DATA_STREAMS, device_settings,
+    expand_study_id, interval, IntervalError, Keyring, keyring_from_env, KeyringError, load_keyring,
+    LOCALE, login, LoginError, ScrapeError, studies, studyid, StudyIDError, studyname,
+    StudyNameError, StudySettingsError, TIME_FORMAT, users)
 
 
 __all__ = [
@@ -21,15 +21,6 @@ __all__ = [
     "constants",
     "DATA_STREAMS",
     "expand_study_id",
-    "fetch_accessible_studies",
-    "fetch_interventions",
-    "fetch_participant_table_data",
-    "fetch_participant_table_data_csv",
-    "fetch_study_settings",
-    "fetch_study_settings_test",
-    "fetch_survey_history",
-    "fetch_users_in_study",
-    "fetch_summary_statistics",
     "interval",
     "IntervalError",
     "keyring_from_env",
@@ -46,6 +37,16 @@ __all__ = [
     "StudySettingsError",
     "sync",
     "TIME_FORMAT",
+
+    "fetch_accessible_studies",
+    "fetch_interventions",
+    "fetch_participant_table_data",
+    "fetch_participant_table_data_csv",
+    "fetch_study_settings",
+    "fetch_study_settings_test",
+    "fetch_summary_statistics",
+    "fetch_survey_history",
+    "fetch_users_in_study",
 
     "studies",
     "users",
