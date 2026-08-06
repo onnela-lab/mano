@@ -424,7 +424,8 @@ TODO: test how this behaves inside Jupyter Notebooks
 # Access Study Information
 </div>
 
-With your Keyring loaded you can query the server for information about studies you have access to, participants in those studies, and the study's data stream configuration.
+With your Keyring loaded you can query the server for information about studies you have access to,
+participants in those studies, and the study's data stream configuration.
 
 ```python
 
@@ -462,31 +463,35 @@ The full list of data stream options on the `DataStreams` class is `ACCELEROMETE
 `IDENTIFIERS`, `IOS_LOG_FILE`, `MAGNETOMETER`, `POWER_STATE`, `PROXIMITY`, `REACHABILITY`,
 `SURVEY_ANSWERS`, `SURVEY_TIMINGS`, `TEXTS_LOG`, and `WIFI`
 
-Beyond the studies/participants/device-settings lookups above, a handful of other read-only queries
+We have the studies/participants/device-settings lookups above, a handful of other read-only queries
 are available for pulling study metadata and stats:
 
 ```python
-from mano import (
-    fetch_interventions, fetch_survey_history, fetch_participant_table_data,
-    fetch_participant_table_data_csv, fetch_summary_statistics,
-)
+from mano import (fetch_interventions, fetch_survey_history, fetch_participant_table_data,
+    fetch_participant_table_data_csv, fetch_summary_statistics)
 
-# intervention date data for every participant in the study
+# Get the intervention dates for participants in the study
 for participant_id, intervention_data in fetch_interventions(keyring, study_id):
     print(participant_id, intervention_data)
-
-# the edit history of every survey in the study
+    
+# Get all the versions of your surveys that have existed over time so you can match them 
+# to the exact version a participant saw.
 for survey_id, history in fetch_survey_history(keyring, study_id):
     print(survey_id, history)
 
-# the participant table (the same data shown on the study's participants page) as JSON
+# Get the content of the participant table (the data shown on the Beiwe Study Page) as JSON.
+# (This also includes numerous extra datapoints not visible on the page)
 for row in fetch_participant_table_data(keyring, study_id):
     print(row)
 
-# ...or write that same participant table straight to a CSV file
+# ...or download the participant table straight to a CSV file
 fetch_participant_table_data_csv(keyring, study_id, "./participants.csv")
+```
 
-# daily summary statistics, optionally filtered by date range and/or field list
+# TODO: add fuller documentation for summary statistics
+
+```python
+# Get daily summary statistics, optionally filtered by date range and/or field list
 for day in fetch_summary_statistics(
     keyring, study_id, start_date="2024-01-01", end_date="2024-01-31"
 ):
