@@ -429,7 +429,7 @@ participants in those studies, and the study's data stream configuration.
 
 ```python
 
-from mano import fetch_accessible_studies, device_settings, fetch_users_in_study
+from mano import fetch_accessible_studies, fetch_study_device_settings, fetch_users_in_study
 
 # print out a list of studies you have access to
 for study_name, study_id in fetch_accessible_studies(keyring):  
@@ -440,7 +440,7 @@ for participant_id in fetch_users_in_study(keyring, study_id):
     print(participant_id)
 
 # and print out the device settings for that study
-for setting in device_settings(keyring, study_id):
+for setting in fetch_study_device_settings(keyring, study_id):
     print(setting)
 ```
 

@@ -7,7 +7,7 @@ from datetime import timedelta
 import cryptease as crypt
 import requests
 
-from mano.beiwe_api import fetch_accessible_studies, fetch_study_settings_test, fetch_users_in_study
+from mano.beiwe_api import fetch_accessible_studies, fetch_study_device_settings, fetch_users_in_study
 from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
     BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
     LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, SECRET_KEY, StudyIDError,
@@ -22,7 +22,7 @@ ENV_KEYS = [BEIWE_URL, BEIWE_USERNAME, BEIWE_PASSWORD, BEIWE_ACCESS_KEY, BEIWE_S
 KEYRING_KEYS = [USERNAME, PASSWORD, URL, ACCESS_KEY, SECRET_KEY]
 
 # fetch_accessible_studies, fetch_interventions, fetch_participant_table_data,
-# fetch_participant_table_data_csv, fetch_study_settings, fetch_study_settings_test,
+# fetch_participant_table_data_csv, fetch_study_settings, fetch_study_device_settings,
 # fetch_summary_statistics, fetch_survey_history, and fetch_users_in_study live in
 # mano/beiwe_api.py now; imported above so `from mano.mano import fetch_...` still works.
 
@@ -214,7 +214,7 @@ studies = fetch_accessible_studies             # noqa
 users = fetch_users_in_study                   # noqa
 keyring = load_keyring                         # noqa
 Keyring = load_keyring                         # noqa
-device_settings = fetch_study_settings_test    # noqa
+device_settings = fetch_study_device_settings  # noqa
 Config = Config                                # noqa
 DATA_STREAMS = DATA_STREAMS                    # noqa
 LOCALE = LOCALE                                # noqa

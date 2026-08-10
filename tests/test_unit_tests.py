@@ -7,7 +7,7 @@ from dateutil.tz import gettz
 
 from mano import APIError, interval, IntervalError
 from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
-    fetch_participant_table_data_csv, fetch_study_settings, fetch_study_settings_test,
+    fetch_participant_table_data_csv, fetch_study_device_settings, fetch_study_settings,
     fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
 from mano.constants import UTC
 from mano.messages import TIME_REQUIRED_ERROR
@@ -304,14 +304,14 @@ def test_fetch_participant_table_data_csv_raises_on_error(keyring: dict[str, str
 
 
 @responses.activate
-def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
+def test_fetch_study_device_settings_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body=mock_study_settings_response,
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = dict(fetch_study_settings_test(keyring, '0eb8ZGulAYf6c8smypun87PM'))
+    result = dict(fetch_study_device_settings(keyring, '0eb8ZGulAYf6c8smypun87PM'))
     assert result['gps'] is True
     assert result['bluetooth'] is False
     assert result['gps_on_duration_seconds'] == 60
@@ -325,36 +325,36 @@ def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], moc
 
 
 @responses.activate
-def test_fetch_study_settings_test_500_raises_api_error(keyring: dict[str, str]):
+def test_fetch_study_device_settings_500_raises_api_error(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='Internal Server Error',
         status=500,
     )
     with pytest.raises(APIError, match="500"):
-        list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+        list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
 @responses.activate
-def test_fetch_study_settings_test_400_raises_api_error(keyring: dict[str, str]):
+def test_fetch_study_device_settings_400_raises_api_error(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='Bad Request',
         status=400,
     )
     with pytest.raises(APIError, match="400"):
-        list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+        list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
 @responses.activate
-def test_fetch_study_settings_test_empty_returns_nothing(keyring: dict[str, str]):
+def test_fetch_study_device_settings_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='{"device_settings": {}}',
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+    result = list(fetch_study_device_settings(keyring, 'STUDY_ID'))
     assert result == []
 
 

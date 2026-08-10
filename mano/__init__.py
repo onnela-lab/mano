@@ -7,8 +7,8 @@
 import mano.sync as sync
 from mano import constants, mano_cli
 from mano.beiwe_api import (fetch_accessible_studies, fetch_interventions,
-    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_study_settings,
-    fetch_study_settings_test, fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
+    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_study_device_settings,
+    fetch_study_settings, fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
 from mano.mano import (AmbiguousStudyIDError, APIError, Config, DATA_STREAMS, device_settings,
     expand_study_id, interval, IntervalError, Keyring, keyring_from_env, KeyringError, load_keyring,
     LOCALE, login, LoginError, ScrapeError, studies, studyid, StudyIDError, studyname,
@@ -42,8 +42,8 @@ __all__ = [
     "fetch_interventions",
     "fetch_participant_table_data",
     "fetch_participant_table_data_csv",
+    "fetch_study_device_settings",
     "fetch_study_settings",
-    "fetch_study_settings_test",
     "fetch_summary_statistics",
     "fetch_survey_history",
     "fetch_users_in_study",

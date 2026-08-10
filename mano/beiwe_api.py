@@ -79,7 +79,7 @@ def fetch_study_settings(keyring: dict[str, str], study_id: str) -> list[tuple[s
     return list(_api_post(keyring, "/get-study-settings/v1", {"study_id": study_id}).items())
 
 
-def fetch_study_settings_test(keyring: dict[str, str], study_id: str) -> list[tuple[str, str]]:
+def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> list[tuple[str, str]]:
     """
     Get device settings for a Study via the API
 

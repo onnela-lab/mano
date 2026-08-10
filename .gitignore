@@ -1,6 +1,7 @@
 keyring.enc
 *.mp4
 *.csv
+.coverage
 #*.lock
 #*.swp
 *.DS_Store
