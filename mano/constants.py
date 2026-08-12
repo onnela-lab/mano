@@ -73,7 +73,7 @@ class QuantityStats: = []
     timezone = "timezone"
     
     # Data Quantity Fields
-    accelerometer_bytes = "accelerometer_bytes
+    accelerometer_bytes = "accelerometer_bytes"
     app_log_bytes = "app_log_bytes
     bluetooth_bytes = "bluetooth_bytes
     calls_bytes = "calls_bytes
