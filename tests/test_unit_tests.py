@@ -57,14 +57,15 @@ def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users
 
 
 @responses.activate
-def test_fetch_users_in_study_server_returns_dict_yields_keys(keyring: dict[str, str]):
+def test_fetch_users_in_study_server_returns_dict_raises_value_error(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-participants/v1',
         body='{"error": "no users"}',
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    with pytest.raises((ValueError, APIError)):
+    # A 200 response with an object still violates the endpoint's list response contract.
+    with pytest.raises(ValueError, match="expected a list of participant IDs, got dict"):
         list(fetch_users_in_study(keyring, 'STUDY_ID'))
 
 

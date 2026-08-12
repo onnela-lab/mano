@@ -12,21 +12,23 @@ from time import perf_counter
 
 import orjson
 import requests
-from dateutil.parser import parse as dateutil_parse, ParserError
+from dateutil.parser import ParserError, parse as dateutil_parse
 from dateutil.tz import UTC
 from requests.models import Response
 
 from mano.constants import (ALL_DATA_STREAMS, API_TIME_FORMAT, EARLIEST_POSSIBLE_DATA_DT,
-    GlobalSettings, log, URL_COMPRESSED, URL_UNCOMPRESSED)
+    NON_RETRYABLE_DOWNLOAD_EXCEPTIONS, RETRYABLE_DOWNLOAD_EXCEPTIONS, URL_COMPRESSED,
+    URL_UNCOMPRESSED, GlobalSettings, log)
 from mano.file_management import generate_registry_info, make_directories, save_archive
 from mano.messages import (BACKFILL_LOCK_AND_PASSPHRASE_ERROR, BACKFILL_START_DATE_FUTURE_MSG,
     BACKFILL_UNPARSABLE_DATE_ERROR, COULD_NOT_PARSE_TIME_ERROR,
-    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, END_DATE_BEFORE_START_ERROR, full_dt_format,
+    DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING, DOWNLOAD_RETRY_EXCEPTION_MSG, DOWNLOAD_RETRY_STATUS_MSG,
+    DOWNLOAD_SERVER_RESPONSE_MSG, DOWNLOAD_TIMING_MSG, END_DATE_BEFORE_START_ERROR,
     INVALID_DATA_STREAMS_MSG, NO_TIME_MSG, NOT_200_OK_ERROR, PICK_USER_PARTICIPANT_PLURAL_MSG,
     PICK_USER_PARTICIPANT_SINGLE_MSG, PROGRESS_DEPRECATION_MSG, SYNC_SAVE_DEPRECATION_MSG,
     TIME_IS_TOO_EARLY_MSG, TIME_IS_TOO_LATE_MSG, TIME_NAIVE_MSG, TIME_NOT_UTC_MSG, TIME_PARSED_MSG,
     TIME_REQUIRED_ERROR, USER_ID_KEYWORD_DEPRECATION_MSG, USER_IDS_DEPRECATION_MSG,
-    X_IS_NOT_A_Y_ERROR)
+    X_IS_NOT_A_Y_ERROR, full_dt_format)
 
 
 # historical namespace items
@@ -486,23 +488,39 @@ def _download(
 
 def _do_download(url: str, payload: RequestPayload) -> zipfile.ZipFile:
     """ Internal function to handle download logic, do not call directly. """
-    
+
+    download_retry_attempts = GlobalSettings.download_retry_attempts
+    download_timeout = GlobalSettings.download_timeout
     show_progress = log.getEffectiveLevel() >= logging.INFO
-    content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
-    
-    # submit download request
-    resp = requests.post(url, data=payload, stream=True)
-    if resp.status_code != requests.codes.OK:
-        raise NOT_200_OK_ERROR(resp.status_code, resp.url)
-    
-    log.info('Server responded, downloading zip data... ')
-    MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
-    
-    MBps = MB / (t_end - t_start)
-    if f"{t_end - t_start:.2f}" == "0.00":
-        log.info(f'Download took {t_end - t_start:.2f} seconds, no data was downloaded.')
-    else:
-        log.info(f'Download took {t_end - t_start:.2f} seconds (average of {MBps:.2f} MB/s) for {MB:.2f} MB.')
+    content = BytesIO()
+    for attempt in range(1, download_retry_attempts + 1):
+        content = BytesIO()  # temporary (RAM) storage for response content, required to use ZipFile
+        
+        try:
+            # submit download request
+            with requests.post(
+                url, data=payload, stream=True, timeout=download_timeout
+            ) as resp:
+                if resp.status_code != requests.codes.OK:
+                    if 500 <= resp.status_code < 600 and attempt < download_retry_attempts:
+                        log.warning(DOWNLOAD_RETRY_STATUS_MSG(
+                            resp.status_code, attempt + 1, download_retry_attempts
+                        ))
+                        continue
+                    raise NOT_200_OK_ERROR(resp.status_code, resp.url)
+
+                log.info(DOWNLOAD_SERVER_RESPONSE_MSG)
+                MB, t_start, t_end = iterate_with_spinner(resp, content, show_progress)
+        except NON_RETRYABLE_DOWNLOAD_EXCEPTIONS:
+            raise
+        except RETRYABLE_DOWNLOAD_EXCEPTIONS as e:
+            if attempt == download_retry_attempts:
+                raise
+            log.warning(DOWNLOAD_RETRY_EXCEPTION_MSG(e, attempt + 1, download_retry_attempts))
+            continue
+
+        log.info(DOWNLOAD_TIMING_MSG(MB, t_start, t_end))
+        break
     
     # load response content into a zipfile object
     try:

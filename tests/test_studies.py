@@ -223,7 +223,7 @@ def test_fetch_users_in_study_empty_list_yields_nothing(keyring: dict[str, str])
     results = list(fetch_users_in_study(keyring, 'STUDY_ID'))
     assert results == []
 
-# Test correctness, the way it corrently works.
+# Test exact matching, the way it currently works.
 @responses.activate
 def test_studyid_with_whitespace_name_not_found(keyring: dict[str, str], mock_studies_response: str):
     responses.post(
