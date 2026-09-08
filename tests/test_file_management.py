@@ -51,11 +51,10 @@ def test_get_thread_count_uses_global_settings_override():
         GlobalSettings.multithreading_count = original
 
 
-# NOTE: the two tests below exercise branches that are actually unreachable in real usage: by the
-# time either function reaches its second/third `if`, the preceding `if is_a_dir or is_a_beiwe:
-# return` has already ruled out every case except "neither" - so the first `exit(1)` (which we
-# neutralize here by stubbing `exit`) always fires first in practice. These tests force execution
-# past that point purely to exercise the dead code, they don't reflect real program behavior.
+# these two tests below tests two sections of code that should be unreachable in real usage where
+# a normal beiwe file structure was provided. This code calls exit() so we need to mock that.
+
+
 def test_validate_is_a_folder_or_valid_beiwe_data_file_dead_branches(tmp_path: Path, mocker: MockerFixture):
     mock_exit = mocker.patch("builtins.exit", MagicMock())
     bad_file = tmp_path / "notes.zzz"
