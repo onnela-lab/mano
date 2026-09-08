@@ -127,9 +127,9 @@ For developers of Mano:
 In your virtual environment run these commands:
 
 ```bash
-pip install ".[dev]"    # installs all development dependencies.
-pip uninstall mano      # removes Mano as an _installed_ package so you only operate on local code.
-mypy --install-types    # Let mypy install any missing typing dependencies.
+# install mano and its dependencies in "editable" mode. (Makes the environment link to this folder.)
+pip install --editable ".[dev]"
+mypy --install-types             # Let mypy install any missing typing dependencies.
 ```
 
 To confirm your development environment is set up correctly you can check that importing `mano` in a
@@ -424,7 +424,8 @@ TODO: test how this behaves inside Jupyter Notebooks
 # Access Study Information
 </div>
 
-With your Keyring loaded you can query the server for information about studies you have access to, participants in those studies, and the study's data stream configuration.
+With your Keyring loaded you can query the server for information about studies you have access to,
+participants in those studies, and the study's data stream configuration.
 
 ```python
 
@@ -444,29 +445,55 @@ for setting in fetch_study_device_settings(keyring, study_id):
 ```
 
 You can find all the data streams available on the Beiwe Platform by importing `ALL_DATA_STREAMS`
-from `mano.constants`.  To get any specific data stream import the `DataStream` class.
+from `mano.constants`.  To get any specific data stream import the `DataStreams` class.
 
 ```python
 from pprint import pprint
-from mano.constants import DataStream, ALL_DATA_STREAMS
+from mano.constants import DataStreams, ALL_DATA_STREAMS
 
 print("All the underlying data stream strings:")
 pprint("-", ALL_DATA_STREAMS)
 
 print("An example specific data stream:")
-print("-", DataStream.ACCELEROMETER)  # etc.
+print("-", DataStreams.ACCELEROMETER)  # etc.
 ```
 
-The full list of data stream options on the `DataStream` class is `ACCELEROMETER`,
+The full list of data stream options on the `DataStreams` class is `ACCELEROMETER`,
 `AUDIO_RECORDING`, `ANDROID_LOG_FILE`, `BLUETOOTH`, `CALL_LOG`, `DEVICEMOTION`, `GPS`, `GYRO`,
 `IDENTIFIERS`, `IOS_LOG_FILE`, `MAGNETOMETER`, `POWER_STATE`, `PROXIMITY`, `REACHABILITY`,
 `SURVEY_ANSWERS`, `SURVEY_TIMINGS`, `TEXTS_LOG`, and `WIFI`
 
+We have the studies/participants/device-settings lookups above, a handful of other read-only queries
+are available for pulling study metadata and stats:
+
+```python
+from mano.beiwe_api import (fetch_interventions, fetch_survey_history, fetch_participant_table_data,
+    fetch_participant_table_data_csv, fetch_study_settings)
+
+# Get the intervention dates for participants in the study
+for participant_id, intervention_data in fetch_interventions(keyring, study_id):
+    print(participant_id, intervention_data)
+    
+# Get all the versions of your surveys that have existed over time so you can match them 
+# to the exact version a participant saw.
+for survey_id, history in fetch_survey_history(keyring, study_id):
+    print(survey_id, history)
+
+# Study settings are a file used by some analyses from the Forest codebase
+json_blob = fetch_study_settings(keyring, study_id)
+
+# Get the content of the participant table (the data shown on the Beiwe Study Page) as JSON.
+# (This also includes numerous extra datapoints not visible on the page)
+for row in fetch_participant_table_data(keyring, study_id):
+    print(row)
+
+# ...or download the participant table straight to a CSV file
+fetch_participant_table_data_csv(keyring, study_id, "./participants.csv")
+```
 
 
 
 <!-- break -->
-
 
 
 
@@ -570,15 +597,15 @@ A simple usage of `download` that only queries a few data streams over a limited
 
 from zipfile import ZipFile        # this is part of the Python Standard Library
 from mano.sync import download
-from mano.constants import DataStream
+from mano.constants import DataStreams
 
 keyring = {...}  # load your keyring however you like
 
 study_id = "your_studys_id_string"
 target_output_folder = f"/path/to/that/{study_id}/"
 
-# select data streams using the DataStream class
-data_streams = [DataStream.ACCELEROMETER, DataStream.IOS_LOG, DataStream.GPS]
+# select data streams using the DataStreams class
+data_streams = [DataStreams.ACCELEROMETER, DataStreams.IOS_LOG_FILE, DataStreams.GPS]
 
 # and let's set the time ranges using strings
 time_start = '2015-10-01T00:00:00'
@@ -661,16 +688,17 @@ inconvenience and hope this gets resolved.
 
 </details>
 
+
 ### Encrypting Data Files At Rest
 You can pass the `ZipFile` object to `save()` if you wish to encrypt data stream files.
 You can also pass these parameters to `backfill()` and it will use them internally.
 
 ```python
 from zipfile import ZipFile
-from mano.constants import DataStream
+from mano.constants import DataStreams
 from mano.sync import backfill, download, save
 
-lock_and_download_streams = [DataStream.GPS, DataStream.AUDIO_RECORDINGS]
+lock_and_download_streams = [DataStreams.GPS, DataStreams.AUDIO_RECORDING]
 
 
 # for backfill to handle automatically:
@@ -696,7 +724,7 @@ zf: ZipFile = download(
 # grab your encryption key out of the keyring
 data_encryption_key = keyring["SECRETS"]["Study Name"]
 
-msync.save(
+save(
     zf,
     participant_id,
     output_folder,
@@ -705,6 +733,119 @@ msync.save(
 )
 
 
+```
+
+
+# Downloading Summary Statistics
+
+Summary Statistics come in two flavors, Data Quantity Statistics and Forest Analysis Output. These
+values are always per-day for each participant.
+
+The Quantity Statistics are values in bytes, this data is the same as that presented on the study
+dashboard page on your Beiwe website.
+
+The Forest Analysis fields are generated by running the analysis on the server. They are the same
+data that are produced if you run the corresponding Forest Tree from the Forest Codebase locally.
+
+By default this endpoint returns _Everything_ for all participants, so you will probably want to
+filter it down.
+
+The fields available are accessible through the `ForestStats` and `DataStreams` classes in the
+`mano.constants` module. 
+
+<details>
+<summary> <i> Click Here to view the whole list of Summary Statistics Fields you can query for.</i> </summary>
+
+---
+
+Informational Fields
+ - `date`
+ - `participant_id`
+ - `study_id`
+ - `timezone`
+ 
+Data Quantity Fields
+ - `accelerometer_bytes`
+ - `app_log_bytes`
+ - `bluetooth_bytes`
+ - `calls_bytes`
+ - `devicemotion_bytes`
+ - `gps_bytes`
+ - `gyro_bytes`
+ - `identifiers_bytes`
+ - `ios_log_bytes`
+ - `magnetometer_bytes`
+ - `power_state_bytes`
+ - `proximity_bytes`
+ - `reachability_bytes`
+ - `survey_answers_bytes`
+ - `survey_timings_bytes`
+ - `texts_bytes`
+ - `audio_recordings_bytes`
+ - `wifi_bytes`
+
+_(Note that these analysis fields are technically subject to change as the Forest analysis methods evolve.)
+
+Forest Output Fields
+ - `jasmine_distance_diameter`
+ - `jasmine_distance_from_home`
+ - `jasmine_distance_traveled`
+ - `jasmine_flight_distance_average`
+ - `jasmine_flight_distance_stddev`
+ - `jasmine_flight_duration_average`
+ - `jasmine_flight_duration_stddev`
+ - `jasmine_home_duration`
+ - `jasmine_gyration_radius`
+ - `jasmine_significant_location_count`
+ - `jasmine_significant_location_entropy`
+ - `jasmine_pause_time`
+ - `jasmine_obs_duration`
+ - `jasmine_obs_day`
+ - `jasmine_obs_night`
+ - `jasmine_total_flight_time`
+ - `jasmine_av_pause_duration`
+ - `jasmine_sd_pause_duration`
+ - `jasmine_physical_circadian_rhythm`
+ - `jasmine_physical_circadian_rhythm_stratified`
+ - `willow_incoming_text_count`
+ - `willow_incoming_text_degree`
+ - `willow_incoming_text_length`
+ - `willow_outgoing_text_count`
+ - `willow_outgoing_text_degree`
+ - `willow_outgoing_text_length`
+ - `willow_incoming_text_reciprocity`
+ - `willow_outgoing_text_reciprocity`
+ - `willow_outgoing_MMS_count`
+ - `willow_incoming_MMS_count`
+ - `willow_mean_responsiveness_text`
+ - `willow_incoming_call_count`
+ - `willow_incoming_call_degree`
+ - `willow_incoming_call_duration`
+ - `willow_outgoing_call_count`
+ - `willow_outgoing_call_degree`
+ - `willow_outgoing_call_duration`
+ - `willow_missed_call_count`
+ - `willow_missed_callers`
+ - `willow_mean_responsiveness_call`
+ - `willow_call_reciprocity`
+ - `willow_uniq_individual_call_or_text_count`
+ - `oak_walking_time`
+ - `oak_steps`
+ - `oak_cadence`
+
+---
+
+</details>
+
+
+```python
+from mano import fetch_summary_statistics
+
+# Get daily summary statistics, optionally filtered by date range and/or field list
+for day in fetch_summary_statistics(
+    keyring, study_id, start_date="2024-01-01", end_date="2024-01-31"
+):
+    print(day)
 ```
 
 

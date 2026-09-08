@@ -15,7 +15,7 @@ class GlobalSettings:
     skip_user_interaction: bool = True   # main() in CLI sets this to False when appropriate.
     multithreading_count: int = 0        # zero or negative means use the number of CPU cores.
     
-    BACKFILL_WINDOW = 20
+    backfill_window = 20
 
 
 #
@@ -63,6 +63,84 @@ ALL_DATA_STREAMS = [
     DataStreams.TEXTS_LOG,
     DataStreams.WIFI,
 ]
+
+
+class QuantityStats:
+    # Informational Fields
+    date = "date"
+    participant_id = "participant_id"
+    study_id = "study_id"
+    timezone = "timezone"
+    
+    # Data Quantity Fields
+    accelerometer_bytes = "accelerometer_bytes"
+    app_log_bytes = "app_log_bytes"
+    bluetooth_bytes = "bluetooth_bytes"
+    calls_bytes = "calls_bytes"
+    devicemotion_bytes = "devicemotion_bytes"
+    gps_bytes = "gps_bytes"
+    gyro_bytes = "gyro_bytes"
+    identifiers_bytes = "identifiers_bytes"
+    ios_log_bytes = "ios_log_bytes"
+    magnetometer_bytes = "magnetometer_bytes"
+    power_state_bytes = "power_state_bytes"
+    proximity_bytes = "proximity_bytes"
+    reachability_bytes = "reachability_bytes"
+    survey_answers_bytes = "survey_answers_bytes"
+    survey_timings_bytes = "survey_timings_bytes"
+    texts_bytes = "texts_bytes"
+    audio_recordings_bytes = "audio_recordings_bytes"
+    wifi_bytes = "wifi_bytes"
+
+
+class ForestStats:
+    # Forest Output Fields
+    jasmine_distance_diameter = "jasmine_distance_diameter"
+    jasmine_distance_from_home = "jasmine_distance_from_home"
+    jasmine_distance_traveled = "jasmine_distance_traveled"
+    jasmine_flight_distance_average = "jasmine_flight_distance_average"
+    jasmine_flight_distance_stddev = "jasmine_flight_distance_stddev"
+    jasmine_flight_duration_average = "jasmine_flight_duration_average"
+    jasmine_flight_duration_stddev = "jasmine_flight_duration_stddev"
+    jasmine_home_duration = "jasmine_home_duration"
+    jasmine_gyration_radius = "jasmine_gyration_radius"
+    jasmine_significant_location_count = "jasmine_significant_location_count"
+    jasmine_significant_location_entropy = "jasmine_significant_location_entropy"
+    jasmine_pause_time = "jasmine_pause_time"
+    jasmine_obs_duration = "jasmine_obs_duration"
+    jasmine_obs_day = "jasmine_obs_day"
+    jasmine_obs_night = "jasmine_obs_night"
+    jasmine_total_flight_time = "jasmine_total_flight_time"
+    jasmine_av_pause_duration = "jasmine_av_pause_duration"
+    jasmine_sd_pause_duration = "jasmine_sd_pause_duration"
+    jasmine_physical_circadian_rhythm = "jasmine_physical_circadian_rhythm"
+    jasmine_physical_circadian_rhythm_stratified = "jasmine_physical_circadian_rhythm_stratified"
+    willow_incoming_text_count = "willow_incoming_text_count"
+    willow_incoming_text_degree = "willow_incoming_text_degree"
+    willow_incoming_text_length = "willow_incoming_text_length"
+    willow_outgoing_text_count = "willow_outgoing_text_count"
+    willow_outgoing_text_degree = "willow_outgoing_text_degree"
+    willow_outgoing_text_length = "willow_outgoing_text_length"
+    willow_incoming_text_reciprocity = "willow_incoming_text_reciprocity"
+    willow_outgoing_text_reciprocity = "willow_outgoing_text_reciprocity"
+    willow_outgoing_MMS_count = "willow_outgoing_MMS_count"
+    willow_incoming_MMS_count = "willow_incoming_MMS_count"
+    willow_mean_responsiveness_text = "willow_mean_responsiveness_text"
+    willow_incoming_call_count = "willow_incoming_call_count"
+    willow_incoming_call_degree = "willow_incoming_call_degree"
+    willow_incoming_call_duration = "willow_incoming_call_duration"
+    willow_outgoing_call_count = "willow_outgoing_call_count"
+    willow_outgoing_call_degree = "willow_outgoing_call_degree"
+    willow_outgoing_call_duration = "willow_outgoing_call_duration"
+    willow_missed_call_count = "willow_missed_call_count"
+    willow_missed_callers = "willow_missed_callers"
+    willow_mean_responsiveness_call = "willow_mean_responsiveness_call"
+    willow_call_reciprocity = "willow_call_reciprocity"
+    willow_uniq_individual_call_or_text_count = "willow_uniq_individual_call_or_text_count"
+    oak_walking_time = "oak_walking_time"
+    oak_steps = "oak_steps"
+    oak_cadence = "oak_cadence"
+
 
 # URL endpoint extensions for the Beiwe data access API
 URL_UNCOMPRESSED = '/get-data/v1'
@@ -169,3 +247,20 @@ locale.setlocale(locale.LC_ALL, LOCALE)
 
 DATA_STREAMS = Config['data_streams']  # historical variable name, cannot/do not change
 TIME_FORMAT = Config['time_format']  # This will probably get removed because we always want isoformat
+
+
+## Keyring constants
+BEIWE_URL = "BEIWE_URL"
+BEIWE_USERNAME = "BEIWE_USERNAME"
+BEIWE_PASSWORD = "BEIWE_PASSWORD"
+BEIWE_ACCESS_KEY = "BEIWE_ACCESS_KEY"
+BEIWE_SECRET_KEY = "BEIWE_SECRET_KEY"
+
+USERNAME = "USERNAME"  # REMOVE
+PASSWORD = "PASSWORD"  # REMOVE
+URL = "URL"
+ACCESS_KEY = "ACCESS_KEY"
+SECRET_KEY = "SECRET_KEY"
+
+
+NRG_KEYRING_PASS = "NRG_KEYRING_PASS"
