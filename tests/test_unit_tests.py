@@ -4,13 +4,18 @@ from pathlib import Path
 import pytest
 import responses
 from dateutil.tz import gettz
+from pytest_mock import MockerFixture
 
+import mano.mano as mano_module
 from mano import APIError, interval, IntervalError
 from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
     fetch_participant_table_data_csv, fetch_study_device_settings, fetch_study_settings,
     fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
 from mano.constants import UTC
-from mano.messages import TIME_REQUIRED_ERROR
+from mano.mano import login, LoginError
+from mano.messages import (API_400_ERROR, API_403_ERROR, API_404_ERROR,
+    BACKFILL_FILE_EXISTS_MSG, BACKFILL_RESTARTING_WARNING, BACKFILL_UNPARSABLE_DATE_ERROR,
+    BAD_MULTITHREADING_ERROR, PARSE_ERROR_TOO_MANY_MATCHES_MSG, TIME_REQUIRED_ERROR)
 from mano.sync import validate_datetime, validate_required_datetime
 
 
@@ -203,6 +208,25 @@ def test_interval_uppercase_all_units():
     assert interval("5M") == 300
     assert interval("2H") == 7200
     assert interval("1D") == 86400
+
+
+# NOTE: the regex used in interval() (`^([0-9]+)([smhd]$)`) guarantees `value` is all-digits and
+# `units` is one of s/m/h/d whenever it matches, so `int(value)` can never raise ValueError and the
+# final `else` (unrecognized unit) can never be reached in real usage. These two tests force those
+# branches by patching out int()/re.split() within the mano.mano module only, purely to exercise
+# the defensive code - they don't reflect input that can occur for real.
+def test_interval_dead_int_conversion_failure_branch(mocker: MockerFixture):
+    def fake_int(_):
+        raise ValueError("forced failure")
+    mocker.patch.object(mano_module, "int", fake_int, create=True)
+    with pytest.raises(IntervalError, match="invalid interval '5s': forced failure"):
+        mano_module.interval("5s")
+
+
+def test_interval_dead_unrecognized_unit_branch(mocker: MockerFixture):
+    mocker.patch.object(mano_module.re, "split", return_value=["", "5", "x", ""])
+    with pytest.raises(IntervalError, match="invalid interval unit 'x'"):
+        mano_module.interval("5x")
 
 
 @responses.activate
@@ -410,3 +434,121 @@ def test_fetch_summary_statistics_omits_none_params(keyring: dict[str, str], moc
     assert 'start_date' not in body
     assert 'end_date' not in body
     assert 'fields' not in body
+
+
+#
+# fetch_survey_history error handling
+#
+
+
+@responses.activate
+def test_fetch_survey_history_non_dict_raises(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-survey-history/v1', body='[]', status=200)
+    with pytest.raises(ValueError, match="expected a dict of survey history data"):
+        fetch_survey_history(keyring, 'STUDY_ID')
+
+
+#
+# login() tests
+#
+
+
+@responses.activate
+def test_login_returns_cookies_after_redirect(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=302,
+        headers={'Location': keyring['URL'] + '/dashboard', 'Set-Cookie': 'sessionid=abc123'},
+    )
+    responses.add(responses.GET, keyring['URL'] + '/dashboard', status=200, body='ok')
+
+    cookies = login(keyring)
+    assert cookies['sessionid'] == 'abc123'
+
+
+@responses.activate
+def test_login_sends_username_and_password(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=302,
+        headers={'Location': keyring['URL'] + '/dashboard', 'Set-Cookie': 'sessionid=abc123'},
+    )
+    responses.add(responses.GET, keyring['URL'] + '/dashboard', status=200, body='ok')
+
+    login(keyring)
+    body = str(responses.calls[0].request.body)
+    assert f"username={keyring['USERNAME']}" in body
+    assert f"password={keyring['PASSWORD']}" in body
+
+
+@responses.activate
+def test_login_http_error_raises_login_error(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=500,
+        body='Internal Server Error',
+    )
+    with pytest.raises(LoginError, match="500"):
+        login(keyring)
+
+
+#
+# messages.py pure formatting function tests
+#
+
+
+def test_backfill_unparsable_date_error():
+    err = BACKFILL_UNPARSABLE_DATE_ERROR("not-a-date")
+    assert isinstance(err, ValueError)
+    assert "not-a-date" in str(err)
+    assert "could not parse" in str(err)
+
+
+def test_parse_error_too_many_matches_msg():
+    msg = PARSE_ERROR_TOO_MANY_MATCHES_MSG(r"^regex$", "some/path", 2)
+    assert "expected 1 match, found 2" in msg
+    assert "some/path" in msg
+
+
+def test_backfill_file_exists_msg():
+    msg = BACKFILL_FILE_EXISTS_MSG("/tmp/backfill.json")
+    assert "/tmp/backfill.json" in msg
+    assert "overwritten" in msg
+
+
+def test_backfill_restarting_warning():
+    msg = BACKFILL_RESTARTING_WARNING("USER_ID")
+    assert "USER_ID" in msg
+    assert "resume" in msg
+
+
+def test_bad_multithreading_error():
+    msg = BAD_MULTITHREADING_ERROR("--mtX")
+    assert "--mtX" in msg
+    assert "--mt4" in msg
+
+
+def test_api_400_error():
+    msg = API_400_ERROR(400, "https://studies.beiwe.org/get-studies/v1")
+    assert "https://studies.beiwe.org/get-studies/v1" in msg
+    assert "400" in msg
+
+
+def test_api_404_error_variants():
+    no_study = API_404_ERROR(404, "https://x/get-users/v1")
+    assert "the provided data stream was not valid" in no_study
+
+    with_study = API_404_ERROR(404, "https://x/get-users/v1", study_id="STUDY_ID")
+    assert "study `STUDY_ID` does not exist" in with_study
+
+    with_participant = API_404_ERROR(404, "https://x/get-users/v1", participation_id="PART_ID")
+    assert "participant `PART_ID` does not exist" in with_participant
+
+
+def test_api_403_error_with_study_id():
+    msg = API_403_ERROR(403, "https://x/get-users/v1", study_id="STUDY_ID")
+    assert "study `STUDY_ID`" in msg
+    assert "may not exist" in msg

@@ -1,6 +1,7 @@
 from copy import copy
 from datetime import date, datetime, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
+import logging
 from os import listdir, makedirs, remove as delete_file
 from pathlib import Path
 from time import sleep
@@ -9,12 +10,13 @@ from zipfile import ZipFile
 import pytest
 import requests
 import responses
+from dateutil.parser import ParserError
 from pytest_mock import MockerFixture
 from pyzstd import decompress
 from responses import RequestsMock
 
 from mano import sync
-from mano.constants import APIError, UnParsableTimeError, UTC
+from mano.constants import APIError, DownloadError, UnParsableTimeError, UTC
 from mano.messages import NOT_200_OK_ERROR
 from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_COMPRESSED,
     FILE_CONTENT_ENCRYPTED_COMPRESSED, FILE_CONTENT_ENCRYPTED_UNCOMPRESSED,
@@ -365,6 +367,55 @@ def test_download_connection_error(keyring: dict[str, str]):
                 time_start='2018-06-15T00:00:00',
                 time_end='2018-06-17T00:00:00'
             )
+
+
+def test_download_sends_registry_param(keyring: dict[str, str], mock_zip_data_uncompressed: bytes):
+    """ When a registry dict is provided it should be JSON-encoded and included in the payload. """
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=mock_zip_data_uncompressed,
+            status=200,
+            content_type='application/zip',
+        )
+        sync.download(
+            keyring,
+            study_id='STUDY_ID',
+            registry={'some/file.csv': 'somehash'},
+        )
+        body = str(rsps.calls[0].request.body)
+        assert 'registry=' in body
+        assert 'some%2Ffile.csv' in body or 'some/file.csv' in body
+
+
+def test_download_logs_nonzero_elapsed_time(
+    mock_download_v1_api: RequestsMock, keyring: dict[str, str], mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    """ When the download takes measurable time, the MB/s summary line should be logged. """
+    mocker.patch("mano.sync.perf_counter", side_effect=[0.0, 0.5])
+    with caplog.at_level(logging.INFO, logger="mano"):
+        sync.download(keyring, study_id='STUDY_ID')
+    assert any("average of" in record.message for record in caplog.records)
+
+
+def test_do_download_bad_zip_raises_download_error(keyring: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """ A non-zip response body should raise DownloadError and leave a debug file on disk. """
+    monkeypatch.chdir(tmp_path)
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.POST,
+            'https://studies.beiwe.org/get-data/v1',
+            body=b'this is not a zip file',
+            status=200,
+            content_type='application/zip',
+        )
+        with pytest.raises(DownloadError, match="bad zip file written to"):
+            sync.download(keyring, study_id='STUDY_ID')
+
+    debug_files = [f for f in tmp_path.iterdir() if f.name.startswith('beiwe') and f.name.endswith('.zip')]
+    assert len(debug_files) == 1
+    assert debug_files[0].read_bytes() == b'this is not a zip file'
 
 
 #
@@ -999,6 +1050,15 @@ def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
             output_dir="/tmp",
             start_date=12345,  # type: ignore
         )
+    with pytest.raises(TypeError, match=".*end_date.*datetime.*"):
+        sync.backfill(
+            keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            start_date=start_date,
+            end_date=12345,  # type: ignore
+        )
     with pytest.raises(TypeError, match=".*data_streams.*list.*"):
         sync.backfill(
             keyring={},
@@ -1036,6 +1096,15 @@ def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
             output_dir="/tmp",
             user_id=12345,  # type: ignore
             start_date=start_date,
+        )
+    with pytest.raises(TypeError, match=".*compressed.*bool.*"):
+        sync.backfill(
+            keyring={},
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir="/tmp",
+            start_date=start_date,
+            compressed="not a bool",  # type: ignore
         )
 
 
@@ -1163,6 +1232,75 @@ def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: P
             start_date="",
         )
 
+    # non-string item inside data_streams
+    with pytest.raises(TypeError, match="`data_streams item`.*must be a `str`"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            start_date=start_date,
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            data_streams=["gps", 123],
+        )
+
+    # non-string item inside lock
+    with pytest.raises(TypeError, match="`lock item`.*must be a `str`"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            start_date=start_date,
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            lock=["gps", 123],
+            passphrase="some_passphrase",
+        )
+
+    # unparsable start_date currently surfaces as UnParsableTimeError (raised inside
+    # validate_required_datetime) rather than the BACKFILL_UNPARSABLE_DATE_ERROR wrapper, because
+    # that wrapper only triggers on dateutil's ParserError, which validate_required_datetime never
+    # lets propagate.
+    with pytest.raises(UnParsableTimeError, match="could not parse time string"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date="not-a-real-date-at-all",
+        )
+
+
+# NOTE: validate_required_datetime() always converts dateutil's ParserError into UnParsableTimeError
+# internally (see the test above) - it never lets a bare ParserError escape. That makes backfill()'s
+# `except ParserError: raise BACKFILL_UNPARSABLE_DATE_ERROR(...)` wrappers around both the start_date
+# and end_date parsing dead code as currently written. These two tests force them by mocking
+# validate_required_datetime to raise ParserError directly, purely to exercise that dead code - this
+# isn't behavior that can occur with real input.
+def test_backfill_dead_start_date_parsererror_branch(mocker: MockerFixture, keyring: dict[str, str], tmp_path: Path):
+    mocker.patch("mano.sync.validate_required_datetime", side_effect=ParserError("forced"))
+    with pytest.raises(ValueError, match="could not parse"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date="2024-01-01",
+        )
+
+
+def test_backfill_dead_end_date_parsererror_branch(mocker: MockerFixture, keyring: dict[str, str], tmp_path: Path):
+    mocker.patch(
+        "mano.sync.validate_required_datetime",
+        side_effect=[datetime(2024, 1, 1), ParserError("forced")],
+    )
+    with pytest.raises(ValueError, match="could not parse"):
+        sync.backfill(
+            keyring=keyring,
+            study_id="STUDY_ID",
+            participant_id="USER_ID",
+            output_dir=str(tmp_path),
+            start_date="2024-01-01",
+            end_date="2024-02-01",
+        )
 
 
 def test_backfill_end_date_before_start_date_raises(
@@ -1311,3 +1449,105 @@ def test_generate_registry_hashes_mixed_files(tmp_path: Path):
     # TODO: this should probably detect this case and emit a warning rather than overwriting...
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
     assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
+
+
+#
+# test deprecated save() wrapper
+#
+
+
+def test_save_deprecated_calls_save_archive(mocker: MockerFixture):
+    mock_save_archive = mocker.patch("mano.sync.save_archive", return_value=3)
+    archive = object()
+    result = sync.save(archive, "USER_ID", "/tmp/out", lock=["gps"], passphrase="pw")
+    assert result == 3
+    mock_save_archive.assert_called_once_with(archive, "USER_ID", "/tmp/out", ["gps"], "pw")
+
+
+def test_save_deprecated_user_id_alias(mocker: MockerFixture):
+    mock_save_archive = mocker.patch("mano.sync.save_archive", return_value=1)
+    archive = object()
+    sync.save(archive, "", "/tmp/out", user_id="USER_ID")
+    mock_save_archive.assert_called_once_with(archive, "USER_ID", "/tmp/out", None, None)
+
+
+def test_save_deprecated_user_id_and_participant_id_raises(mocker: MockerFixture):
+    mocker.patch("mano.sync.save_archive")
+    with pytest.raises(ValueError, match="cannot provide both"):
+        sync.save(object(), "PARTICIPANT_ID", "/tmp/out", user_id="USER_ID")
+
+
+#
+# normalize_url tests
+#
+
+
+def test_normalize_url_empty_raises():
+    with pytest.raises(ValueError, match="An empty URL was provided"):
+        sync.normalize_url("   ")
+
+
+def test_normalize_url_forces_https():
+    assert sync.normalize_url("http://studies.beiwe.org") == "https://studies.beiwe.org"
+
+
+def test_normalize_url_adds_https_scheme():
+    assert sync.normalize_url("studies.beiwe.org") == "https://studies.beiwe.org"
+
+
+def test_normalize_url_strips_trailing_slashes():
+    assert sync.normalize_url("https://studies.beiwe.org///") == "https://studies.beiwe.org"
+
+
+#
+# validate_data_streams / check_can_parse_to_datetime tests
+#
+
+
+def test_validate_data_streams_empty_list_is_a_noop():
+    assert sync.validate_data_streams([], "prefix") is None
+    assert sync.validate_data_streams(None, "prefix") is None
+
+
+def test_check_can_parse_to_datetime():
+    assert sync.check_can_parse_to_datetime("2024-01-01T00:00:00Z") is True
+    assert sync.check_can_parse_to_datetime("not a date at all !!!") is False
+
+
+#
+# iterate_with_spinner tests
+#
+
+
+def test_iterate_with_spinner_no_progress(monkeypatch: pytest.MonkeyPatch):
+    # sync.py binds `stdout` at import time (`from sys import stdout`), so patch that reference
+    # directly rather than relying on pytest's stdout-capturing fixtures.
+    fake_stdout = StringIO()
+    monkeypatch.setattr(sync, "stdout", fake_stdout)
+    resp = mocker_response_with_chunks([b"abc", b"def"])
+    buf = BytesIO()
+    size_mb, t_start, t_end = sync.iterate_with_spinner(resp, buf, show_progress=False)
+    assert buf.getvalue() == b"abcdef"
+    assert size_mb > 0
+    assert t_end >= t_start
+    assert fake_stdout.getvalue() == ""
+
+
+def test_iterate_with_spinner_shows_progress(monkeypatch: pytest.MonkeyPatch):
+    fake_stdout = StringIO()
+    monkeypatch.setattr(sync, "stdout", fake_stdout)
+    # one chunk over the 2MB threshold to trigger the spinner rotation, plus the trailing newline
+    big_chunk = b"x" * (1024 * 1024 * 3)
+    resp = mocker_response_with_chunks([big_chunk])
+    buf = BytesIO()
+    sync.iterate_with_spinner(resp, buf, show_progress=True)
+    output = fake_stdout.getvalue()
+    assert "MB)" in output
+    assert "\r\n" in output
+
+
+def mocker_response_with_chunks(chunks: list[bytes]):
+    class FakeResponse:
+        def iter_content(self, chunk_size=None):
+            yield from chunks
+    return FakeResponse()

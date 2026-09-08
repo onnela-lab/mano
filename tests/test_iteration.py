@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pytest_mock import MockerFixture
 
 from mano.constants import logger as log
 from mano.file_management import iterate_beiwe_data_files_recursively
@@ -89,3 +90,9 @@ def test_iterate_lock_files(tmp_path: Path):
 def test_iterate_recursive_rejects_conflicting_flags():
     with pytest.raises(ValueError, match="cannot set both zst_only and include_zst set to True"):
         list(iterate_beiwe_data_files_recursively("irrelevant", zst_only=True, include_zst=True))
+
+
+def test_iterate_logs_and_reraises_on_unexpected_walk_error(tmp_path: Path, mocker: MockerFixture):
+    mocker.patch("mano.file_management.walk_directory", side_effect=OSError("permission denied"))
+    with pytest.raises(OSError, match="permission denied"):
+        list(iterate_beiwe_data_files_recursively(str(tmp_path)))

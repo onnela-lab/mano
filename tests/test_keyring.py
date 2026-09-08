@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from pytest_mock import MockerFixture
 
 from mano import load_keyring
 from mano.mano import ENV_KEYS, KeyringError
@@ -95,6 +96,21 @@ def test_keyring_from_env(keyring: dict[str, str]):
         os.environ["BEIWE_SECRET_KEY"] = keyring["SECRET_KEY"]
         ans = load_keyring(None)
         assert ans == keyring
+    finally:
+        os.environ.clear()
+        os.environ.update(_environ)
+
+
+def test_keyring_prompts_for_passphrase_when_not_provided(mocker: MockerFixture, keyring: dict[str, str]):
+    """ When no passphrase is given and NRG_KEYRING_PASS isn't set, fall back to an interactive prompt. """
+    _environ = dict(os.environ)
+    try:
+        os.environ.pop("NRG_KEYRING_PASS", None)
+        mock_getpass = mocker.patch("mano.mano.getpass.getpass", return_value="foobar")
+        f = os.path.join(DIR, "keyring.enc")
+        ans = load_keyring("beiwe.onnela", keyring_file=f)
+        assert ans == keyring
+        mock_getpass.assert_called_once_with("enter keyring passphrase: ")
     finally:
         os.environ.clear()
         os.environ.update(_environ)
