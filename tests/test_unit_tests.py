@@ -4,9 +4,7 @@ from pathlib import Path
 import pytest
 import responses
 from dateutil.tz import gettz
-from pytest_mock import MockerFixture
 
-import mano.mano as mano_module
 from mano import APIError, interval, IntervalError
 from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
     fetch_participant_table_data_csv, fetch_study_device_settings, fetch_study_settings,
