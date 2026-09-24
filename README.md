@@ -122,7 +122,7 @@ For developers of Mano:
 - Clone the repository with `git clone git@github.com:onnela-lab/mano.git`
 - `cd` into the cloned repository folder in your terminal
 - Ensure you are on the `develop` branch
-- Set up your python virtual environment running under Python 3.12 or higher
+- Set up your python virtual environment running under Python 3.11+
 
 In your virtual environment run these commands:
 
@@ -340,7 +340,7 @@ Environment Variables are useful for automated scripts, but must use slightly di
 because there may be generic environment variables using identical names on the system.
 - for __`URL`__ use __`BEIWE_URL`__
 - for __`ACCESS_KEY`__ use __`BEIWE_ACCESS_KEY`__
-- for __`ACCESS_KEY`__ use __`BEIWE_SECRET_KEY`__
+- for __`SECRET_KEY`__ use __`BEIWE_SECRET_KEY`__
 
 To load your Keyring from data in environment variables, just pass a Python `None` to
 `mano.load_keyring()`:
@@ -373,7 +373,7 @@ from mano import load_keyring
 keyring = load_keyring("onnela-lab-server-example-credentials")
 # load a file from a custom location
 keyring = load_keyring(
-    "onnela-lab-server-example-credentials", "/path/to/my_credentials_file.enc"
+    "onnela-lab-server-example-credentials", "/path/to/my_credentials_file.enc")
 ```
 
 #### If you are using an encrypted Keyring and do not provide it programmatically, Mano will prompt you to type it in directly.
@@ -546,7 +546,7 @@ A simple usage of `backfill` looks like this:
 
 ```python
 from datetime import date
-from mano import load_keyring
+from mano import load_keyring, fetch_users_in_study
 from mano.sync import backfill
 
 keyring = {...}  # load your keyring however you like
@@ -623,7 +623,7 @@ zf: ZipFile = download(
 )
 
 # we will just use the `extractall()` method on that Zipfile
-zf.extractall(output_folder)  # It does exactly what it says
+zf.extractall(target_output_folder)  # It does exactly what it says
 ```
 
 
@@ -857,7 +857,7 @@ for day in fetch_summary_statistics(
 
 <div align="center">
 
-# File Management Tools and and the CLI
+# File Management Tools and the CLI
 </div>
 
 
