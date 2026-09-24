@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from mano.file_management import check_hash_cache_match, get_possible_real_paths, normalize_path_for_registry
+from mano.file_management import (check_hash_cache_match, get_possible_real_paths,
+    normalize_path_for_registry)
 from tests.conftest import DATA_STREAM_FILE, DATA_STREAM_FILE_ISO, PARTICIPANT_ID, STUDY_ID
 
 

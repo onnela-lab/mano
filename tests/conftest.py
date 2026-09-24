@@ -1,7 +1,8 @@
+import json
 from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
-import json
+
 import pytest
 import pyzstd
 import responses

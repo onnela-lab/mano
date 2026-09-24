@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from mano import load_keyring
 from mano.mano import ENV_KEYS, KeyringError
 
+
 DIR = os.path.dirname(__file__)
 
 

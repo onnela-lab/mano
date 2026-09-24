@@ -1,16 +1,16 @@
-import orjson
 import os
 
+import orjson
 import requests
 
-from mano.constants import ACCESS_KEY, SECRET_KEY, APIError
+from mano.constants import ACCESS_KEY, APIError, SECRET_KEY
 from mano.file_management import make_directories
 
 
 #
 ## API Endpoints
 #
-def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
+def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None) -> dict[str, str]:
     url = keyring["URL"].rstrip("/") + endpoint
     payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]}
     if params:

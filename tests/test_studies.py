@@ -1,8 +1,8 @@
 import pytest
 import responses
 
-from mano import (AmbiguousStudyIDError, StudyIDError, StudyNameError, expand_study_id,
-    fetch_accessible_studies, fetch_users_in_study, studyid, studyname)
+from mano import (AmbiguousStudyIDError, expand_study_id, fetch_accessible_studies,
+    fetch_users_in_study, studyid, StudyIDError, studyname, StudyNameError)
 from mano.constants import APIError
 
 

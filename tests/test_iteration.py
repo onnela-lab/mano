@@ -6,8 +6,8 @@ from pytest_mock import MockerFixture
 from mano.constants import logger as log
 from mano.file_management import iterate_beiwe_data_files_recursively
 from mano.messages import NO_VALID_FILES_MSG
-from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES, generate_valid_compress_test_files,
-    generate_valid_decompress_test_files)
+from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES,
+    generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
 
 def test_iterate_valid_data_files(tmp_path: Path):

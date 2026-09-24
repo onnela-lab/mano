@@ -1,7 +1,7 @@
+import logging
 from copy import copy
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
-import logging
 from os import listdir, makedirs, remove as delete_file
 from pathlib import Path
 from time import sleep

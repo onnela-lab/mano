@@ -7,14 +7,15 @@ from datetime import timedelta
 import cryptease as crypt
 import requests
 
-from mano.beiwe_api import fetch_accessible_studies, fetch_study_device_settings, fetch_users_in_study
+from mano.beiwe_api import (fetch_accessible_studies, fetch_study_device_settings,
+    fetch_users_in_study)
+from mano.constants import APIError  # noqa: F401  (unused here, re-exported for backward compatibility)
+from mano.constants import ScrapeError  # noqa: F401
+from mano.constants import StudySettingsError  # noqa: F401
 from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
     BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
     LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, SECRET_KEY, StudyIDError,
     StudyNameError, TIME_FORMAT, URL, USERNAME)
-from mano.constants import APIError  # noqa: F401  (unused here, re-exported for backward compatibility)
-from mano.constants import ScrapeError  # noqa: F401
-from mano.constants import StudySettingsError  # noqa: F401
 
 
 # TODO: remove username and password from the keyring, display a deprecation warning if they are present
