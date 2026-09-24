@@ -4,12 +4,18 @@ from pathlib import Path
 import pytest
 import responses
 from dateutil.tz import gettz
+from pytest_mock import MockerFixture
 
-from mano import (APIError, IntervalError, fetch_interventions, fetch_participant_table_data,
-    fetch_participant_table_data_csv, fetch_study_settings, fetch_study_settings_test,
-    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study, interval)
+import mano.mano as mano_module
+from mano import APIError, interval, IntervalError
+from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
+    fetch_participant_table_data_csv, fetch_study_device_settings, fetch_study_settings,
+    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
 from mano.constants import UTC
-from mano.messages import TIME_REQUIRED_ERROR
+from mano.mano import login, LoginError
+from mano.messages import (API_400_ERROR, API_403_ERROR, API_404_ERROR,
+    BACKFILL_FILE_EXISTS_MSG, BACKFILL_RESTARTING_WARNING, BACKFILL_UNPARSABLE_DATE_ERROR,
+    BAD_MULTITHREADING_ERROR, PARSE_ERROR_TOO_MANY_MATCHES_MSG, TIME_REQUIRED_ERROR)
 from mano.sync import validate_datetime, validate_required_datetime
 
 
@@ -21,7 +27,7 @@ from mano.sync import validate_datetime, validate_required_datetime
 @responses.activate
 def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
@@ -33,7 +39,7 @@ def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_
 @responses.activate
 def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body='Internal Server Error',
         status=500,
     )
@@ -44,7 +50,7 @@ def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str
 @responses.activate
 def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
@@ -58,7 +64,7 @@ def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users
 @responses.activate
 def test_fetch_users_in_study_server_returns_dict_raises_value_error(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-users/v1',
+        keyring['URL'] + '/get-participants/v1',
         body='{"error": "no users"}',
         status=200,
         content_type='text/html; charset=utf-8'
@@ -304,14 +310,14 @@ def test_fetch_participant_table_data_csv_raises_on_error(keyring: dict[str, str
 
 
 @responses.activate
-def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
+def test_fetch_study_device_settings_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body=mock_study_settings_response,
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = dict(fetch_study_settings_test(keyring, '0eb8ZGulAYf6c8smypun87PM'))
+    result = dict(fetch_study_device_settings(keyring, '0eb8ZGulAYf6c8smypun87PM'))
     assert result['gps'] is True
     assert result['bluetooth'] is False
     assert result['gps_on_duration_seconds'] == 60
@@ -325,36 +331,36 @@ def test_fetch_study_settings_test_returns_settings(keyring: dict[str, str], moc
 
 
 @responses.activate
-def test_fetch_study_settings_test_500_raises_api_error(keyring: dict[str, str]):
+def test_fetch_study_device_settings_500_raises_api_error(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='Internal Server Error',
         status=500,
     )
     with pytest.raises(APIError, match="500"):
-        list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+        list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
 @responses.activate
-def test_fetch_study_settings_test_400_raises_api_error(keyring: dict[str, str]):
+def test_fetch_study_device_settings_400_raises_api_error(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='Bad Request',
         status=400,
     )
     with pytest.raises(APIError, match="400"):
-        list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+        list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
 @responses.activate
-def test_fetch_study_settings_test_empty_returns_nothing(keyring: dict[str, str]):
+def test_fetch_study_device_settings_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(
         keyring['URL'] + '/get-study-settings/v1',
         body='{"device_settings": {}}',
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    result = list(fetch_study_settings_test(keyring, 'STUDY_ID'))
+    result = list(fetch_study_device_settings(keyring, 'STUDY_ID'))
     assert result == []
 
 
@@ -410,3 +416,121 @@ def test_fetch_summary_statistics_omits_none_params(keyring: dict[str, str], moc
     assert 'start_date' not in body
     assert 'end_date' not in body
     assert 'fields' not in body
+
+
+#
+# fetch_survey_history error handling
+#
+
+
+@responses.activate
+def test_fetch_survey_history_non_dict_raises(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-survey-history/v1', body='[]', status=200)
+    with pytest.raises(ValueError, match="expected a dict of survey history data"):
+        fetch_survey_history(keyring, 'STUDY_ID')
+
+
+#
+# login() tests
+#
+
+
+@responses.activate
+def test_login_returns_cookies_after_redirect(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=302,
+        headers={'Location': keyring['URL'] + '/dashboard', 'Set-Cookie': 'sessionid=abc123'},
+    )
+    responses.add(responses.GET, keyring['URL'] + '/dashboard', status=200, body='ok')
+
+    cookies = login(keyring)
+    assert cookies['sessionid'] == 'abc123'
+
+
+@responses.activate
+def test_login_sends_username_and_password(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=302,
+        headers={'Location': keyring['URL'] + '/dashboard', 'Set-Cookie': 'sessionid=abc123'},
+    )
+    responses.add(responses.GET, keyring['URL'] + '/dashboard', status=200, body='ok')
+
+    login(keyring)
+    body = str(responses.calls[0].request.body)
+    assert f"username={keyring['USERNAME']}" in body
+    assert f"password={keyring['PASSWORD']}" in body
+
+
+@responses.activate
+def test_login_http_error_raises_login_error(keyring: dict[str, str]):
+    responses.add(
+        responses.POST,
+        keyring['URL'] + '/validate_login',
+        status=500,
+        body='Internal Server Error',
+    )
+    with pytest.raises(LoginError, match="500"):
+        login(keyring)
+
+
+#
+# messages.py pure formatting function tests
+#
+
+
+def test_backfill_unparsable_date_error():
+    err = BACKFILL_UNPARSABLE_DATE_ERROR("not-a-date")
+    assert isinstance(err, ValueError)
+    assert "not-a-date" in str(err)
+    assert "could not parse" in str(err)
+
+
+def test_parse_error_too_many_matches_msg():
+    msg = PARSE_ERROR_TOO_MANY_MATCHES_MSG(r"^regex$", "some/path", 2)
+    assert "expected 1 match, found 2" in msg
+    assert "some/path" in msg
+
+
+def test_backfill_file_exists_msg():
+    msg = BACKFILL_FILE_EXISTS_MSG("/tmp/backfill.json")
+    assert "/tmp/backfill.json" in msg
+    assert "overwritten" in msg
+
+
+def test_backfill_restarting_warning():
+    msg = BACKFILL_RESTARTING_WARNING("USER_ID")
+    assert "USER_ID" in msg
+    assert "resume" in msg
+
+
+def test_bad_multithreading_error():
+    msg = BAD_MULTITHREADING_ERROR("--mtX")
+    assert "--mtX" in msg
+    assert "--mt4" in msg
+
+
+def test_api_400_error():
+    msg = API_400_ERROR(400, "https://studies.beiwe.org/get-studies/v1")
+    assert "https://studies.beiwe.org/get-studies/v1" in msg
+    assert "400" in msg
+
+
+def test_api_404_error_variants():
+    no_study = API_404_ERROR(404, "https://x/get-users/v1")
+    assert "the provided data stream was not valid" in no_study
+
+    with_study = API_404_ERROR(404, "https://x/get-users/v1", study_id="STUDY_ID")
+    assert "study `STUDY_ID` does not exist" in with_study
+
+    with_participant = API_404_ERROR(404, "https://x/get-users/v1", participation_id="PART_ID")
+    assert "participant `PART_ID` does not exist" in with_participant
+
+
+def test_api_403_error_with_study_id():
+    msg = API_403_ERROR(403, "https://x/get-users/v1", study_id="STUDY_ID")
+    assert "study `STUDY_ID`" in msg
+    assert "may not exist" in msg

@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 
 import requests
@@ -18,7 +18,7 @@ def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | N
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
-    return json.loads(resp.content)
+    return orjson.loads(resp.content)
 
 
 def fetch_accessible_studies(keyring: dict[str, str]) -> list[tuple[str, str]]:
@@ -36,7 +36,8 @@ def fetch_users_in_study(keyring: dict[str, str], study_id: str) -> list[str]:
     :param study_id: Study ID
     :returns: List of participant IDs
     """
-    result = _api_post(keyring, "/get-users/v1", {"study_id": study_id})
+    # get-users was deprecated, using get-participants
+    result = _api_post(keyring, "/get-participants/v1", {"study_id": study_id})
     if not isinstance(result, list):
         raise ValueError(f"expected a list of participant IDs, got {type(result).__name__}")
     return result
@@ -78,7 +79,7 @@ def fetch_study_settings(keyring: dict[str, str], study_id: str) -> list[tuple[s
     return list(_api_post(keyring, "/get-study-settings/v1", {"study_id": study_id}).items())
 
 
-def fetch_study_settings_test(keyring: dict[str, str], study_id: str) -> list[tuple[str, str]]:
+def fetch_study_device_settings(keyring: dict[str, str], study_id: str) -> list[tuple[str, str]]:
     """
     Get device settings for a Study via the API
 
