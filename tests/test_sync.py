@@ -329,7 +329,8 @@ def test_download_stream_exception_retries_and_succeeds(
         if iterate_with_spinner.call_count == 1:
             raise exception_type("Transient streaming failure")
         return original_iterate_with_spinner(resp, content, show_progress)
-    
+
+    # this error occurs in an odd spot because iterations is linked to the spinner
     iterate_with_spinner.side_effect = streaming_failure_then_success
     
     with responses.RequestsMock() as rsps:
