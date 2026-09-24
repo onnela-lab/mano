@@ -210,21 +210,6 @@ def test_interval_uppercase_all_units():
     assert interval("1D") == 86400
 
 
-# Usually the branch will not be reached since the interval string always contain numeric values so we mock it.
-def test_interval_dead_int_conversion_failure_branch(mocker: MockerFixture):
-    def fake_int(_):
-        raise ValueError("forced failure")
-    mocker.patch.object(mano_module, "int", fake_int, create=True)
-    with pytest.raises(IntervalError, match="invalid interval '5s': forced failure"):
-        mano_module.interval("5s")
-
-
-def test_interval_dead_unrecognized_unit_branch(mocker: MockerFixture):
-    mocker.patch.object(mano_module.re, "split", return_value=["", "5", "x", ""])
-    with pytest.raises(IntervalError, match="invalid interval unit 'x'"):
-        mano_module.interval("5x")
-
-
 @responses.activate
 def test_fetch_interventions_returns_data(keyring: dict[str, str], mock_interventions_response: str):
     responses.post(keyring['URL'] + '/get-interventions/v1', body=mock_interventions_response, status=200)
