@@ -399,7 +399,9 @@ def test_download_logs_nonzero_elapsed_time(
     assert any("average of" in record.message for record in caplog.records)
 
 
-def test_do_download_bad_zip_raises_download_error(keyring: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_do_download_bad_zip_raises_download_error(
+        keyring: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """ A non-zip response body should raise DownloadError and leave a debug file on disk. """
     monkeypatch.chdir(tmp_path)
     with responses.RequestsMock() as rsps:
@@ -1255,10 +1257,7 @@ def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: P
             passphrase="some_passphrase",
         )
 
-    # unparsable start_date currently surfaces as UnParsableTimeError (raised inside
-    # validate_required_datetime) rather than the BACKFILL_UNPARSABLE_DATE_ERROR wrapper, because
-    # that wrapper only triggers on dateutil's ParserError, which validate_required_datetime never
-    # lets propagate.
+    # Invalid dates currently raise UnParsableTimeError from validate_required_datetime.
     with pytest.raises(UnParsableTimeError, match="could not parse time string"):
         sync.backfill(
             keyring=keyring,
@@ -1269,12 +1268,8 @@ def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: P
         )
 
 
-# NOTE: validate_required_datetime() always converts dateutil's ParserError into UnParsableTimeError
-# internally (see the test above) - it never lets a bare ParserError escape. That makes backfill()'s
-# `except ParserError: raise BACKFILL_UNPARSABLE_DATE_ERROR(...)` wrappers around both the start_date
-# and end_date parsing dead code as currently written. These two tests force them by mocking
-# validate_required_datetime to raise ParserError directly, purely to exercise that dead code - this
-# isn't behavior that can occur with real input.
+# Normally, validate_required_datetime turns a ParserError into UnParsableTimeError.
+# We mock a ParserError to testt he backup error handling code for start and end date.
 def test_backfill_dead_start_date_parsererror_branch(mocker: MockerFixture, keyring: dict[str, str], tmp_path: Path):
     mocker.patch("mano.sync.validate_required_datetime", side_effect=ParserError("forced"))
     with pytest.raises(ValueError, match="could not parse"):

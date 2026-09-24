@@ -57,17 +57,4 @@ __all__ = [
 ]
 
 
-# README import audit — every `from mano...` / `import mano` line shown in README.md examples was
-# checked against this file and the modules it re-exports from; all of them resolve to a real name:
-#   from mano import ...                fetch_accessible_studies, fetch_study_device_settings,
-#                                        fetch_summary_statistics, fetch_users_in_study, load_keyring,
-#                                        sync                              (see __all__ above)
-#   from mano.constants import ...      DataStreams, ALL_DATA_STREAMS, GlobalSettings
-#   from mano.beiwe_api import ...      fetch_interventions, fetch_participant_table_data,
-#                                        fetch_participant_table_data_csv, fetch_study_settings,
-#                                        fetch_survey_history
-#   from mano.sync import ...           backfill, download, save
-#   from mano.file_management import .. compress_to_zst_files, decompress_zst_files, GlobalSettings
-#                                        (re-exported here because file_management.py itself imports
-#                                        it from mano.constants)
-# None of the README examples currently import a name that doesn't exist.
+# Examples in README file have been verified agianst this package and its public modules.

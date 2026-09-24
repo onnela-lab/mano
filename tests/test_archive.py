@@ -94,10 +94,6 @@ def test_determine_data_stream_from_internal_zip_filepath_rejects_unparsable_pat
         determine_data_stream_from_internal_zip_filepath(PARTICIPANT_ID, PARTICIPANT_ID)
 
 
-# NOTE: the regex used in determine_data_stream_from_internal_zip_filepath has exactly one capture
-# group, so `numgroups != 1` can never actually happen - the code even says "(this will never
-# happen)" right above it. We force it here by stubbing re.search to return a fake match with 2
-# groups, purely to exercise the dead branch; this isn't behavior that can occur for real.
 def test_determine_data_stream_from_internal_zip_filepath_dead_too_many_matches_branch(mocker: MockerFixture):
     fake_match = mocker.MagicMock()
     fake_match.groups.return_value = ("gps", "extra")
@@ -106,13 +102,6 @@ def test_determine_data_stream_from_internal_zip_filepath_dead_too_many_matches_
         determine_data_stream_from_internal_zip_filepath(f"{PARTICIPANT_ID}/gps/file.csv", PARTICIPANT_ID)
 
 
-# NOTE: parse_duplicate_files()/find_duplicate_files() have a pre-existing bug when actual
-# duplicates are found: find_duplicate_files's `real_to_hash` filter checks `k in duplicates`
-# (duplicates is keyed by *base* path), instead of checking membership in the real per-file paths
-# that were found to be duplicated. This makes the returned hash lookup always empty whenever any
-# duplicates exist, so calling the real find_duplicate_files() would immediately raise KeyError.
-# The tests below mock find_duplicate_files with correctly-shaped return data so we can exercise
-# parse_duplicate_files's own (correct) logic in isolation from that upstream bug.
 def test_parse_duplicate_files_no_duplicates_returns_empty_dicts(tmp_path: Path):
     folder = tmp_path / PARTICIPANT_ID / "gps"
     folder.mkdir(parents=True)

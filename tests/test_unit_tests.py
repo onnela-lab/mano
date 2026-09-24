@@ -210,11 +210,7 @@ def test_interval_uppercase_all_units():
     assert interval("1D") == 86400
 
 
-# NOTE: the regex used in interval() (`^([0-9]+)([smhd]$)`) guarantees `value` is all-digits and
-# `units` is one of s/m/h/d whenever it matches, so `int(value)` can never raise ValueError and the
-# final `else` (unrecognized unit) can never be reached in real usage. These two tests force those
-# branches by patching out int()/re.split() within the mano.mano module only, purely to exercise
-# the defensive code - they don't reflect input that can occur for real.
+# Usually the branch will not be reached since the interval string always contain numeric values so we mock it.
 def test_interval_dead_int_conversion_failure_branch(mocker: MockerFixture):
     def fake_int(_):
         raise ValueError("forced failure")
