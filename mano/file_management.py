@@ -68,8 +68,8 @@ def iterate_beiwe_data_files_recursively(
     if zst_only and include_zst:
         raise ValueError("cannot set both zst_only and include_zst set to True")
     
-    valid_file_count = False  # two tracked cases for separate messages for
-    any_file_count = False
+    valid_file_count = 0  # two tracked cases for separate messages for
+    any_file_count = 0
     
     # If these cases are inside the for-loop it is awful. Creating some functions and picking one is
     # cleaner. And faster, which matters because this loop limits our multithreaded task dispatch.
