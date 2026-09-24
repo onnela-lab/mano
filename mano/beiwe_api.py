@@ -10,7 +10,7 @@ from mano.file_management import make_directories
 #
 ## API Endpoints
 #
-def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None) -> dict[str, str]:
+def _api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
     url = keyring["URL"].rstrip("/") + endpoint
     payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]}
     if params:
