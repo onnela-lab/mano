@@ -58,10 +58,43 @@ def BACKFILL_LOCK_AND_PASSPHRASE_ERROR(parameter_a: str, parameter_b: str) -> Va
     return ValueError(msg)
 
 
+def END_DATE_BEFORE_START_ERROR(start_date: datetime, end_date: datetime) -> ValueError:
+    start_str = full_dt_format(start_date)
+    end_str = full_dt_format(end_date)
+    return ValueError(
+        f"end_date ({end_str}) must come after after `start_date` ({start_str})."
+    )
+
+
 def NOT_200_OK_ERROR(status_code: int, url: str) -> APIError:
     msg = f"Did not receive HTTP 200 OK. Received status code: `{status_code}` - {url}"
     log.error(msg)
     return APIError(msg)
+
+
+def DOWNLOAD_RETRY_STATUS_MSG(status_code: int, attempt: int, max_attempts: int) -> str:
+    return f"download request failed with status code {status_code}; " \
+        f"retrying attempt {attempt} of {max_attempts}"
+
+
+def DOWNLOAD_RETRY_EXCEPTION_MSG(error: BaseException, attempt: int, max_attempts: int) -> str:
+    return f"download request failed with {type(error).__name__}; " \
+        f"retrying attempt {attempt} of {max_attempts}"
+
+
+DOWNLOAD_SERVER_RESPONSE_MSG = "Server responded, downloading zip data... "
+
+
+def DOWNLOAD_TIMING_MSG(downloaded_mb: float, start_time: float, end_time: float) -> str:
+    elapsed_seconds = end_time - start_time
+    if f"{elapsed_seconds:.2f}" == "0.00":
+        return f"Download took {elapsed_seconds:.2f} seconds, no data was downloaded."
+
+    average_mbps = downloaded_mb / elapsed_seconds
+    return (
+        f"Download took {elapsed_seconds:.2f} seconds "
+        f"(average of {average_mbps:.2f} MB/s) for {downloaded_mb:.2f} MB."
+    )
 
 
 def TIME_REQUIRED_ERROR(prefix: str) -> ValueError:
@@ -211,6 +244,7 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 ~Error Code Guide~
 
 400 codes mean something about the request was malformed.
+
 404 codes mean something provided could not be found.
 
 404 codes include:
@@ -230,3 +264,18 @@ DOWNLOAD_COMMA_IN_PARTICIPANTS_WARNING = \
 - the study id provided was not one the user is authorized on
 
 """
+def API_400_ERROR(status: int, url: str):
+    return f"Bad request (400) to `{url}` - check your access_key, \
+    secret_key are correct and not expired, check your study _id is valid and without typo"
+
+def API_404_ERROR(status: int, url:str, study_id:str | None=None, participation_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (404) to `{url}` - study `{study_id}` does not exist "
+    if participation_id is not None:
+        return f"Not Found (404) to `{url}` - participant `{participation_id}` does not exist"
+    return f"Not Found (404) to `{url}` - the provided data stream was not valid, check against the \
+        values in DATA_STREAMS which is a fixed list of valid sensor/data type names"
+
+def API_403_ERROR(status: int, url: str, study_id:str | None=None):
+    if study_id is not None:
+        return f"Not Found (403) to `{url}` - study `{study_id}` may not exist or you do not have authorization for it"

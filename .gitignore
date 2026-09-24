@@ -1,6 +1,7 @@
 keyring.enc
 *.mp4
 *.csv
+.coverage
 #*.lock
 #*.swp
 *.DS_Store
@@ -12,6 +13,7 @@ __pycache__/
 .venv/
 #build/
 mano.egg-info/
-
 .vscode/
 private
+.claude/
+tests/test_real.py
