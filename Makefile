@@ -2,7 +2,7 @@ init:
 	pip install --upgrade pip
 	pip install .[dev]
 test:
-	pytest tests/tests.py
+	pytest tests
 publish:
 	python -m build
 	twine upload dist/*
