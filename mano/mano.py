@@ -1,7 +1,4 @@
-import getpass
-import json
-import os
-import re
+import getpass, json, os, re
 from datetime import timedelta
 
 import cryptease as crypt
@@ -9,9 +6,9 @@ import requests
 
 from mano.beiwe_api import (fetch_accessible_studies, fetch_study_device_settings,
     fetch_users_in_study)
-from mano.constants import APIError  # noqa: F401  (unused here, re-exported for backward compatibility)
-from mano.constants import ScrapeError  # noqa: F401
-from mano.constants import StudySettingsError  # noqa: F401
+from mano.constants import APIError
+from mano.constants import ScrapeError
+from mano.constants import StudySettingsError
 from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
     BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
     LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, SECRET_KEY, StudyIDError,
@@ -220,3 +217,6 @@ Config = Config                                # noqa
 DATA_STREAMS = DATA_STREAMS                    # noqa
 LOCALE = LOCALE                                # noqa
 TIME_FORMAT = TIME_FORMAT                      # noqa
+APIError = APIError
+ScrapeError = ScrapeError
+StudySettingsError = StudySettingsError

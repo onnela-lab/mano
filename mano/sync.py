@@ -1,6 +1,4 @@
-import itertools
-import logging
-import zipfile
+import itertools, logging, zipfile
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from os import fsync, remove as delete_file
@@ -10,8 +8,7 @@ from sys import stdout
 from tempfile import NamedTemporaryFile
 from time import perf_counter
 
-import orjson
-import requests
+import orjson, requests
 from dateutil.parser import parse as dateutil_parse, ParserError
 from dateutil.tz import UTC
 from requests.models import Response

@@ -1,5 +1,4 @@
-import logging
-import sys
+import logging, sys
 from copy import deepcopy
 from os import name
 from os.path import abspath

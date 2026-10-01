@@ -1,12 +1,7 @@
-import json
-import locale
-import logging
-import os
+import json, locale, logging, os
 from datetime import datetime
 
-import coloredlogs
-import pyzstd
-import requests
+import coloredlogs, pyzstd, requests
 from dateutil.tz import UTC
 
 

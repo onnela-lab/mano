@@ -1,7 +1,6 @@
 import os
 
-import orjson
-import requests
+import orjson, requests
 
 from mano.constants import ACCESS_KEY, APIError, SECRET_KEY
 from mano.file_management import make_directories

@@ -3,9 +3,7 @@ from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
 
-import pytest
-import pyzstd
-import responses
+import pytest, pyzstd, responses
 from cryptease import encrypt_to_stream, kdf as key_derivation_function
 
 

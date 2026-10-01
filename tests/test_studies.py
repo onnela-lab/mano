@@ -1,5 +1,4 @@
-import pytest
-import responses
+import pytest, responses
 
 from mano import (AmbiguousStudyIDError, expand_study_id, fetch_accessible_studies,
     fetch_users_in_study, studyid, StudyIDError, studyname, StudyNameError)

@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-import argparse
-import logging
-import os
+import argparse, logging, os
 
 import mano
 import mano.sync as msync

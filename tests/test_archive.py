@@ -1,8 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-import pytest
-import pyzstd
+import pytest, pyzstd
 from pytest_mock import MockerFixture
 
 from mano import file_management

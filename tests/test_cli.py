@@ -1,7 +1,4 @@
-import importlib
-import os
-import runpy
-import sys
+import importlib, os, runpy, sys
 from pathlib import Path
 from unittest.mock import MagicMock
 

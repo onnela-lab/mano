@@ -7,9 +7,7 @@ from pathlib import Path
 from time import sleep
 from zipfile import ZipFile
 
-import pytest
-import requests
-import responses
+import pytest, requests, responses
 from dateutil.parser import ParserError
 from pytest_mock import MockerFixture
 from pyzstd import decompress

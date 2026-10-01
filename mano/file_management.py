@@ -1,5 +1,4 @@
-import hashlib
-import re
+import hashlib, re
 from base64 import encodebytes as base64_encodebytes
 from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable

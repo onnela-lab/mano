@@ -1,8 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-import responses
+import pytest, responses
 from dateutil.tz import gettz
 
 from mano import APIError, interval, IntervalError
