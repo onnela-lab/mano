@@ -65,6 +65,7 @@ select = [  # (linting directives to enable)
 ignore = [  # (linting directives to ignore)
     "E701",  # No. one-liner Exception subclasses are great.
     "W293",  # blank line contains whitespace
+    "E401",  # for the love of god, why is "combine top-level imports on one line" discouraged.
 ]
 
 #
@@ -91,7 +92,6 @@ extend-ignore = [
     # "SIM102",  # use 'if any(...)' instead of 'if True in (...)'
     "CFQ002",  # too many arguments for function call
     # "CFQ004",
-    "E401",  # for reasons beyond the ken of man combining top-level imports on one line is discouraged
 ]
 
 exclude = [
