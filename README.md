@@ -429,14 +429,14 @@ participants in those studies, and the study's data stream configuration.
 
 ```python
 
-from mano import fetch_accessible_studies, fetch_study_device_settings, fetch_users_in_study
+from mano import fetch_accessible_studies, fetch_study_device_settings, fetch_participants_in_study
 
 # print out a list of studies you have access to
 for study_name, study_id in fetch_accessible_studies(keyring):  
     print(f"{study_name}: {study_id}")
 
 # (for this example we will just use the the last study the loop found)
-for participant_id in fetch_users_in_study(keyring, study_id):
+for participant_id in fetch_participants_in_study(keyring, study_id):
     print(participant_id)
 
 # and print out the device settings for that study
@@ -546,14 +546,14 @@ A simple usage of `backfill` looks like this:
 
 ```python
 from datetime import date
-from mano import load_keyring, fetch_users_in_study
+from mano import load_keyring, fetch_participants_in_study
 from mano.sync import backfill
 
 keyring = {...}  # load your keyring however you like
 study_id = "your_studys_id_string"
 
 # get an up-to-date list of participants from the server (list of strings)
-participants = list(fetch_users_in_study(keyring, study_id))
+participants = list(fetch_participants_in_study(keyring, study_id))
 
 # set a start date, usually the start of your study. (end_date is an optional keyword parameter)
 start_date = date(2020, 2, 20)
@@ -586,7 +586,7 @@ If you have a need for a direct control of your download operation you can use t
 > disk.  _(there's a reason we have backfill!)_
 
 > [!Note]
-> The `msync.download` function returns a [Python Standard Library `zipfile.ZipFile`](
+> The `download` function returns a [Python Standard Library `zipfile.ZipFile`](
 > https://docs.python.org/3/library/zipfile.html) object from which you extract files.  This Zip
 > file is not actually compressed, it is just a convenient container for the data files.  Data
 > files will themselves be compressed based on the `compressed` parameter you provide to `download`.
@@ -627,24 +627,24 @@ zf.extractall(target_output_folder)  # It does exactly what it says
 ```
 
 
-By default `msync.download` attempts to download *all* of the data for the specified participant,
-which could end up being prohibitively large. For this reason, the `msync.download` function exposes
+By default `download` attempts to download *all* of the data for the specified participant,
+which could end up being prohibitively large. For this reason, the `download` function exposes
 parameters for `data_streams`, `time_start`, and `time_end`. By using these parameters you can
 limit your download operation to those constraints.
 
 > [!Note]
-> The `msync.download` function returns a [Python Standard Library `zipfile.ZipFile`](
+> The `download` function returns a [Python Standard Library `zipfile.ZipFile`](
 > https://docs.python.org/3/library/zipfile.html) object from which you extract files.
 
 ```python
 import logging
-from mano import sync as msync
+from mano.sync import download
 
 logging.basicConfig(level=logging.INFO)
 
 output_folder = '/tmp/beiwe-data'  # set this to a real folder location
 
-zf = msync.download(keyring, study_id, participant_id, data_streams=['identifiers'])
+zf = download(keyring, study_id, participant_id, data_streams=['identifiers'])
 
 zf.extractall(output_folder)
 ```

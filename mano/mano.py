@@ -4,15 +4,13 @@ from datetime import timedelta
 import cryptease as crypt
 import requests
 
-from mano.beiwe_api import (fetch_accessible_studies, fetch_study_device_settings,
-    fetch_users_in_study)
-from mano.constants import APIError
-from mano.constants import ScrapeError
-from mano.constants import StudySettingsError
-from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, BEIWE_ACCESS_KEY, BEIWE_PASSWORD,
-    BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS, IntervalError, KeyringError,
-    LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD, SECRET_KEY, StudyIDError,
-    StudyNameError, TIME_FORMAT, URL, USERNAME)
+from mano.beiwe_api import (fetch_accessible_studies, fetch_participants_in_study,
+    fetch_study_device_settings)
+from mano.constants import (ACCESS_KEY, AmbiguousStudyIDError, APIError, BEIWE_ACCESS_KEY,
+    BEIWE_PASSWORD, BEIWE_SECRET_KEY, BEIWE_URL, BEIWE_USERNAME, Config, DATA_STREAMS,
+    IntervalError, KeyringError, LOCALE, logger as log, LoginError, NRG_KEYRING_PASS, PASSWORD,
+    ScrapeError, SECRET_KEY, StudyIDError, StudyNameError, StudySettingsError, TIME_FORMAT, URL,
+    USERNAME)
 
 
 # TODO: remove username and password from the keyring, display a deprecation warning if they are present
@@ -209,7 +207,7 @@ def login(keyring: dict[str, str]) -> requests.cookies.RequestsCookieJar:
 ##  Old function aliases and variables we need to keep in the namespace for backward compatibility
 #
 studies = fetch_accessible_studies             # noqa
-users = fetch_users_in_study                   # noqa
+users = fetch_participants_in_study            # noqa
 keyring = load_keyring                         # noqa
 Keyring = load_keyring                         # noqa
 device_settings = fetch_study_device_settings  # noqa

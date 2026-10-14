@@ -6,8 +6,8 @@ from dateutil.tz import gettz
 
 from mano import APIError, interval, IntervalError
 from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
-    fetch_participant_table_data_csv, fetch_study_device_settings, fetch_study_settings,
-    fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
+    fetch_participant_table_data_csv, fetch_participants_in_study, fetch_study_device_settings,
+    fetch_study_settings, fetch_summary_statistics, fetch_survey_history)
 from mano.constants import UTC
 from mano.mano import login, LoginError
 from mano.messages import (API_400_ERROR, API_403_ERROR, API_404_ERROR, BACKFILL_FILE_EXISTS_MSG,
@@ -17,58 +17,58 @@ from mano.sync import validate_datetime, validate_required_datetime
 
 
 #
-# fetch_users_in_study tests
+# fetch_participants_in_study tests
 #
 
 
 @responses.activate
-def test_fetch_users_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
+def test_fetch_participants_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-participants/v1',
+        keyring['URL'] + '/get-participant-ids/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    users = list(fetch_users_in_study(keyring, 'STUDY_ID'))
+    users = list(fetch_participants_in_study(keyring, 'STUDY_ID'))
     assert set(users) == {"tgsidhm", "lholbc5", "yxzxtwr"}
 
 
 @responses.activate
-def test_fetch_users_in_study_http_error_raises_api_error(keyring: dict[str, str]):
+def test_fetch_participants_in_study_http_error_raises_api_error(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-participants/v1',
+        keyring['URL'] + '/get-participant-ids/v1',
         body='Internal Server Error',
         status=500,
     )
     with pytest.raises(APIError, match="500"):
-        list(fetch_users_in_study(keyring, 'STUDY_ID'))
+        list(fetch_participants_in_study(keyring, 'STUDY_ID'))
 
 
 @responses.activate
-def test_fetch_users_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
+def test_fetch_participants_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
     responses.post(
-        keyring['URL'] + '/get-participants/v1',
+        keyring['URL'] + '/get-participant-ids/v1',
         body=mock_users_response,
         status=200,
         content_type='text/html; charset=utf-8'
     )
-    list(fetch_users_in_study(keyring, 'MY_STUDY_ID'))
+    list(fetch_participants_in_study(keyring, 'MY_STUDY_ID'))
     request_body = responses.calls[0].request.body
     assert request_body is not None
     assert 'study_id=MY_STUDY_ID' in str(request_body)
 
 
 @responses.activate
-def test_fetch_users_in_study_server_returns_dict_raises_value_error(keyring: dict[str, str]):
+def test_fetch_participants_in_study_server_returns_dict_raises_value_error(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-participants/v1',
+        keyring['URL'] + '/get-participant-ids/v1',
         body='{"error": "no users"}',
         status=200,
         content_type='text/html; charset=utf-8'
     )
     # A 200 response with an object still violates the endpoint's list response contract.
     with pytest.raises(ValueError, match="expected a list of participant IDs, got dict"):
-        list(fetch_users_in_study(keyring, 'STUDY_ID'))
+        list(fetch_participants_in_study(keyring, 'STUDY_ID'))
 
 
 #

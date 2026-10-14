@@ -214,7 +214,7 @@ def test_studyid_duplicate_study_names_returns_first_match(keyring: dict[str, st
 @responses.activate
 def test_fetch_users_in_study_empty_list_yields_nothing(keyring: dict[str, str]):
     responses.post(
-        keyring['URL'] + '/get-participants/v1',
+        keyring['URL'] + '/get-participant-ids/v1',
         body='[]',
         status=200,
         content_type='text/html; charset=utf-8'

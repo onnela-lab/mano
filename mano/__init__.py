@@ -1,14 +1,12 @@
 # allow for direct imports of the entities in the mano file to retain compatability
 
 # We have to bend over backwards to both preserve some of the imports that have historically existed
-# in this codebase (so can't be abandoned), and fix one that is broken in the current structure.
-# `from mano import sync` would fail even after `import mano`. An explicit `import mano.sync` here
-# was required to resolve this.
-import mano.sync as sync
-from mano import constants, mano_cli
+# in this codebase (so can't be abandoned)
+
 from mano.beiwe_api import (fetch_accessible_studies, fetch_interventions,
-    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_study_device_settings,
-    fetch_study_settings, fetch_summary_statistics, fetch_survey_history, fetch_users_in_study)
+    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_participants_in_study,
+    fetch_study_device_settings, fetch_study_settings, fetch_summary_statistics,
+    fetch_survey_history, fetch_users_in_study)
 from mano.mano import (AmbiguousStudyIDError, APIError, Config, DATA_STREAMS, device_settings,
     expand_study_id, interval, IntervalError, Keyring, keyring_from_env, KeyringError, load_keyring,
     LOCALE, login, LoginError, ScrapeError, studies, studyid, StudyIDError, studyname,
@@ -46,6 +44,7 @@ __all__ = [
     "fetch_study_settings",
     "fetch_summary_statistics",
     "fetch_survey_history",
+    "fetch_participants_in_study",
     "fetch_users_in_study",
 
     "studies",
@@ -55,6 +54,3 @@ __all__ = [
     "Config",
     "LOCALE",
 ]
-
-
-# Examples in README file have been verified agianst this package and its public modules.
