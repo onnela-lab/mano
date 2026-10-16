@@ -5,16 +5,16 @@
 [project.optional-dependencies]
 dev = [  # development dependencies, pip install with: pip install mano[dev]
     "build",
+    "coverage",
     "lxml-stubs",
     "mypy",
-    "pytest==8.4.0",
     "pytest-mock",
+    "pytest>=8.4.0",
     "responses",
     "ruff",
     "twine",
     "types-python-dateutil",
     "types-requests",
-    "coverage",
 ]
 
 
@@ -200,13 +200,13 @@ classifiers = [
 
 
 dependencies = [  # this is underneath [project] but is about the build / dependencies systems
+    "backports.zstd; python_version < '3.14'",
     "coloredlogs",
     "colorama",
     "cryptease",
     "lxml",
     "orjson",
     "python-dateutil",
-    "pyzstd",
     "requests",
 ]
 
