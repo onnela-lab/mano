@@ -10,11 +10,10 @@ from zipfile import ZipFile
 import pytest, requests, responses
 from dateutil.parser import ParserError
 from pytest_mock import MockerFixture
-from pyzstd import decompress
 from responses import RequestsMock
 
 from mano import sync
-from mano.constants import APIError, DownloadError, UnParsableTimeError, UTC
+from mano.constants import APIError, DownloadError, UnParsableTimeError, UTC, zstd
 from mano.messages import NOT_200_OK_ERROR
 from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_COMPRESSED,
     FILE_CONTENT_ENCRYPTED_COMPRESSED, FILE_CONTENT_ENCRYPTED_UNCOMPRESSED,
@@ -177,7 +176,7 @@ def test_download_v1_and_v2_have_same_underlying_data(
     for name in names:
         
         data1 = zf1.read(name)
-        data2 = decompress(zf2.read(name+".zst"))
+        data2 = zstd.decompress(zf2.read(name+".zst"))
         assert data1 == data2
     
     assert zf1.read("registry") == zf2.read("registry")

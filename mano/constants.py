@@ -1,8 +1,13 @@
 import json, locale, logging, os
 from datetime import datetime
 
-import coloredlogs, pyzstd, requests
+import coloredlogs, requests
 from dateutil.tz import UTC
+
+try:  # zstd is in the standard library as of Python 3.14, earlier versions use the backport
+    from compression import zstd
+except ImportError:
+    from backports import zstd  # type: ignore
 
 
 # Global settings object
@@ -170,12 +175,12 @@ API_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"  # isoformat without timezone, YYYY-MM-DDT
 EARLIEST_POSSIBLE_DATA_STR = '2015-9-01T00:00:00'
 EARLIEST_POSSIBLE_DATA_DT = datetime(2015, 9, 1, tzinfo=UTC)
 
-# pyzstd custom parameters
+# zstd custom parameters
 # Note - Beiwe does not produce files large enough to benefit from multiple threads (at this level)
-BACKEND_PYZSTD_PARAMS = {
-    pyzstd.CParameter.compressionLevel: 2,
-    pyzstd.CParameter.nbWorkers: -1,
-    pyzstd.CParameter.strategy: pyzstd.Strategy.dfast,
+BACKEND_ZSTD_PARAMS: dict[int, int] = {
+    zstd.CompressionParameter.compression_level: 2,
+    zstd.CompressionParameter.nb_workers: 0,
+    zstd.CompressionParameter.strategy: zstd.Strategy.dfast,
 }
 
 #

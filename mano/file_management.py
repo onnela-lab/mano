@@ -12,12 +12,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any, TypeVar
 from zipfile import ZipFile
 
-import pyzstd
 from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
-from pyzstd import decompress
 
-from mano.constants import (BACKEND_PYZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
-    GlobalSettings, log, ParseError, SaveError, WriteError)
+from mano.constants import (BACKEND_ZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
+    GlobalSettings, log, ParseError, SaveError, WriteError, zstd)
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
     DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, NO_VALID_FILES_MSG,
     PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
@@ -171,7 +169,7 @@ def decompress_one_zst_file(
         compressed_bytes = fo.read()
     
     # decompression speed should be over 1GB/s on anything remotely modern as of 2025
-    decompressed_bytes = decompress(compressed_bytes)
+    decompressed_bytes = zstd.decompress(compressed_bytes)
     size_compressed = bytes_to_human_filesize(compressed_bytes)
     size_decompressed = bytes_to_human_filesize(decompressed_bytes)
     
@@ -276,11 +274,11 @@ def compress_as_backend(b: bytes) -> bytes:
     compression raised to around 14-15%.  Decompression speed is always extremely fast (~2GB/s).
     (Your speeds will differ, compression ratios are stable.)
     """
-    return pyzstd.compress(b, BACKEND_PYZSTD_PARAMS)  # type: ignore
+    return zstd.compress(b, options=BACKEND_ZSTD_PARAMS)
 
 
 def compress_general(b: bytes, level: int) -> bytes:
-    return pyzstd.compress(b, {pyzstd.CParameter.compressionLevel: level})  # type: ignore
+    return zstd.compress(b, level=level)
 
 
 #
@@ -423,7 +421,7 @@ def process_one_archive_file(
     if decompress_zst:
         if not filename_in_zip.endswith('.zst'):
             f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
-        binary_data = decompress(binary_data)
+        binary_data = zstd.decompress(binary_data)
         output_name = output_name.replace(".zst", "")  # works even on uncompressed ~mp4s
         was_decompressed = True
     else:
@@ -611,7 +609,7 @@ def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
         data = decrypt_binary_data_to_bytes(data, passphrase, path)
     
     if path.endswith('.zst') or path.endswith('.zst.lock'):
-        data = decompress(data)
+        data = zstd.decompress(data)
     
     return generate_base64_sha1_hash(data)
 
@@ -731,7 +729,7 @@ def check_hash_cache_match(
         return False
     
     if real_path.endswith('.zst') and not is_decompressed:
-        file_content = decompress(file_content)
+        file_content = zstd.decompress(file_content)
     
     return generate_base64_sha1_hash(file_content) == sha1
 
