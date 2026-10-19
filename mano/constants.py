@@ -208,6 +208,7 @@ BEIWE_EXTENSIONS_ORED = f'{", ".join(BEIWE_FILE_EXTENSIONS[:-1])}, or {BEIWE_FIL
 #
 # General Errors
 class InternalError(Exception): pass  # noqa
+class InvalidPathFormat(Exception): pass  # noqa
 
 # originally in mano/sync.py
 class APIError(Exception): pass  # noqa

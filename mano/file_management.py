@@ -15,7 +15,7 @@ from zipfile import ZipFile
 from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function, key_from_file
 
 from mano.constants import (BACKEND_ZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
-    GlobalSettings, log, ParseError, SaveError, WriteError, zstd)
+    GlobalSettings, InvalidPathFormat, log, ParseError, SaveError, WriteError, zstd)
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
     DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, NO_VALID_FILES_MSG,
     PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
@@ -592,9 +592,11 @@ def _threadable_generate_registry_info(
     local_hashes[base_path] = hash_val
     
     # sometimes we need generate one of several possible remote paths
-    for new_path in normalize_path_for_registry(base_path, study_id, participant_id):
-        remote_hashes[new_path] = hash_val.decode()
-
+    try:
+        for new_path in normalize_path_for_registry(base_path, study_id, participant_id):
+            remote_hashes[new_path] = hash_val.decode()
+    except InvalidPathFormat as e:
+        log.error(str(e))
 
 def get_sha1_file_hash(path: str, passphrase: str | None) -> bytes:
     """ Generate the SHA1 hash of a regular, .zst, .lock, or .zst.lock file. """
@@ -679,7 +681,13 @@ def normalize_path_for_registry(path: str, study_id: str, participant_id: str) -
     Returns a list of possible normalized paths (some files require multiple valid names for
     historical reasons).
     """
-    folder, file_name = path.rsplit("/", 1)  # stream folder or survey+id folder
+    splits = path.rsplit("/", 1)
+    if len(splits) != 2:
+        raise InvalidPathFormat(
+            f"Encountered likely errant data file with partial naming pattern match: {path}"
+        )
+    
+    folder, file_name = splits
     
     # normalize the file's datetime format to true isoformat
     file_name = file_name.replace(" ", "T").replace("+00_00", "").replace("_", ":")
