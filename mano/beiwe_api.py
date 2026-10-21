@@ -153,7 +153,6 @@ def fetch_participant_version_history(keyring: dict[str, str], participant_id: s
     return list(_json_api_post(keyring, "/get-participant-version-history/v1", params))
 
 
-
 def fetch_participant_heartbeat_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
     """
     Get the heartbeat history for a participant.
