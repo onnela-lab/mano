@@ -10,6 +10,8 @@ from mano.sync import normalize_url
 #
 ## API Endpoints
 #
+
+
 def _json_api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
     url = keyring["URL"].rstrip("/") + endpoint
     url = normalize_url(url)
@@ -26,7 +28,10 @@ def fetch_accessible_studies(keyring: dict[str, str]) -> list[tuple[str, str]]:
     """
     Request the name and study ID of all studies that the provided keyring has access to.
     """
-    return [(study_name, study_id) for study_id, study_name in _json_api_post(keyring, "/get-studies/v1").items()]
+    return [
+        (study_name, study_id)
+        for study_id, study_name in _json_api_post(keyring, "/get-studies/v1").items()
+    ]
 
 
 def fetch_participants_in_study(keyring: dict[str, str], study_id: str) -> list[str]:
@@ -123,7 +128,7 @@ def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, fil
         "study_id": study_id,
         "data_format": "csv",
     }
-
+    
     url = normalize_url(url)
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
@@ -131,7 +136,7 @@ def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, fil
     
     if directory:=dirname(file_path):
         make_directories(directory)
-
+    
     with open(file_path, "wb") as fo:
         fo.write(resp.content)
 
