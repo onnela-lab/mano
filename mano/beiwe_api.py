@@ -10,6 +10,8 @@ from mano.sync import normalize_url
 #
 ## API Endpoints
 #
+
+
 def _json_api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
     url = keyring["URL"].rstrip("/") + endpoint
     url = normalize_url(url)
@@ -26,7 +28,10 @@ def fetch_accessible_studies(keyring: dict[str, str]) -> list[tuple[str, str]]:
     """
     Request the name and study ID of all studies that the provided keyring has access to.
     """
-    return [(study_name, study_id) for study_id, study_name in _json_api_post(keyring, "/get-studies/v1").items()]
+    return [
+        (study_name, study_id)
+        for study_id, study_name in _json_api_post(keyring, "/get-studies/v1").items()
+    ]
 
 
 def fetch_participants_in_study(keyring: dict[str, str], study_id: str) -> list[str]:
@@ -123,7 +128,7 @@ def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, fil
         "study_id": study_id,
         "data_format": "csv",
     }
-
+    
     url = normalize_url(url)
     resp = requests.post(url, data=payload, stream=True)
     if resp.status_code != requests.codes.OK:
@@ -131,9 +136,70 @@ def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, fil
     
     if directory:=dirname(file_path):
         make_directories(directory)
-
+    
     with open(file_path, "wb") as fo:
         fo.write(resp.content)
+
+
+def fetch_participant_version_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
+    """
+    Get the version history for a participant.
+
+    :param keyring: Keyring dictionary
+    :param participant_id: Participant ID
+    :returns: List of version history dictionaries
+    """
+    params = {"participant_id": participant_id}
+    return list(_json_api_post(keyring, "/get-participant-version-history/v1", params))
+
+
+def fetch_participant_heartbeat_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
+    """
+    Get the heartbeat history for a participant.
+
+    :param keyring: Keyring dictionary
+    :param participant_id: Participant ID
+    :returns: List of heartbeat history dictionaries
+    """
+    params = {"participant_id": participant_id}
+    return list(_json_api_post(keyring, "/get-participant-heartbeat-history/v1", params))
+
+
+def fetch_participant_upload_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
+    """
+    Get the upload history for a participant.
+
+    :param keyring: Keyring dictionary
+    :param participant_id: Participant ID
+    :returns: List of upload history dictionaries
+    """
+    params = {"participant_id": participant_id}
+    return list(_json_api_post(keyring, "/get-participant-upload-history/v1", params))
+
+
+def fetch_participant_notification_history(keyring: dict[str, str], participant_id: str) -> dict:
+    """
+    Get the notification history for a participant.
+
+    :param keyring: Keyring dictionary
+    :param participant_id: Participant ID
+    :returns: List of notification history dictionaries
+    """
+    params = {"participant_id": participant_id}
+    # this one isn't a list, its a dictionary
+    return _json_api_post(keyring, "/get-participant-notification-history/v1", params)
+
+
+def fetch_sycamore_analysis_output(keyring: dict[str, str], study_id: str) -> list[dict]:
+    """
+    Get the Sycamore analysis output for a study.
+
+    :param keyring: Keyring dictionary
+    :param study_id: Study ID
+    :returns: List of Sycamore analysis output dictionaries
+    """
+    params = {"study_id": study_id}
+    return list(_json_api_post(keyring, "/get-sycamore-analysis-output/v1", params))
 
 
 def fetch_summary_statistics(
@@ -142,6 +208,7 @@ def fetch_summary_statistics(
     end_date: str | None = None,
     start_date: str | None = None,
     fields: str | None = None,
+    participant_id: str | None = None,
 ) -> list[dict]:
     """
     Get summary statistics for a study.
@@ -160,4 +227,19 @@ def fetch_summary_statistics(
         params["start_date"] = start_date
     if fields is not None:
         params["fields"] = fields
+    if participant_id is not None:
+        params["participant_id"] = participant_id
     return list(_json_api_post(keyring, "/get-summary-statistics/v1", params))
+
+
+def _fetch_participant_device_status_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
+    """
+    Get the device status history for a participant -- this api is purely a development endpoint
+    and will not return any data for normal participants, and may be removed at any time.
+
+    :param keyring: Keyring dictionary
+    :param participant_id: Participant ID
+    :returns: List of device status history dictionaries
+    """
+    params = {"participant_id": participant_id}
+    return list(_json_api_post(keyring, "/get-participant-device-status-history/v1", params))

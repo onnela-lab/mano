@@ -1,11 +1,11 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-import pytest, pyzstd
+import pytest
 from pytest_mock import MockerFixture
 
 from mano import file_management
-from mano.constants import ParseError, SaveError
+from mano.constants import ParseError, SaveError, zstd
 from mano.file_management import (decrypt_binary_data_to_bytes,
     determine_data_stream_from_internal_zip_filepath, find_duplicate_files, parse_duplicate_files,
     process_one_archive_file, save_archive)
@@ -42,7 +42,7 @@ def test_process_one_archive_file_decompresses_non_zst_named_member(tmp_path: Pa
     archive_path = tmp_path / "archive.zip"
     original_bytes = b"decompress me please"
     with ZipFile(archive_path, "w") as archive:
-        archive.writestr(f"{PARTICIPANT_ID}/gps/data.csv", pyzstd.compress(original_bytes))
+        archive.writestr(f"{PARTICIPANT_ID}/gps/data.csv", zstd.compress(original_bytes))
 
     with ZipFile(archive_path) as archive:
         saved = process_one_archive_file(

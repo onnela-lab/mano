@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, logging, os
+import argparse, logging
 from os.path import join as pathjoin
 from mano import load_keyring
 from mano.sync import backfill

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 from pytest_mock import MockerFixture
-from pyzstd import decompress
 
+from mano.constants import zstd
 from mano.file_management import (compress_as_backend, compress_general, compress_one_zst_file,
     compress_to_zst_files, decompress_one_zst_file, decompress_zst_files,
     iterate_beiwe_data_files_recursively)
@@ -14,14 +14,14 @@ from tests.conftest import (generate_compressed_zst_files, generate_uncompressed
 def test_compress_as_backend():
     original_bytes = b'This is some test data to be compressed using the backend compression settings.' * 10
     compressed_bytes = compress_as_backend(original_bytes)
-    assert decompress(compressed_bytes) == original_bytes
+    assert zstd.decompress(compressed_bytes) == original_bytes
     assert len(compressed_bytes) < len(original_bytes)
 
 
 def test_compress_general():
     original_bytes = b'This is some test data to be compressed using the general compression settings.' * 10
     compressed_bytes = compress_general(original_bytes, level=19)  # take it slow
-    assert decompress(compressed_bytes) == original_bytes
+    assert zstd.decompress(compressed_bytes) == original_bytes
     assert len(compressed_bytes) < len(original_bytes)
 
 
@@ -30,7 +30,7 @@ def test_compress_one_zst_file_defaults(tmp_path: Path):
     compress_one_zst_file(str(uncompressed_path))
     assert compressed_path.exists()
     assert uncompressed_path.exists()
-    assert original_bytes == decompress(compressed_bytes := compressed_path.read_bytes())
+    assert original_bytes == zstd.decompress(compressed_bytes := compressed_path.read_bytes())
     assert len(compressed_bytes) < len(original_bytes)
 
 
@@ -45,7 +45,7 @@ def test_compress_one_zst_file_overwrite_success(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compressed_path.write_bytes(b"super secret data")
     compress_one_zst_file(str(uncompressed_path), overwrite=True)
-    assert original_bytes == decompress(compressed_path.read_bytes())
+    assert original_bytes == zstd.decompress(compressed_path.read_bytes())
 
 
 def test_compress_one_zst_file_delete_original(tmp_path: Path):
@@ -53,7 +53,7 @@ def test_compress_one_zst_file_delete_original(tmp_path: Path):
     compress_one_zst_file(str(uncompressed_path), delete_original=True)
     assert not uncompressed_path.exists()
     assert compressed_path.exists()
-    assert original_bytes == decompress(compressed_path.read_bytes())
+    assert original_bytes == zstd.decompress(compressed_path.read_bytes())
 
 
 def test_compress_one_zst_file_custom_level(tmp_path: Path):
@@ -61,7 +61,7 @@ def test_compress_one_zst_file_custom_level(tmp_path: Path):
     compress_one_zst_file(str(uncompressed_path), compression_level=19)  # take it slow
     assert compressed_path.exists()
     assert uncompressed_path.exists()
-    assert original_bytes == decompress(compressed_bytes := compressed_path.read_bytes())
+    assert original_bytes == zstd.decompress(compressed_bytes := compressed_path.read_bytes())
     assert len(compressed_bytes) < len(original_bytes)
 
 
@@ -104,7 +104,7 @@ def test_decompress_zst_files_single_file_mode(tmp_path: Path):
 def test_compress_to_zst_files_single_file_mode(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_to_zst_files(str(uncompressed_path))
-    assert decompress(compressed_path.read_bytes()) == original_bytes
+    assert zstd.decompress(compressed_path.read_bytes()) == original_bytes
 
 
 def test_full_decompress_decompresses(tmp_path: Path):
@@ -148,7 +148,7 @@ def common_full_compress(tmp_path: Path, original_bytes: bytes, compressable_fil
         new_valid_file_paths.add(str(path))
         assert path.suffix == ".zst"
         assert path.exists()
-        assert decompress(path.read_bytes()) == original_bytes
+        assert zstd.decompress(path.read_bytes()) == original_bytes
 
     assert new_valid_file_paths == correct_compressed_file_paths
 
@@ -180,7 +180,7 @@ def test_full_compress_overwrites(tmp_path: Path):
     for path in compressable_files:
         compressed_path = path.parent / (path.name + ".zst")
         assert compressed_path.exists()
-        assert decompress(compressed_path.read_bytes()) == decompressed_data
+        assert zstd.decompress(compressed_path.read_bytes()) == decompressed_data
 
 
 def test_full_decompress_overwrites(tmp_path: Path):

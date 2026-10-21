@@ -3,8 +3,10 @@ from io import BytesIO
 from os.path import dirname, join as path_join
 from pathlib import Path
 
-import pytest, pyzstd, responses
+import pytest, responses
 from cryptease import encrypt_to_stream, kdf as key_derivation_function
+
+from mano.constants import zstd
 
 
 """
@@ -21,7 +23,7 @@ DATA_STREAM_FILE_ISO = "2024-02-16T09:00:00.csv"
 NORMALIZED_FILE_PATH = f"{STUDY_ID}/{PARTICIPANT_ID}/{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE_ISO}"
 LOCAL_PATH_REFERENCE = f"{DATA_STREAM_FOLDER}/{DATA_STREAM_FILE}"
 FILE_CONTENT_UNCOMPRESSED = b"timestamp,x,y,z\n2024-02-16 09:00:00+00:00,0.1,0.2,0.3\n"
-FILE_CONTENT_COMPRESSED = pyzstd.compress(FILE_CONTENT_UNCOMPRESSED)
+FILE_CONTENT_COMPRESSED = zstd.compress(FILE_CONTENT_UNCOMPRESSED)
 
 # the encrypted files and passphrase differ on every run due to the salt and iv
 PASSPHRASE_STRING = "test_passphrase"
@@ -236,13 +238,13 @@ def generate_compressed_zst_files(tmp_path: Path) -> tuple[Path, Path, bytes]:
     uncompressed_path = tmp_path / "testzstd.csv"
     compressed_path = tmp_path / "testzstd.csv.zst"
     original_bytes = b"Sample data for compression test." * 20
-    compressed_bytes = pyzstd.compress(original_bytes, 2)  # type: ignore
+    compressed_bytes = zstd.compress(original_bytes, 2)
     compressed_path.write_bytes(compressed_bytes)
     return uncompressed_path, compressed_path, original_bytes
 
 
 DECOMPRESSED_BYTES = b"test content"
-COMPRESSED_BYTES: bytes = pyzstd.compress(DECOMPRESSED_BYTES, 2)  # type: ignore
+COMPRESSED_BYTES: bytes = zstd.compress(DECOMPRESSED_BYTES, 2)
 
 
 def generate_valid_compress_test_files(tmp_path: Path) -> tuple[list[Path], list[Path], bytes]:
