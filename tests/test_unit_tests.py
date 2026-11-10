@@ -429,31 +429,44 @@ def test_fetch_summary_statistics_http_error_raises_api_error(keyring: dict[str,
         list(fetch_summary_statistics(keyring, 'STUDY_ID'))
 
 
+# The summary-statistics endpoint splits its parameters: the credentials and study_id go in the
+# POST body, and every filter goes in the URL query string. The server ignores filters in the body.
+# Source: beiwe-backend libs/endpoint_helpers/summary_statistic_helpers.py (ApiQueryForm on request.GET).
+
+
 @responses.activate
-def test_fetch_summary_statistics_sends_study_id(keyring: dict[str, str], mock_summary_statistics_response: str):
+def test_fetch_summary_statistics_sends_study_id_in_body(
+    keyring: dict[str, str], mock_summary_statistics_response: str
+):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
     list(fetch_summary_statistics(keyring, 'MY_STUDY_ID'))
     assert 'study_id=MY_STUDY_ID' in str(responses.calls[0].request.body)
+    assert 'study_id' not in responses.calls[0].request.url
 
 
 @responses.activate
-def test_fetch_summary_statistics_sends_optional_params(keyring: dict[str, str], mock_summary_statistics_response: str):
+def test_fetch_summary_statistics_sends_filters_in_query_string_not_body(
+    keyring: dict[str, str], mock_summary_statistics_response: str
+):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
     fetch_summary_statistics(keyring, 'STUDY_ID', start_date='2024-01-01', end_date='2024-01-31', fields='beiwe_id')
+    query = parse_qs(urlparse(responses.calls[0].request.url).query)
+    assert query == {'start_date': ['2024-01-01'], 'end_date': ['2024-01-31'], 'fields': ['beiwe_id']}
+    # the old bug: filters sent in the POST body, where the server never reads them
     body = str(responses.calls[0].request.body)
-    assert 'start_date=2024-01-01' in body
-    assert 'end_date=2024-01-31' in body
-    assert 'fields=beiwe_id' in body
+    assert 'start_date' not in body
+    assert 'end_date' not in body
+    assert 'fields' not in body
 
 
 @responses.activate
 def test_fetch_summary_statistics_omits_none_params(keyring: dict[str, str], mock_summary_statistics_response: str):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
     list(fetch_summary_statistics(keyring, 'STUDY_ID'))
-    body = str(responses.calls[0].request.body)
-    assert 'start_date' not in body
-    assert 'end_date' not in body
-    assert 'fields' not in body
+    # no filters given, so nothing in the query string and only credentials + study_id in the body
+    assert urlparse(responses.calls[0].request.url).query == ''
+    body = parse_qs(responses.calls[0].request.body)
+    assert set(body) == {'access_key', 'secret_key', 'study_id'}
 
 
 #
@@ -574,231 +587,278 @@ def test_api_403_error_with_study_id():
     assert "may not exist" in msg
 
 
+#
+# participant history fetchers
+#
+# These five functions all work the same way: they POST `participant_id` plus the keyring's
+# credentials to their own endpoint, and return the parsed JSON response. So every test in this
+# section runs once for each function, using the table below.
+#
+# Each row is: (fetch function, endpoint path, empty response body, what that empty body parses to)
+# Notification history returns a dict of surveys; the other four return a list.
+PARTICIPANT_HISTORY_FETCHERS = [
+    pytest.param(
+        fetch_participant_version_history, '/get-participant-version-history/v1', '[]', [],
+        id='version_history',
+    ),
+    pytest.param(
+        fetch_participant_heartbeat_history, '/get-participant-heartbeat-history/v1', '[]', [],
+        id='heartbeat_history',
+    ),
+    pytest.param(
+        fetch_participant_upload_history, '/get-participant-upload-history/v1', '[]', [],
+        id='upload_history',
+    ),
+    pytest.param(
+        fetch_participant_notification_history, '/get-participant-notification-history/v1', '{}', {},
+        id='notification_history',
+    ),
+    pytest.param(
+        _fetch_participant_device_status_history, '/get-participant-device-status-history/v1', '[]', [],
+        id='device_status_history',
+    ),
+]
+PARTICIPANT_HISTORY_COLUMNS = ("fetch", "endpoint", "empty_body", "empty_result")
+
+
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that each fetcher returns the server's JSON unchanged, including tricky values (nulls,
+# zeros, nested objects, empty lists) and list order. Each row is:
+#   (fetch function, endpoint path, JSON data the mock server sends back)
+@pytest.mark.parametrize(
+    ("fetch", "endpoint", "data"),
+    [
+        # version history: one normal entry
+        pytest.param(
+            fetch_participant_version_history, '/get-participant-version-history/v1',
+            [{'app_version_code': '250', 'app_version_name': '2.5.0', 'os_version': '17.0',
+              'created_on': '2024-01-01T12:00:00Z'}],
+            id='version_history',
+        ),
+        # version history: null fields are kept, and entries keep their order
+        pytest.param(
+            fetch_participant_version_history, '/get-participant-version-history/v1',
+            [{'app_version_code': None, 'app_version_name': None, 'os_version': None,
+              'created_on': '2024-01-01T12:00:00Z'},
+             {'app_version_code': '250', 'app_version_name': '2.5.0', 'os_version': '17.0',
+              'created_on': '2024-01-02T12:00:00Z'}],
+            id='version_history_nulls_and_order',
+        ),
+        # heartbeat history: two timestamps
+        pytest.param(
+            fetch_participant_heartbeat_history, '/get-participant-heartbeat-history/v1',
+            [{'timestamp': '2024-01-01T12:00:00Z'}, {'timestamp': '2024-01-01T13:00:00Z'}],
+            id='heartbeat_history',
+        ),
+        # upload history: one normal entry
+        pytest.param(
+            fetch_participant_upload_history, '/get-participant-upload-history/v1',
+            [{'file_size': 128, 'timestamp': '2024-01-01T12:00:00Z', 'file_name': 'gps/1704110400.csv'}],
+            id='upload_history',
+        ),
+        # upload history: a file size of 0 is kept, and entries keep their order
+        pytest.param(
+            fetch_participant_upload_history, '/get-participant-upload-history/v1',
+            [{'file_size': 0, 'timestamp': '2024-01-01T12:00:00Z', 'file_name': 'gps/1704110400.csv'},
+             {'file_size': 128, 'timestamp': '2024-01-01T13:00:00Z', 'file_name': 'gps/1704114000.csv'}],
+            id='upload_history_zero_size_and_order',
+        ),
+        # notification history: one survey with one notification
+        pytest.param(
+            fetch_participant_notification_history, '/get-participant-notification-history/v1',
+            {'survey1': [{'timestamp': '2024-01-01T12:00:00Z', 'type': 'absolute',
+                          'scheduled_time': '2024-01-01T12:00:00Z', 'confirmed_received': False,
+                          'uuid': 'notification1', 'resend': False, 'push_rejected': False}]},
+            id='notification_history',
+        ),
+        # notification history: null uuid, timezone offsets, and a survey with no notifications
+        pytest.param(
+            fetch_participant_notification_history, '/get-participant-notification-history/v1',
+            {'survey1': [{'timestamp': '2024-01-01T07:00:00-05:00', 'type': 'absolute',
+                          'scheduled_time': '2024-01-01T07:00:00-05:00',
+                          'confirmed_received': '2024-01-01T07:00:01-05:00',
+                          'uuid': None, 'resend': True, 'push_rejected': False}],
+             'survey2': []},
+            id='notification_history_nulls_and_empty_survey',
+        ),
+        # device status history: one normal entry
+        pytest.param(
+            _fetch_participant_device_status_history, '/get-participant-device-status-history/v1',
+            [{'created_on': '2024-01-01T12:00:00Z', 'endpoint': 'upload', 'app_os': 'ios',
+              'os_version': '17.0', 'app_version': '2.5.0', 'device_status': {'battery_level': 0.8}}],
+            id='device_status_history',
+        ),
+        # device status history: empty and deeply nested device_status objects are kept
+        pytest.param(
+            _fetch_participant_device_status_history, '/get-participant-device-status-history/v1',
+            [{'created_on': '2024-01-01T12:00:00Z', 'device_status': {}},
+             {'created_on': '2024-01-02T12:00:00Z',
+              'device_status': {'battery_level': 0, 'charging': False, 'events': [{'value': None}]}}],
+            id='device_status_history_nested_data',
+        ),
+    ],
+)
 @responses.activate
-def test_fetch_participant_version_history_returns_data(keyring: dict[str, str]):
-    data = [{
-        'app_version_code': '250',
-        'app_version_name': '2.5.0',
-        'os_version': '17.0',
-        'created_on': '2024-01-01T12:00:00Z',
-    }]
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', json=data, status=200)
-    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
+def test_fetch_participant_history_returns_data(keyring: dict[str, str], fetch, endpoint: str, data):
+    responses.post(keyring['URL'] + endpoint, json=data, status=200)
+    assert fetch(keyring, 'PARTICIPANT_ID') == data
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that an empty response comes back as an empty list (or empty dict for notification
+# history). Rows come from PARTICIPANT_HISTORY_FETCHERS above.
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_version_history_empty_returns_nothing(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
-    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
+def test_fetch_participant_history_empty_returns_nothing(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result
+):
+    responses.post(keyring['URL'] + endpoint, body=empty_body, status=200)
+    assert fetch(keyring, 'PARTICIPANT_ID') == empty_result
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that the participant ID and both credentials are sent in the POST body.
+# Rows come from PARTICIPANT_HISTORY_FETCHERS above.
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_version_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
-    fetch_participant_version_history(keyring, 'MY_PARTICIPANT_ID')
+def test_fetch_participant_history_sends_participant_id_and_credentials(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result
+):
+    responses.post(keyring['URL'] + endpoint, body=empty_body, status=200)
+    fetch(keyring, 'MY_PARTICIPANT_ID')
     body = str(responses.calls[0].request.body)
     assert 'participant_id=MY_PARTICIPANT_ID' in body
     assert f"access_key={keyring['ACCESS_KEY']}" in body
     assert f"secret_key={keyring['SECRET_KEY']}" in body
 
 
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that values containing URL-special characters (+, &, =) are encoded properly, so the
+# server decodes exactly the values we sent. Rows come from PARTICIPANT_HISTORY_FETCHERS above.
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_version_history_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
+def test_fetch_participant_history_encodes_participant_id_and_credentials(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result
 ):
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='error', status=status_code)
-    with pytest.raises(APIError, match=str(status_code)):
-        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + endpoint, body=empty_body, status=200)
+    fetch(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that a keyring URL ending in "/" doesn't produce a double slash in the endpoint URL.
+# The mock is registered without the double slash, so a wrong URL fails with a ConnectionError.
+# Rows come from PARTICIPANT_HISTORY_FETCHERS above.
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_heartbeat_history_returns_data(keyring: dict[str, str]):
-    data = [{'timestamp': '2024-01-01T12:00:00Z'}, {'timestamp': '2024-01-01T13:00:00Z'}]
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', json=data, status=200)
-    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_heartbeat_history_empty_returns_nothing(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
-    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_heartbeat_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
-    fetch_participant_heartbeat_history(keyring, 'MY_PARTICIPANT_ID')
-    body = str(responses.calls[0].request.body)
-    assert 'participant_id=MY_PARTICIPANT_ID' in body
-    assert f"access_key={keyring['ACCESS_KEY']}" in body
-    assert f"secret_key={keyring['SECRET_KEY']}" in body
-
-
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
-@responses.activate
-def test_fetch_participant_heartbeat_history_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
+def test_fetch_participant_history_handles_trailing_slash(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result
 ):
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='error', status=status_code)
-    with pytest.raises(APIError, match=str(status_code)):
-        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+    responses.post(keyring['URL'] + endpoint, body=empty_body, status=200)
+    keyring['URL'] += '/'
+    assert fetch(keyring, 'PARTICIPANT_ID') == empty_result
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorators below,
+# passing that case's values in as the test function's arguments. With two decorators, it runs
+# once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each status code.
+# Checks that any non-200 response raises APIError naming the status code.
+@pytest.mark.parametrize("status_code", [400, 403, 404, 500])
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_upload_history_returns_data(keyring: dict[str, str]):
-    data = [{
-        'file_size': 128,
-        'timestamp': '2024-01-01T12:00:00Z',
-        'file_name': 'gps/1704110400.csv',
-    }]
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', json=data, status=200)
-    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_upload_history_empty_returns_nothing(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
-    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_upload_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
-    fetch_participant_upload_history(keyring, 'MY_PARTICIPANT_ID')
-    body = str(responses.calls[0].request.body)
-    assert 'participant_id=MY_PARTICIPANT_ID' in body
-    assert f"access_key={keyring['ACCESS_KEY']}" in body
-    assert f"secret_key={keyring['SECRET_KEY']}" in body
-
-
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
-@responses.activate
-def test_fetch_participant_upload_history_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
+def test_fetch_participant_history_http_error_raises_api_error(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result, status_code: int
 ):
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='error', status=status_code)
+    responses.post(keyring['URL'] + endpoint, body='error', status=status_code)
     with pytest.raises(APIError, match=str(status_code)):
-        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+        fetch(keyring, 'PARTICIPANT_ID')
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorators below,
+# passing that case's values in as the test function's arguments. With two decorators, it runs
+# once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each bad body.
+# Checks that a 200 response whose body isn't valid JSON raises orjson.JSONDecodeError.
+@pytest.mark.parametrize(
+    "bad_body",
+    [
+        "not json",         # plain text
+        "",                 # empty body
+        '{"incomplete":',   # JSON cut off part way through
+    ],
+)
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_notification_history_returns_data(keyring: dict[str, str]):
-    data = {'survey1': [{
-        'timestamp': '2024-01-01T12:00:00Z',
-        'type': 'absolute',
-        'scheduled_time': '2024-01-01T12:00:00Z',
-        'confirmed_received': False,
-        'uuid': 'notification1',
-        'resend': False,
-        'push_rejected': False,
-    }]}
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', json=data, status=200)
-    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_notification_history_empty_returns_nothing(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
-    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-    assert result == {}
-
-
-@responses.activate
-def test_fetch_participant_notification_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
-    fetch_participant_notification_history(keyring, 'MY_PARTICIPANT_ID')
-    body = str(responses.calls[0].request.body)
-    assert 'participant_id=MY_PARTICIPANT_ID' in body
-    assert f"access_key={keyring['ACCESS_KEY']}" in body
-    assert f"secret_key={keyring['SECRET_KEY']}" in body
-
-
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
-@responses.activate
-def test_fetch_participant_notification_history_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
+def test_fetch_participant_history_invalid_json_raises(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result, bad_body: str
 ):
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='error', status=status_code)
-    with pytest.raises(APIError, match=str(status_code)):
-        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+    responses.post(keyring['URL'] + endpoint, body=bad_body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch(keyring, 'PARTICIPANT_ID')
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorators below,
+# passing that case's values in as the test function's arguments. With two decorators, it runs
+# once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each network error.
+# Checks that network errors are not caught or retried: they reach the caller unchanged.
+@pytest.mark.parametrize("error", [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@pytest.mark.parametrize(PARTICIPANT_HISTORY_COLUMNS, PARTICIPANT_HISTORY_FETCHERS)
 @responses.activate
-def test_fetch_participant_device_status_history_returns_data(keyring: dict[str, str]):
-    data = [{
-        'created_on': '2024-01-01T12:00:00Z',
-        'endpoint': 'upload',
-        'app_os': 'ios',
-        'os_version': '17.0',
-        'app_version': '2.5.0',
-        'device_status': {'battery_level': 0.8},
-    }]
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', json=data, status=200)
-    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_device_status_history_empty_returns_nothing(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
-    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_device_status_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
-    _fetch_participant_device_status_history(keyring, 'MY_PARTICIPANT_ID')
-    body = str(responses.calls[0].request.body)
-    assert 'participant_id=MY_PARTICIPANT_ID' in body
-    assert f"access_key={keyring['ACCESS_KEY']}" in body
-    assert f"secret_key={keyring['SECRET_KEY']}" in body
-
-
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
-@responses.activate
-def test_fetch_participant_device_status_history_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
+def test_fetch_participant_history_request_error_propagates(
+    keyring: dict[str, str], fetch, endpoint: str, empty_body: str, empty_result, error
 ):
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='error', status=status_code)
-    with pytest.raises(APIError, match=str(status_code)):
-        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+    responses.post(keyring['URL'] + endpoint, body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch(keyring, 'PARTICIPANT_ID')
 
 
-@responses.activate
-def test_fetch_sycamore_analysis_output_returns_zip(keyring: dict[str, str]):
-    archive = BytesIO()
-    with ZipFile(archive, 'w') as output:
-        output.writestr('report.csv', 'participant_id,value\nabc123,1\n')
-    data = archive.getvalue()
+#
+# fetch_sycamore_analysis_output tests
+#
+# Unlike the other fetchers, this endpoint returns a zip file (raw bytes), not JSON.
+# Source: beiwe-backend libs/utils/forest_utils.py, forest_task_runtime_output_file_handler.
+#
+
+SYCAMORE_ENDPOINT = '/get-sycamore-analysis-output/v1'
+
+
+def _mock_sycamore_zip_response(url: str, zip_bytes: bytes) -> None:
+    """ Mock a successful sycamore response the way the backend sends it: zip bytes as an attachment. """
     responses.post(
-        keyring['URL'] + '/get-sycamore-analysis-output/v1',
-        body=data,
+        url + SYCAMORE_ENDPOINT,
+        body=zip_bytes,
         status=200,
         content_type='zip',
         headers={'Content-Disposition': 'attachment; filename=report.zip'},
     )
-    result = fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
-    assert result == data
 
 
 @responses.activate
-def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(keyring: dict[str, str]):
-    responses.post(
-        keyring['URL'] + '/get-sycamore-analysis-output/v1',
-        body='No forest tasks found for this study.',
-        status=404,
-    )
-    with pytest.raises(APIError, match="404"):
-        fetch_sycamore_analysis_output(keyring, 'MY_STUDY_ID')
+def test_fetch_sycamore_analysis_output_returns_zip(keyring: dict[str, str], mock_zip_data_uncompressed: bytes):
+    # mock_zip_data_uncompressed is the real zip file tests/data/download.v1.zip
+    _mock_sycamore_zip_response(keyring['URL'], mock_zip_data_uncompressed)
+    result = fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+    # the bytes come back untouched, and still open as the same zip file
+    assert result == mock_zip_data_uncompressed
+    with ZipFile(BytesIO(result)) as returned, ZipFile(BytesIO(mock_zip_data_uncompressed)) as original:
+        assert returned.namelist() == original.namelist()
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(
+    keyring: dict[str, str], mock_zip_data_uncompressed: bytes
+):
+    _mock_sycamore_zip_response(keyring['URL'], mock_zip_data_uncompressed)
+    fetch_sycamore_analysis_output(keyring, 'MY_STUDY_ID')
     body = str(responses.calls[0].request.body)
     assert 'study_id=MY_STUDY_ID' in body
     assert f"access_key={keyring['ACCESS_KEY']}" in body
@@ -806,14 +866,57 @@ def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(keyring: 
 
 
 @responses.activate
-def test_fetch_sycamore_analysis_output_no_tasks_raises_api_error(keyring: dict[str, str]):
-    responses.post(
-        keyring['URL'] + '/get-sycamore-analysis-output/v1',
-        body='No forest tasks found for this study.',
-        status=404,
-    )
-    with pytest.raises(APIError, match="404"):
+def test_fetch_sycamore_analysis_output_handles_trailing_slash(
+    keyring: dict[str, str], mock_zip_data_uncompressed: bytes
+):
+    # the mock is registered without a double slash, so a wrong URL fails with a ConnectionError
+    _mock_sycamore_zip_response(keyring['URL'], mock_zip_data_uncompressed)
+    keyring['URL'] += '/'
+    assert fetch_sycamore_analysis_output(keyring, 'STUDY_ID') == mock_zip_data_uncompressed
+
+
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that any non-200 response raises APIError naming the status code. The two 404 rows use
+# the exact messages the backend sends. Each row is: (HTTP status code, response body)
+@pytest.mark.parametrize(
+    ("status_code", "body"),
+    [
+        (400, 'error'),
+        (403, 'error'),
+        (500, 'error'),
+        (404, 'No forest tasks found for this study.'),   # study has never run a forest task
+        (404, 'Unable to access report file.'),           # task exists but its output file is missing
+    ],
+    ids=["400", "403", "500", "404_no_forest_tasks", "404_missing_report_file"],
+)
+@responses.activate
+def test_fetch_sycamore_analysis_output_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int, body: str
+):
+    responses.post(keyring['URL'] + SYCAMORE_ENDPOINT, body=body, status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
         fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that network errors are not caught or retried: they reach the caller unchanged.
+@pytest.mark.parametrize("error", [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_sycamore_analysis_output_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + SYCAMORE_ENDPOINT, body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+#
+# fetch_summary_statistics participant filter tests
+#
+# The backend reads summary-statistics filters from the URL query string, and the participant
+# filter is named `participant_ids` (plural, comma-separated). Credentials stay in the POST body.
+# Source: beiwe-backend libs/endpoint_helpers/summary_statistic_helpers.py (ApiQueryForm on request.GET).
+#
 
 
 @responses.activate
@@ -822,6 +925,8 @@ def test_fetch_summary_statistics_sends_participant_id(keyring: dict[str, str]):
     fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='MY_PARTICIPANT_ID')
     query = parse_qs(urlparse(responses.calls[0].request.url).query)
     assert query.get('participant_ids') == ['MY_PARTICIPANT_ID']
+    # the old bug: a singular `participant_id` sent in the POST body, which the server ignores
+    assert 'participant_id' not in str(responses.calls[0].request.body)
 
 
 @responses.activate
@@ -832,291 +937,20 @@ def test_fetch_summary_statistics_omits_none_participant_id(keyring: dict[str, s
     assert 'participant_id' not in responses.calls[0].request.url
     assert 'participant_ids' not in str(responses.calls[0].request.body)
 
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
-@responses.activate
-def test_fetch_participant_version_history_invalid_json_raises(keyring: dict[str, str], body: str):
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body=body, status=200)
-    with pytest.raises(orjson.JSONDecodeError):
-        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
 
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_participant_version_history_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
-
-
-@responses.activate
-def test_fetch_participant_version_history_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(keyring['URL'].rstrip('/') + '/get-participant-version-history/v1', body='[]', status=200)
-    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_version_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
-    keyring['ACCESS_KEY'] = 'access+key&value'
-    keyring['SECRET_KEY'] = 'secret=key+value'
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
-    fetch_participant_version_history(keyring, 'participant+id&value')
-    body = parse_qs(responses.calls[0].request.body)
-    assert body['participant_id'] == ['participant+id&value']
-    assert body['access_key'] == [keyring['ACCESS_KEY']]
-    assert body['secret_key'] == [keyring['SECRET_KEY']]
-
-
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
-@responses.activate
-def test_fetch_participant_heartbeat_history_invalid_json_raises(keyring: dict[str, str], body: str):
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body=body, status=200)
-    with pytest.raises(orjson.JSONDecodeError):
-        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
-
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_participant_heartbeat_history_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
-
-
-@responses.activate
-def test_fetch_participant_heartbeat_history_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(keyring['URL'].rstrip('/') + '/get-participant-heartbeat-history/v1', body='[]', status=200)
-    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_heartbeat_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
-    keyring['ACCESS_KEY'] = 'access+key&value'
-    keyring['SECRET_KEY'] = 'secret=key+value'
-    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
-    fetch_participant_heartbeat_history(keyring, 'participant+id&value')
-    body = parse_qs(responses.calls[0].request.body)
-    assert body['participant_id'] == ['participant+id&value']
-    assert body['access_key'] == [keyring['ACCESS_KEY']]
-    assert body['secret_key'] == [keyring['SECRET_KEY']]
-
-
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
-@responses.activate
-def test_fetch_participant_upload_history_invalid_json_raises(keyring: dict[str, str], body: str):
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body=body, status=200)
-    with pytest.raises(orjson.JSONDecodeError):
-        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_participant_upload_history_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-
-
-@responses.activate
-def test_fetch_participant_upload_history_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(keyring['URL'].rstrip('/') + '/get-participant-upload-history/v1', body='[]', status=200)
-    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_upload_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
-    keyring['ACCESS_KEY'] = 'access+key&value'
-    keyring['SECRET_KEY'] = 'secret=key+value'
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
-    fetch_participant_upload_history(keyring, 'participant+id&value')
-    body = parse_qs(responses.calls[0].request.body)
-    assert body['participant_id'] == ['participant+id&value']
-    assert body['access_key'] == [keyring['ACCESS_KEY']]
-    assert body['secret_key'] == [keyring['SECRET_KEY']]
-
-
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
-@responses.activate
-def test_fetch_participant_notification_history_invalid_json_raises(keyring: dict[str, str], body: str):
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body=body, status=200)
-    with pytest.raises(orjson.JSONDecodeError):
-        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_participant_notification_history_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-
-
-@responses.activate
-def test_fetch_participant_notification_history_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(keyring['URL'].rstrip('/') + '/get-participant-notification-history/v1', body='{}', status=200)
-    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-    assert result == {}
-
-
-@responses.activate
-def test_fetch_participant_notification_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
-    keyring['ACCESS_KEY'] = 'access+key&value'
-    keyring['SECRET_KEY'] = 'secret=key+value'
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
-    fetch_participant_notification_history(keyring, 'participant+id&value')
-    body = parse_qs(responses.calls[0].request.body)
-    assert body['participant_id'] == ['participant+id&value']
-    assert body['access_key'] == [keyring['ACCESS_KEY']]
-    assert body['secret_key'] == [keyring['SECRET_KEY']]
-
-
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
-@responses.activate
-def test_fetch_participant_device_status_history_invalid_json_raises(keyring: dict[str, str], body: str):
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body=body, status=200)
-    with pytest.raises(orjson.JSONDecodeError):
-        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_participant_device_status_history_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-
-
-@responses.activate
-def test_fetch_participant_device_status_history_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(keyring['URL'].rstrip('/') + '/get-participant-device-status-history/v1', body='[]', status=200)
-    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-    assert result == []
-
-
-@responses.activate
-def test_fetch_participant_device_status_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
-    keyring['ACCESS_KEY'] = 'access+key&value'
-    keyring['SECRET_KEY'] = 'secret=key+value'
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
-    _fetch_participant_device_status_history(keyring, 'participant+id&value')
-    body = parse_qs(responses.calls[0].request.body)
-    assert body['participant_id'] == ['participant+id&value']
-    assert body['access_key'] == [keyring['ACCESS_KEY']]
-    assert body['secret_key'] == [keyring['SECRET_KEY']]
-
-
-@pytest.mark.parametrize('status_code', [400, 403, 500])
-@responses.activate
-def test_fetch_sycamore_analysis_output_http_error_raises_api_error(
-    keyring: dict[str, str], status_code: int
-):
-    responses.post(keyring['URL'] + '/get-sycamore-analysis-output/v1', body='error', status=status_code)
-    with pytest.raises(APIError, match=str(status_code)):
-        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
-
-
-@responses.activate
-def test_fetch_sycamore_analysis_output_missing_report_raises_api_error(keyring: dict[str, str]):
-    responses.post(
-        keyring['URL'] + '/get-sycamore-analysis-output/v1',
-        body='Unable to access report file.',
-        status=404,
-    )
-    with pytest.raises(APIError, match="404"):
-        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
-
-
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
-@responses.activate
-def test_fetch_sycamore_analysis_output_request_error_propagates(keyring: dict[str, str], error):
-    responses.post(keyring['URL'] + '/get-sycamore-analysis-output/v1', body=error('request failed'))
-    with pytest.raises(error, match="request failed"):
-        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
-
-
-@responses.activate
-def test_fetch_sycamore_analysis_output_handles_trailing_slash(keyring: dict[str, str]):
-    keyring['URL'] += '/'
-    responses.post(
-        keyring['URL'].rstrip('/') + '/get-sycamore-analysis-output/v1',
-        body='No forest tasks found for this study.',
-        status=404,
-    )
-    with pytest.raises(APIError, match="404"):
-        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
-
-
-@responses.activate
-def test_fetch_participant_notification_history_preserves_surveys_and_null_values(keyring: dict[str, str]):
-    data = {
-        'survey1': [{
-            'timestamp': '2024-01-01T07:00:00-05:00',
-            'type': 'absolute',
-            'scheduled_time': '2024-01-01T07:00:00-05:00',
-            'confirmed_received': '2024-01-01T07:00:01-05:00',
-            'uuid': None,
-            'resend': True,
-            'push_rejected': False,
-        }],
-        'survey2': [],
-    }
-    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', json=data, status=200)
-    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_upload_history_preserves_order_and_zero_file_size(keyring: dict[str, str]):
-    data = [
-        {'file_size': 0, 'timestamp': '2024-01-01T12:00:00Z', 'file_name': 'gps/1704110400.csv'},
-        {'file_size': 128, 'timestamp': '2024-01-01T13:00:00Z', 'file_name': 'gps/1704114000.csv'},
-    ]
-    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', json=data, status=200)
-    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_version_history_preserves_order_and_null_values(keyring: dict[str, str]):
-    data = [
-        {'app_version_code': None, 'app_version_name': None, 'os_version': None,
-         'created_on': '2024-01-01T12:00:00Z'},
-        {'app_version_code': '250', 'app_version_name': '2.5.0', 'os_version': '17.0',
-         'created_on': '2024-01-02T12:00:00Z'},
-    ]
-    responses.post(keyring['URL'] + '/get-participant-version-history/v1', json=data, status=200)
-    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@responses.activate
-def test_fetch_participant_device_status_history_preserves_nested_data(keyring: dict[str, str]):
-    data = [
-        {'created_on': '2024-01-01T12:00:00Z', 'device_status': {}},
-        {'created_on': '2024-01-02T12:00:00Z', 'device_status': {
-            'battery_level': 0,
-            'charging': False,
-            'events': [{'value': None}],
-        }},
-    ]
-    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', json=data, status=200)
-    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
-    assert result == data
-
-
-@pytest.mark.parametrize('filters', [
-    {'start_date': '2024-01-01'},
-    {'end_date': '2024-01-31'},
-    {'fields': 'date,beiwe_id'},
-    {'start_date': '2024-01-01', 'end_date': '2024-01-31', 'fields': 'date,beiwe_id'},
-])
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that the participant filter and the other filters are all sent together in the URL
+# query string. Each value is the extra filter keyword arguments passed to fetch_summary_statistics.
+@pytest.mark.parametrize(
+    "filters",
+    [
+        {'start_date': '2024-01-01'},                                                       # start only
+        {'end_date': '2024-01-31'},                                                         # end only
+        {'fields': 'date,beiwe_id'},                                                        # fields only
+        {'start_date': '2024-01-01', 'end_date': '2024-01-31', 'fields': 'date,beiwe_id'},  # all three
+    ],
+)
 @responses.activate
 def test_fetch_summary_statistics_sends_participant_id_with_filters(keyring: dict[str, str], filters):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
@@ -1135,7 +969,10 @@ def test_fetch_summary_statistics_default_omits_participant_id(keyring: dict[str
     assert 'participant_id' not in responses.calls[0].request.url
 
 
-@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that a non-200 response raises APIError naming the status code when filtering by participant.
+@pytest.mark.parametrize("status_code", [400, 403, 404, 500])
 @responses.activate
 def test_fetch_summary_statistics_participant_filter_http_error_raises_api_error(
     keyring: dict[str, str], status_code: int
@@ -1145,7 +982,17 @@ def test_fetch_summary_statistics_participant_filter_http_error_raises_api_error
         fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
 
 
-@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that a 200 response whose body isn't valid JSON raises orjson.JSONDecodeError.
+@pytest.mark.parametrize(
+    "body",
+    [
+        "not json",         # plain text
+        "",                 # empty body
+        '{"incomplete":',   # JSON cut off part way through
+    ],
+)
 @responses.activate
 def test_fetch_summary_statistics_participant_filter_invalid_json_raises(keyring: dict[str, str], body: str):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=body, status=200)
@@ -1153,7 +1000,10 @@ def test_fetch_summary_statistics_participant_filter_invalid_json_raises(keyring
         fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
 
 
-@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that network errors are not caught or retried: they reach the caller unchanged.
+@pytest.mark.parametrize("error", [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
 @responses.activate
 def test_fetch_summary_statistics_participant_filter_request_error_propagates(keyring: dict[str, str], error):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=error('request failed'))

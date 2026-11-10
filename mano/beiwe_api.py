@@ -12,16 +12,37 @@ from mano.sync import normalize_url
 #
 
 
-def _json_api_post(keyring: dict[str, str], endpoint: str, params: dict[str, str] | None = None):
+def _api_post(
+    keyring: dict[str, str],
+    endpoint: str,
+    params: dict[str, str] | None = None,
+    query_params: dict[str, str] | None = None,
+) -> requests.Response:
+    """
+    POST to a Beiwe data-access API endpoint and return the response, raising APIError on non-200.
+
+    The credentials and `params` always go in the POST body. `query_params` go in the URL query
+    string instead; only some endpoints (summary statistics) read parameters from there.
+    """
     url = keyring["URL"].rstrip("/") + endpoint
     url = normalize_url(url)
     payload = {"access_key": keyring[ACCESS_KEY], "secret_key": keyring[SECRET_KEY]}
     if params:
         payload.update(params)
-    resp = requests.post(url, data=payload, stream=True)
+    resp = requests.post(url, data=payload, params=query_params, stream=True)
     if resp.status_code != requests.codes.OK:
         raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
-    return orjson.loads(resp.content)
+    return resp
+
+
+def _json_api_post(
+    keyring: dict[str, str],
+    endpoint: str,
+    params: dict[str, str] | None = None,
+    query_params: dict[str, str] | None = None,
+):
+    """ As _api_post, but parse the response body as JSON. """
+    return orjson.loads(_api_post(keyring, endpoint, params, query_params).content)
 
 
 def fetch_accessible_studies(keyring: dict[str, str]) -> list[tuple[str, str]]:
@@ -121,19 +142,9 @@ def fetch_participant_table_data_csv(keyring: dict[str, str], study_id: str, fil
     :param study_id: Study ID
     :param file_path: Path of the file to write the CSV data to
     """
-    url = keyring["URL"].rstrip("/") + "/get-participant-table-data/v1"
-    payload = {
-        "access_key": keyring[ACCESS_KEY],
-        "secret_key": keyring[SECRET_KEY],
-        "study_id": study_id,
-        "data_format": "csv",
-    }
-    
-    url = normalize_url(url)
-    resp = requests.post(url, data=payload, stream=True)
-    if resp.status_code != requests.codes.OK:
-        raise APIError(f"response not ok ({resp.status_code}) {resp.url}")
-    
+    params = {"study_id": study_id, "data_format": "csv"}
+    resp = _api_post(keyring, "/get-participant-table-data/v1", params)
+
     if directory:=dirname(file_path):
         make_directories(directory)
     
@@ -190,16 +201,21 @@ def fetch_participant_notification_history(keyring: dict[str, str], participant_
     return _json_api_post(keyring, "/get-participant-notification-history/v1", params)
 
 
-def fetch_sycamore_analysis_output(keyring: dict[str, str], study_id: str) -> list[dict]:
+def fetch_sycamore_analysis_output(keyring: dict[str, str], study_id: str) -> bytes:
     """
-    Get the Sycamore analysis output for a study.
+    Get the output of the most recent Sycamore analysis run for a study.
+
+    The server sends this as a zip file, not JSON, so the raw bytes are returned. Open them with
+    `zipfile.ZipFile(io.BytesIO(result))`, or write them straight to a .zip file.
+
+    Raises APIError (404) when the study has no forest tasks, or when the output file is missing.
 
     :param keyring: Keyring dictionary
     :param study_id: Study ID
-    :returns: List of Sycamore analysis output dictionaries
+    :returns: Bytes of the zip file
     """
     params = {"study_id": study_id}
-    return list(_json_api_post(keyring, "/get-sycamore-analysis-output/v1", params))
+    return _api_post(keyring, "/get-sycamore-analysis-output/v1", params).content
 
 
 def fetch_summary_statistics(
@@ -218,18 +234,25 @@ def fetch_summary_statistics(
     :param end_date: Last date to include, format YYYY-MM-DD
     :param start_date: First date to include, format YYYY-MM-DD
     :param fields: Comma-separated list of fields to return
+    :param participant_id: Only return statistics for this participant
     :returns: List of summary statistic dictionaries
     """
-    params = {'study_id': study_id}
+    # study_id goes in the POST body with the credentials, but the server reads every filter from
+    # the URL query string. Filters sent in the POST body are silently ignored.
+    # (beiwe-backend: summary_statistics_request_handler builds its form from request.GET)
+    filters = {}
     if end_date is not None:
-        params["end_date"] = end_date
+        filters["end_date"] = end_date
     if start_date is not None:
-        params["start_date"] = start_date
+        filters["start_date"] = start_date
     if fields is not None:
-        params["fields"] = fields
+        filters["fields"] = fields
     if participant_id is not None:
-        params["participant_id"] = participant_id
-    return list(_json_api_post(keyring, "/get-summary-statistics/v1", params))
+        # the server's parameter is plural: a comma-separated list of participant IDs
+        filters["participant_ids"] = participant_id
+    return list(
+        _json_api_post(keyring, "/get-summary-statistics/v1", {"study_id": study_id}, query_params=filters)
+    )
 
 
 def _fetch_participant_device_status_history(keyring: dict[str, str], participant_id: str) -> list[dict]:
