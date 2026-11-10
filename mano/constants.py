@@ -1,12 +1,12 @@
-import json, locale, logging, os
+import json, locale, logging, os, sys
 from datetime import datetime
 
 import coloredlogs, requests
 from dateutil.tz import UTC
 
-try:  # zstd is in the standard library as of Python 3.14, earlier versions use the backport
+if sys.version_info >= (3, 14):  # zstd is in the standard library as of Python 3.14
     from compression import zstd
-except ImportError:
+else:
     from backports import zstd  # type: ignore
 
 

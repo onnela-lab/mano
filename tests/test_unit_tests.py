@@ -1,13 +1,18 @@
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+from zipfile import ZipFile
 
-import pytest, responses
+import orjson, pytest, requests, responses
 from dateutil.tz import gettz
 
 from mano import APIError, interval, IntervalError
-from mano.beiwe_api import (fetch_interventions, fetch_participant_table_data,
-    fetch_participant_table_data_csv, fetch_participants_in_study, fetch_study_device_settings,
-    fetch_study_settings, fetch_summary_statistics, fetch_survey_history)
+from mano.beiwe_api import (_fetch_participant_device_status_history, fetch_interventions,
+    fetch_participant_heartbeat_history, fetch_participant_notification_history,
+    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_participant_upload_history,
+    fetch_participant_version_history, fetch_participants_in_study, fetch_study_device_settings,
+    fetch_study_settings, fetch_summary_statistics, fetch_survey_history, fetch_sycamore_analysis_output)
 from mano.constants import UTC
 from mano.mano import login, LoginError
 from mano.messages import (API_400_ERROR, API_403_ERROR, API_404_ERROR, BACKFILL_FILE_EXISTS_MSG,
@@ -531,3 +536,590 @@ def test_api_403_error_with_study_id():
     msg = API_403_ERROR(403, "https://x/get-users/v1", study_id="STUDY_ID")
     assert "study `STUDY_ID`" in msg
     assert "may not exist" in msg
+
+
+@responses.activate
+def test_fetch_participant_version_history_returns_data(keyring: dict[str, str]):
+    data = [{
+        'app_version_code': '250',
+        'app_version_name': '2.5.0',
+        'os_version': '17.0',
+        'created_on': '2024-01-01T12:00:00Z',
+    }]
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', json=data, status=200)
+    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_version_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
+    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_version_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
+    fetch_participant_version_history(keyring, 'MY_PARTICIPANT_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'participant_id=MY_PARTICIPANT_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_participant_version_history_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_heartbeat_history_returns_data(keyring: dict[str, str]):
+    data = [{'timestamp': '2024-01-01T12:00:00Z'}, {'timestamp': '2024-01-01T13:00:00Z'}]
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', json=data, status=200)
+    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_heartbeat_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
+    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_heartbeat_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
+    fetch_participant_heartbeat_history(keyring, 'MY_PARTICIPANT_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'participant_id=MY_PARTICIPANT_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_participant_heartbeat_history_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_upload_history_returns_data(keyring: dict[str, str]):
+    data = [{
+        'file_size': 128,
+        'timestamp': '2024-01-01T12:00:00Z',
+        'file_name': 'gps/1704110400.csv',
+    }]
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', json=data, status=200)
+    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_upload_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
+    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_upload_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
+    fetch_participant_upload_history(keyring, 'MY_PARTICIPANT_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'participant_id=MY_PARTICIPANT_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_participant_upload_history_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_notification_history_returns_data(keyring: dict[str, str]):
+    data = {'survey1': [{
+        'timestamp': '2024-01-01T12:00:00Z',
+        'type': 'absolute',
+        'scheduled_time': '2024-01-01T12:00:00Z',
+        'confirmed_received': False,
+        'uuid': 'notification1',
+        'resend': False,
+        'push_rejected': False,
+    }]}
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', json=data, status=200)
+    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_notification_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
+    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+    assert result == {}
+
+
+@responses.activate
+def test_fetch_participant_notification_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
+    fetch_participant_notification_history(keyring, 'MY_PARTICIPANT_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'participant_id=MY_PARTICIPANT_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_participant_notification_history_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_returns_data(keyring: dict[str, str]):
+    data = [{
+        'created_on': '2024-01-01T12:00:00Z',
+        'endpoint': 'upload',
+        'app_os': 'ios',
+        'os_version': '17.0',
+        'app_version': '2.5.0',
+        'device_status': {'battery_level': 0.8},
+    }]
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', json=data, status=200)
+    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
+    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_sends_participant_id_and_credentials(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
+    _fetch_participant_device_status_history(keyring, 'MY_PARTICIPANT_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'participant_id=MY_PARTICIPANT_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_participant_device_status_history_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_returns_zip(keyring: dict[str, str]):
+    archive = BytesIO()
+    with ZipFile(archive, 'w') as output:
+        output.writestr('report.csv', 'participant_id,value\nabc123,1\n')
+    data = archive.getvalue()
+    responses.post(
+        keyring['URL'] + '/get-sycamore-analysis-output/v1',
+        body=data,
+        status=200,
+        content_type='zip',
+        headers={'Content-Disposition': 'attachment; filename=report.zip'},
+    )
+    result = fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-sycamore-analysis-output/v1',
+        body='No forest tasks found for this study.',
+        status=404,
+    )
+    with pytest.raises(APIError, match="404"):
+        fetch_sycamore_analysis_output(keyring, 'MY_STUDY_ID')
+    body = str(responses.calls[0].request.body)
+    assert 'study_id=MY_STUDY_ID' in body
+    assert f"access_key={keyring['ACCESS_KEY']}" in body
+    assert f"secret_key={keyring['SECRET_KEY']}" in body
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_no_tasks_raises_api_error(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-sycamore-analysis-output/v1',
+        body='No forest tasks found for this study.',
+        status=404,
+    )
+    with pytest.raises(APIError, match="404"):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+@responses.activate
+def test_fetch_summary_statistics_sends_participant_id(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
+    fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='MY_PARTICIPANT_ID')
+    query = parse_qs(urlparse(responses.calls[0].request.url).query)
+    assert query.get('participant_ids') == ['MY_PARTICIPANT_ID']
+
+
+@responses.activate
+def test_fetch_summary_statistics_omits_none_participant_id(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
+    fetch_summary_statistics(keyring, 'STUDY_ID', participant_id=None)
+    assert 'participant_id' not in str(responses.calls[0].request.body)
+    assert 'participant_id' not in responses.calls[0].request.url
+    assert 'participant_ids' not in str(responses.calls[0].request.body)
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_participant_version_history_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_participant_version_history_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_version_history_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(keyring['URL'].rstrip('/') + '/get-participant-version-history/v1', body='[]', status=200)
+    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_version_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', body='[]', status=200)
+    fetch_participant_version_history(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
+
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_participant_heartbeat_history_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_participant_heartbeat_history_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_heartbeat_history_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(keyring['URL'].rstrip('/') + '/get-participant-heartbeat-history/v1', body='[]', status=200)
+    result = fetch_participant_heartbeat_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_heartbeat_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + '/get-participant-heartbeat-history/v1', body='[]', status=200)
+    fetch_participant_heartbeat_history(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
+
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_participant_upload_history_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_participant_upload_history_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_upload_history_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(keyring['URL'].rstrip('/') + '/get-participant-upload-history/v1', body='[]', status=200)
+    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_upload_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', body='[]', status=200)
+    fetch_participant_upload_history(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
+
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_participant_notification_history_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_participant_notification_history_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_notification_history_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(keyring['URL'].rstrip('/') + '/get-participant-notification-history/v1', body='{}', status=200)
+    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+    assert result == {}
+
+
+@responses.activate
+def test_fetch_participant_notification_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', body='{}', status=200)
+    fetch_participant_notification_history(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
+
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_participant_device_status_history_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_participant_device_status_history_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(keyring['URL'].rstrip('/') + '/get-participant-device-status-history/v1', body='[]', status=200)
+    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+    assert result == []
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_encodes_participant_id_and_credentials(keyring: dict[str, str]):
+    keyring['ACCESS_KEY'] = 'access+key&value'
+    keyring['SECRET_KEY'] = 'secret=key+value'
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', body='[]', status=200)
+    _fetch_participant_device_status_history(keyring, 'participant+id&value')
+    body = parse_qs(responses.calls[0].request.body)
+    assert body['participant_id'] == ['participant+id&value']
+    assert body['access_key'] == [keyring['ACCESS_KEY']]
+    assert body['secret_key'] == [keyring['SECRET_KEY']]
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 500])
+@responses.activate
+def test_fetch_sycamore_analysis_output_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-sycamore-analysis-output/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_missing_report_raises_api_error(keyring: dict[str, str]):
+    responses.post(
+        keyring['URL'] + '/get-sycamore-analysis-output/v1',
+        body='Unable to access report file.',
+        status=404,
+    )
+    with pytest.raises(APIError, match="404"):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_sycamore_analysis_output_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-sycamore-analysis-output/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+@responses.activate
+def test_fetch_sycamore_analysis_output_handles_trailing_slash(keyring: dict[str, str]):
+    keyring['URL'] += '/'
+    responses.post(
+        keyring['URL'].rstrip('/') + '/get-sycamore-analysis-output/v1',
+        body='No forest tasks found for this study.',
+        status=404,
+    )
+    with pytest.raises(APIError, match="404"):
+        fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
+
+
+@responses.activate
+def test_fetch_participant_notification_history_preserves_surveys_and_null_values(keyring: dict[str, str]):
+    data = {
+        'survey1': [{
+            'timestamp': '2024-01-01T07:00:00-05:00',
+            'type': 'absolute',
+            'scheduled_time': '2024-01-01T07:00:00-05:00',
+            'confirmed_received': '2024-01-01T07:00:01-05:00',
+            'uuid': None,
+            'resend': True,
+            'push_rejected': False,
+        }],
+        'survey2': [],
+    }
+    responses.post(keyring['URL'] + '/get-participant-notification-history/v1', json=data, status=200)
+    result = fetch_participant_notification_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_upload_history_preserves_order_and_zero_file_size(keyring: dict[str, str]):
+    data = [
+        {'file_size': 0, 'timestamp': '2024-01-01T12:00:00Z', 'file_name': 'gps/1704110400.csv'},
+        {'file_size': 128, 'timestamp': '2024-01-01T13:00:00Z', 'file_name': 'gps/1704114000.csv'},
+    ]
+    responses.post(keyring['URL'] + '/get-participant-upload-history/v1', json=data, status=200)
+    result = fetch_participant_upload_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_version_history_preserves_order_and_null_values(keyring: dict[str, str]):
+    data = [
+        {'app_version_code': None, 'app_version_name': None, 'os_version': None,
+         'created_on': '2024-01-01T12:00:00Z'},
+        {'app_version_code': '250', 'app_version_name': '2.5.0', 'os_version': '17.0',
+         'created_on': '2024-01-02T12:00:00Z'},
+    ]
+    responses.post(keyring['URL'] + '/get-participant-version-history/v1', json=data, status=200)
+    result = fetch_participant_version_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@responses.activate
+def test_fetch_participant_device_status_history_preserves_nested_data(keyring: dict[str, str]):
+    data = [
+        {'created_on': '2024-01-01T12:00:00Z', 'device_status': {}},
+        {'created_on': '2024-01-02T12:00:00Z', 'device_status': {
+            'battery_level': 0,
+            'charging': False,
+            'events': [{'value': None}],
+        }},
+    ]
+    responses.post(keyring['URL'] + '/get-participant-device-status-history/v1', json=data, status=200)
+    result = _fetch_participant_device_status_history(keyring, 'PARTICIPANT_ID')
+    assert result == data
+
+
+@pytest.mark.parametrize('filters', [
+    {'start_date': '2024-01-01'},
+    {'end_date': '2024-01-31'},
+    {'fields': 'date,beiwe_id'},
+    {'start_date': '2024-01-01', 'end_date': '2024-01-31', 'fields': 'date,beiwe_id'},
+])
+@responses.activate
+def test_fetch_summary_statistics_sends_participant_id_with_filters(keyring: dict[str, str], filters):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
+    fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='MY_PARTICIPANT_ID', **filters)
+    query = parse_qs(urlparse(responses.calls[0].request.url).query)
+    assert query.get('participant_ids') == ['MY_PARTICIPANT_ID']
+    for name, value in filters.items():
+        assert query.get(name) == [value]
+
+
+@responses.activate
+def test_fetch_summary_statistics_default_omits_participant_id(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
+    fetch_summary_statistics(keyring, 'STUDY_ID')
+    assert 'participant_id' not in str(responses.calls[0].request.body)
+    assert 'participant_id' not in responses.calls[0].request.url
+
+
+@pytest.mark.parametrize('status_code', [400, 403, 404, 500])
+@responses.activate
+def test_fetch_summary_statistics_participant_filter_http_error_raises_api_error(
+    keyring: dict[str, str], status_code: int
+):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='error', status=status_code)
+    with pytest.raises(APIError, match=str(status_code)):
+        fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('body', ['not json', '', '{"incomplete":'])
+@responses.activate
+def test_fetch_summary_statistics_participant_filter_invalid_json_raises(keyring: dict[str, str], body: str):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=body, status=200)
+    with pytest.raises(orjson.JSONDecodeError):
+        fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
+
+
+@pytest.mark.parametrize('error', [requests.exceptions.ConnectionError, requests.exceptions.Timeout])
+@responses.activate
+def test_fetch_summary_statistics_participant_filter_request_error_propagates(keyring: dict[str, str], error):
+    responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=error('request failed'))
+    with pytest.raises(error, match="request failed"):
+        fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
