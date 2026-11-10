@@ -2,7 +2,7 @@ import logging
 from copy import copy
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
-from os import listdir, makedirs, remove as delete_file
+from os import listdir, remove as delete_file
 from pathlib import Path
 from time import sleep
 from zipfile import ZipFile
@@ -55,9 +55,27 @@ def test_download_user_ids_alias(mock_download_v1_api: RequestsMock, keyring: di
     )
 
 
-def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download returns the expected number of files."""
-    # Call the download function
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks how many files the mocked download (tests/data/download.v1.zip) contains.
+# This test runs once per row. Each row is:
+#   (data stream folder to count files in, or None to count every file; expected file count)
+@pytest.mark.parametrize(
+    ("folder", "expected_count"),
+    [
+        (None, 31),             # every file: 29 GPS + 1 identifier + 1 registry
+        ("gps", 29),            # only files under <participant>/gps/
+        ("identifiers", 1),     # only files under <participant>/identifiers/
+    ],
+    ids=["all_files", "gps", "identifiers"],
+)
+def test_download_file_count(
+    mock_download_v1_api: RequestsMock,
+    keyring: dict[str, str],
+    folder: str | None,
+    expected_count: int,
+):
+    """Test that download returns the expected number of files, in total and per data stream."""
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
@@ -70,10 +88,10 @@ def test_download_file_count(mock_download_v1_api: RequestsMock, keyring: dict[s
     # Get the list of files in the zip (excluding directory entries)
     assert isinstance(zf, ZipFile)
     file_names = [zinfo.filename for zinfo in zf.infolist() if not zinfo.filename.endswith('/')]
+    if folder is not None:
+        file_names = [f for f in file_names if f"/{folder}/" in f]
     
-    # Verify we have the expected total number of files
-    # (29 GPS + 1 identifier + 1 registry = 31)
-    assert len(file_names) == 31
+    assert len(file_names) == expected_count
 
 
 def test_download_v1_contains_expected_files_with_correct_crcs(
@@ -182,9 +200,8 @@ def test_download_v1_and_v2_have_same_underlying_data(
     assert zf1.read("registry") == zf2.read("registry")
 
 
-def test_download_gps_files(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download contains the expected GPS files."""
-    # Call the download function
+def test_download_gps_files_cover_requested_dates(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
+    """Test that the downloaded GPS files cover the requested date range (June 15-16, 2018)."""
     zf = sync.download(
         keyring,
         study_id='STUDY_ID',
@@ -194,48 +211,32 @@ def test_download_gps_files(mock_download_v1_api: RequestsMock, keyring: dict[st
         time_end='2018-06-17T00:00:00'
     )
     
-    # Get the list of files in the zip (excluding directory entries)
     assert isinstance(zf, ZipFile)
-    file_names = [zinfo.filename for zinfo in zf.infolist() if not zinfo.filename.endswith('/')]
-    
-    # Verify GPS files are present - should have 29 GPS files
-    gps_files = [f for f in file_names if 'gps' in f]
-    assert len(gps_files) == 29
-    
-    # Verify date range coverage (June 15-16, 2018)
+    gps_files = [zinfo.filename for zinfo in zf.infolist() if '/gps/' in zinfo.filename]
     assert any('2018-06-15' in f for f in gps_files)
     assert any('2018-06-16' in f for f in gps_files)
 
 
-def test_download_v1_api_request(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download makes the correct API request."""
-    # Call the download function
-    sync.download(
-        keyring,
-        study_id='STUDY_ID',
-        participant_ids=['USER_ID'],
-        data_streams=['identifiers', 'gps'],
-        time_start='2018-06-15T00:00:00',
-        time_end='2018-06-17T00:00:00'
-    )
-    
-    # Verify the API was called correctly
-    assert len(mock_download_v1_api.calls) == 1
-    request = mock_download_v1_api.calls[0].request
-    
-    # Check that the request contains expected parameters
-    assert isinstance(request.body, str)
-    assert 'access_key=ACCESS_KEY' in request.body
-    assert 'secret_key=SECRET_KEY' in request.body
-    assert 'study_id=STUDY_ID' in request.body
-    # the api's user_ids parameter is misnamed, it has been changed to participant_ids in newer
-    # backends, but user_ids will not be deprecated on the backend for compatibility.
-    assert 'user_ids=USER_ID' in request.body
-
-
-def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: dict[str, str]):
-    """Test that download makes the correct API request."""
-    # Call the download function
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that download() sends the right request body to both download endpoints.
+# compressed=False calls /get-data/v1, and compressed=True calls /get-data/v2. Each endpoint has
+# its own mock fixture in conftest.py, so each row names the fixture to load, and the test loads it
+# with request.getfixturevalue(). This test runs once per row. Each row is:
+#   (name of the mock fixture to load, value of download()'s `compressed` argument)
+@pytest.mark.parametrize(
+    ("mock_api_fixture", "compressed"),
+    [
+        ("mock_download_v1_api", False),   # uncompressed download, v1 endpoint
+        ("mock_download_v2_api", True),    # compressed download, v2 endpoint
+    ],
+    ids=["v1", "v2"],
+)
+def test_download_api_request(
+    request: pytest.FixtureRequest, keyring: dict[str, str], mock_api_fixture: str, compressed: bool
+):
+    """Test that download makes the correct API request against both endpoint versions."""
+    mock_api: RequestsMock = request.getfixturevalue(mock_api_fixture)
     sync.download(
         keyring,
         study_id='STUDY_ID',
@@ -243,23 +244,25 @@ def test_download_v2_api_request(mock_download_v2_api: RequestsMock, keyring: di
         data_streams=['identifiers', 'gps'],
         time_start='2018-06-15T00:00:00',
         time_end='2018-06-17T00:00:00',
-        compressed=True,
+        compressed=compressed,
     )
     
     # Verify the API was called correctly
-    assert len(mock_download_v2_api.calls) == 1
-    request = mock_download_v2_api.calls[0].request
+    assert len(mock_api.calls) == 1
+    request_body = mock_api.calls[0].request.body
     
     # Check that the request contains expected parameters
-    assert isinstance(request.body, str)
-    assert 'access_key=ACCESS_KEY' in request.body
-    assert 'secret_key=SECRET_KEY' in request.body
-    assert 'study_id=STUDY_ID' in request.body
+    assert isinstance(request_body, str)
+    assert 'access_key=ACCESS_KEY' in request_body
+    assert 'secret_key=SECRET_KEY' in request_body
+    assert 'study_id=STUDY_ID' in request_body
     # the api's user_ids parameter is misnamed, it has been changed to participant_ids in newer
     # backends, but user_ids will not be deprecated on the backend for compatibility.
-    assert 'user_ids=USER_ID' in request.body
+    assert 'user_ids=USER_ID' in request_body
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
     "exception_type",
     # Include Timeout subclasses explicitly so the test documents their retry behavior.
@@ -303,6 +306,8 @@ def test_download_request_exception_retries_and_succeeds(
         assert len(rsps.calls) == 2
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
     "exception_type",
     # These errors occur after a successful response starts streaming and may be transient.
@@ -360,6 +365,8 @@ def test_download_stream_exception_retries_and_succeeds(
         assert iterate_with_spinner.call_count == 2
 
 
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
     "exception_type",
     # Proxy and TLS failures usually require configuration changes, so retrying will not help.
@@ -658,39 +665,36 @@ def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], 
     )
 
 
-def test_download_single_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
-    """Test that download works when a single participant ID string is provided."""
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that download() accepts participant_ids as a single string (not just a list) and splits it
+# on commas before passing it on to _download(). This test runs once per row. Each row is:
+#   (string passed as participant_ids, list that _download() should receive)
+@pytest.mark.parametrize(
+    ("participant_ids", "expected_participant_ids"),
+    [
+        ("USER_ID", ["USER_ID"]),                        # one ID becomes a one-item list
+        ("USER_ID,user_id", ["USER_ID", "user_id"]),     # comma-separated IDs are split
+    ],
+    ids=["single", "comma_separated_pair"],
+)
+def test_download_participant_ids_string_works(
+    keyring: dict[str, str],
+    mocker: MockerFixture,
+    participant_ids: str,
+    expected_participant_ids: list[str],
+):
+    """Test that download accepts participant IDs as a (comma-separated) string."""
     dl = mocker.patch("mano.sync._download")
-    # Call the download function with a single string participant ID
     time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
     time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
     _zf = sync.download(
         keyring,
         study_id='STUDY_ID',
-        participant_ids='USER_ID',
+        participant_ids=participant_ids,
         data_streams=['identifiers', 'gps'],
         time_start=time_start,
         time_end=time_end,
-    )
-    
-    dl.assert_called_once_with(
-        keyring, 'STUDY_ID', False, ['identifiers', 'gps'], {}, time_start, time_end, ['USER_ID']
-    )
-
-
-def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerFixture):
-    """Test that download works when a single participant ID string is provided."""
-    dl = mocker.patch("mano.sync._download")
-    # Call the download function with a single string participant ID
-    time_start = datetime(2018, 6, 15, 0, 0, 0, tzinfo=UTC)
-    time_end = datetime(2018, 6, 17, 0, 0, 0, tzinfo=UTC)
-    _zf = sync.download(
-        keyring,
-        study_id='STUDY_ID',
-        participant_ids='USER_ID,user_id',
-        data_streams=['identifiers', 'gps'],
-        time_start=time_start,
-        time_end=time_end
     )
     dl.assert_called_once_with(
         keyring,
@@ -700,7 +704,7 @@ def test_download_two_user_string_works(keyring: dict[str, str], mocker: MockerF
         {},
         time_start,
         time_end,
-        ['USER_ID', 'user_id'],
+        expected_participant_ids,
     )
 
 
@@ -845,9 +849,6 @@ def test_backfill_called_twice(
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     twenty_days_ago_dt = today - timedelta(days=20)
     
-    # set it to 5 days ago so two calls are needed to catch up to today
-    # backfill_file.write_text(five_days_ago_dt.date().isoformat())
-    
     sync.backfill(
         start_date=twenty_days_ago_dt.date().isoformat(),
         **default_backfill_kwargs(tmp_path, keyring)
@@ -863,10 +864,6 @@ def test_backfill_called_twice(
         keyring,
         **default_backfill_download_kwargs(twenty_days_ago_dt+timedelta(days=20), twenty_days_ago_dt+timedelta(days=40))
     )
-    
-    # we removed the backfill tracking, it may be replaced by querying the server for data.
-    # backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
-    # assert backfill_file.read_text() == "COMPLETE"
 
 
 def test_backfill_makes_no_download_calls_when_up_to_date(
@@ -883,70 +880,54 @@ def test_backfill_makes_no_download_calls_when_up_to_date(
         start_date=tomorrow.date().isoformat(), **default_backfill_kwargs(tmp_path, keyring)
     )
     mock_download.assert_not_called()
-    
-    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
-    assert not backfill_file.exists()
 
 
-def test_junk_backfill_file_is_deleted(
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Old versions of backfill wrote a `<participant>/.backfill` file holding the timestamp to resume
+# from. Current backfill doesn't use that file, but leaving it on disk is misleading, so
+# _backfill_participant deletes it. Backfill must also ignore the file's contents: it always starts
+# from the `start_date` argument, even when the file holds a valid date.
+# This test runs once per value. Each value is the text written into the old .backfill file.
+@pytest.mark.parametrize(
+    "old_file_contents",
+    [
+        "some invalid date",   # junk that can't be parsed as a date
+        "YESTERDAY",           # a valid resume date (yesterday), replaced with a real date below
+    ],
+    ids=["junk_contents", "valid_resume_date"],
+)
+def test_old_backfill_tracking_file_is_deleted_and_ignored(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
     mock_zip_data_compressed: bytes,
+    old_file_contents: str,
 ):
-    """ Test that backfill_participant works when there is a bad .backfill file. """
     mock_download = mocker.patch(
         'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
     )
-    yesterdt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-    
-    # real old-style backfill files would have nothing useful in them
-    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
-    makedirs(backfill_file.parent, exist_ok=True)
-    backfill_file.write_text('some invalid date')
-    
-    # no backfill file, so it should use the start_date parameter
-    sync.backfill(
-        start_date=yesterdt.date().isoformat(), **default_backfill_kwargs(tmp_path, keyring)
-    )
-    mock_download.assert_called_once_with(
-        keyring,
-        **default_backfill_download_kwargs(yesterdt, yesterdt+timedelta(days=20)),
-    )
-    assert not backfill_file.exists()  # confirm we deleted
-
-
-def test_old_style_backfill_file_is_ignored(
-    mocker: MockerFixture,
-    keyring: dict[str, str],
-    tmp_path: Path,
-    mock_zip_data_compressed: bytes,
-):
-    """ tests that we ignore the old deprecated backfill file. """
-    mock_download = mocker.patch(
-        'mano.sync.download', return_value=ZipFile(BytesIO(mock_zip_data_compressed))
-    )
-    
-    # this is from the test that tested whether a backfill file was parsed / overridden
-    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
     seven_days_ago = today - timedelta(days=7)
-    
-    makedirs(backfill_file.parent, exist_ok=True)
-    backfill_file.write_text(yesterday.isoformat())  # this date results in only one call to download
-    
-    # set it to today so no calls are needed
+    if old_file_contents == "YESTERDAY":
+        old_file_contents = yesterday.isoformat()
+
+    # write the old tracking file where old versions of backfill put it
+    backfill_file = tmp_path / '6y6s1w4g' / '.backfill'
+    backfill_file.parent.mkdir(parents=True, exist_ok=True)
+    backfill_file.write_text(old_file_contents)
+
     sync.backfill(
-        start_date=seven_days_ago.date().isoformat(),  # should be ignored
-        **default_backfill_kwargs(tmp_path, keyring)
+        start_date=seven_days_ago.date().isoformat(), **default_backfill_kwargs(tmp_path, keyring)
     )
+
+    # the download window starts at start_date, not at anything read from the old file
     mock_download.assert_called_once_with(
         keyring,
-        **default_backfill_download_kwargs(seven_days_ago, seven_days_ago+timedelta(days=20)),
+        **default_backfill_download_kwargs(seven_days_ago, seven_days_ago + timedelta(days=20)),
     )
-    
-    assert not backfill_file.exists()  # confirm we deleted
+    assert not backfill_file.exists()
 
 
 def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
@@ -1007,6 +988,15 @@ def _test_backfill_does_not_overwrite(
     
     gps_list = listdir(gps_path)
     identifiers_list = listdir(identifiers_path)
+    # guard: the checks below are meaningless if a data stream has no files
+    assert gps_list
+    assert identifiers_list
+    
+    original_contents = {
+        folder / name: (folder / name).read_bytes()
+        for folder, names in ((gps_path, gps_list), (identifiers_path, identifiers_list))
+        for name in names
+    }
     
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
@@ -1025,12 +1015,12 @@ def _test_backfill_does_not_overwrite(
     
     # This is how you test files were not modified or overwritten:
     # ctime is creation time, mtime is modified time
-    for a_path in gps_list + identifiers_list:
-        p = (gps_path / a_path)
+    for p, original_bytes in original_contents.items():
         ctime = p.stat().st_ctime
         mtime = p.stat().st_mtime
-        assert ctime <= between_creation_and_potential_update
-        assert mtime <= between_creation_and_potential_update
+        assert ctime <= between_creation_and_potential_update, p
+        assert mtime <= between_creation_and_potential_update, p
+        assert p.read_bytes() == original_bytes, p
 
 
 
@@ -1236,8 +1226,24 @@ def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
         )
 
 
-def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path):
-    mocker.patch("mano.sync._backfill_participant")  # prevent actual download
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that backfill() accepts every supported form of start_date without raising, and goes on
+# to call _backfill_participant. All values below mean June 15, 2018. This test runs once per value.
+@pytest.mark.parametrize(
+    "start_date",
+    [
+        "2018-06-15T00:00:00",    # ISO datetime string
+        "2018-06-15",             # ISO date string
+        date(2018, 6, 15),        # datetime.date object
+        datetime(2018, 6, 15),    # datetime.datetime object
+    ],
+    ids=["datetime_string", "date_string", "date", "datetime"],
+)
+def test_backfill_type_validation_passes_on_good_types(
+    keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path, start_date: str | date | datetime
+):
+    mock_backfill_participant = mocker.patch("mano.sync._backfill_participant")  # prevent actual download
     
     # should not raise
     sync.backfill(
@@ -1245,12 +1251,19 @@ def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], 
         study_id="STUDY_ID",
         participant_id="USER_ID",
         output_dir=str(tmp_path),
-        start_date="2018-06-15T00:00:00",
+        start_date=start_date,
         data_streams=["gps"],
         lock=["gps"],
         passphrase="some_passphrase",
-        # user_id="USER_ID",
     )
+    mock_backfill_participant.assert_called_once()
+
+
+def test_backfill_type_validation_passes_on_deprecated_user_id(
+    keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path
+):
+    mock_backfill_participant = mocker.patch("mano.sync._backfill_participant")  # prevent actual download
+    
     # cannot have both participant_id and user_id
     sync.backfill(
         keyring=keyring,
@@ -1263,33 +1276,7 @@ def test_backfill_type_validation_passes_on_good_types(keyring: dict[str, str], 
         passphrase="some_passphrase",
         user_id="USER_ID",
     )
-
-
-def test_backfill_allows_dates(keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path):
-    mocker.patch("mano.sync._backfill_participant")  # prevent actual download
-    sync.backfill(
-        keyring=keyring,
-        study_id="STUDY_ID",
-        participant_id="USER_ID",
-        output_dir=str(tmp_path),
-        start_date=date(2018, 6, 15),
-        data_streams=["gps"],
-        lock=["gps"],
-        passphrase="some_passphrase",
-    )
-    
-    # date-strings
-    sync.backfill(
-        keyring=keyring,
-        study_id="STUDY_ID",
-        participant_id="USER_ID",
-        output_dir=str(tmp_path),
-        start_date="2018-06-15",
-        data_streams=["gps"],
-        lock=["gps"],
-        passphrase="some_passphrase",
-        # user_id="USER_ID",
-    )
+    mock_backfill_participant.assert_called_once()
 
 
 def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: Path):
@@ -1489,66 +1476,37 @@ def test_generate_registry_hashes_no_files(tmp_path: Path):
     assert local_hashes == {}
 
 
-def test_generate_registry_hashes_uncompressed_unencrypted(tmp_path: Path):
-    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
-        setup_file_paths_components(tmp_path)
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that generate_registry_info() gives the same hash no matter how a data file is stored on
+# disk. The same file is written in each of its four stored forms. In every case the hash must
+# match the plain file's hash (FILE_SHA1_HASH_*), because the server registry only knows that one.
+# This test runs once per row. Each row is:
+#   (suffix added to the file name, bytes written to the file, passphrase needed to read it)
+@pytest.mark.parametrize(
+    ("suffix", "content", "passphrase"),
+    [
+        ("", FILE_CONTENT_UNCOMPRESSED, None),                                # plain file.csv
+        (".zst", FILE_CONTENT_COMPRESSED, None),                              # file.csv.zst
+        (".lock", FILE_CONTENT_ENCRYPTED_UNCOMPRESSED, PASSPHRASE_STRING),    # file.csv.lock
+        (".zst.lock", FILE_CONTENT_ENCRYPTED_COMPRESSED, PASSPHRASE_STRING),  # file.csv.zst.lock
+    ],
+    ids=["uncompressed_unencrypted", "compressed_unencrypted", "uncompressed_encrypted", "compressed_encrypted"],
+)
+def test_generate_registry_hashes_single_file(
+    tmp_path: Path, suffix: str, content: bytes, passphrase: str | None
+):
+    _, _, stream_path, *_ = setup_file_paths_components(tmp_path)
     
-    fp_uncompr.write_bytes(FILE_CONTENT_UNCOMPRESSED)
+    (stream_path / (DATA_STREAM_FILE + suffix)).write_bytes(content)
     remote_hashes, local_hashes = sync.generate_registry_info(
         str(tmp_path),
         study_id=STUDY_ID,
         participant_id=PARTICIPANT_ID,
-        passphrase=None,
+        passphrase=passphrase,
     )
     
-    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
-    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
-
-
-def test_generate_registry_hashes_compressed_unencrypted(tmp_path: Path):
-    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
-        setup_file_paths_components(tmp_path)
-    
-    fp_compr.write_bytes(FILE_CONTENT_COMPRESSED)
-    remote_hashes, local_hashes = sync.generate_registry_info(
-        str(tmp_path),
-        study_id=STUDY_ID,
-        participant_id=PARTICIPANT_ID,
-        passphrase=None,
-    )
-    
-    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
-    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
-
-
-def test_generate_registry_hashes_uncompressed_encrypted(tmp_path: Path):
-    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
-        setup_file_paths_components(tmp_path)
-    
-    fp_encr.write_bytes(FILE_CONTENT_ENCRYPTED_UNCOMPRESSED)
-    remote_hashes, local_hashes = sync.generate_registry_info(
-        str(tmp_path),
-        study_id=STUDY_ID,
-        participant_id=PARTICIPANT_ID,
-        passphrase=PASSPHRASE_STRING,
-    )
-    
-    assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
-    assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
-
-
-def test_generate_registry_hashes_compressed_encrypted(tmp_path: Path):
-    study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
-        setup_file_paths_components(tmp_path)
-    
-    fp_encr_compr.write_bytes(FILE_CONTENT_ENCRYPTED_COMPRESSED)
-    remote_hashes, local_hashes = sync.generate_registry_info(
-        str(tmp_path),
-        study_id=STUDY_ID,
-        participant_id=PARTICIPANT_ID,
-        passphrase=PASSPHRASE_STRING,
-    )
-    
+    # every on-disk variant of the same file must hash to the same uncompressed, unencrypted value
     assert remote_hashes == {NORMALIZED_FILE_PATH: FILE_SHA1_HASH_STRING}
     assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
 

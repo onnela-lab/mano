@@ -10,6 +10,8 @@ from tests.conftest import (COMPRESSED_BYTES, DECOMPRESSED_BYTES,
     generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
 
+# Not a duplicate of test_iterate_recursive: this one tests filtering in a single flat folder,
+# and test_iterate_recursive tests walking into subdirectories.
 def test_iterate_valid_data_files(tmp_path: Path):
     valid_files = ["data1.csv", "audio.wav"]
     invalid_files = ["document.txt", "image.jpg", "archive.zip", "script.py"]
@@ -50,6 +52,7 @@ def test_empty_folder(tmp_path: Path):
             log.error(f"TEST: Unexpected file found while running test 4: {fp}")
 
 
+# Not a duplicate of test_iterate_valid_data_files: see the note there.
 def test_iterate_recursive(tmp_path: Path):
     valid_files, _invalid_files, _bytes = generate_valid_compress_test_files(tmp_path)
     found_files = {*iterate_beiwe_data_files_recursively(str(tmp_path))}

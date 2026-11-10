@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -61,6 +62,12 @@ def test_fetch_participants_in_study_sends_study_id(keyring: dict[str, str], moc
     request_body = responses.calls[0].request.body
     assert request_body is not None
     assert 'study_id=MY_STUDY_ID' in str(request_body)
+
+
+@responses.activate
+def test_fetch_participants_in_study_empty_list_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-participant-ids/v1', body='[]', status=200)
+    assert fetch_participants_in_study(keyring, 'STUDY_ID') == []
 
 
 @responses.activate
@@ -132,32 +139,47 @@ def test_validate_datetime_too_something():
 #
 
 
-def test_interval():
-    assert interval("10s") == 10
-    assert interval("5m") == 300
-    assert interval("2h") == 7200
-    assert interval("1d") == 86400
-    assert interval("0s") == 0
-    assert interval("0h") == 0
-    assert interval("0H") == 0
-    assert interval("0m") == 0
-    assert interval("0d") == 0
-    assert interval("000000000000m") == 0
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that interval() converts a "<number><unit>" string into seconds.
+# This test runs once per row. Each row is: (interval string, expected seconds)
+@pytest.mark.parametrize(
+    ("value", "seconds"),
+    [
+        # one of each unit: s = seconds, m = minutes, h = hours, d = days
+        ("10s", 10),
+        ("5m", 300),
+        ("2h", 7200),
+        ("1d", 86400),
+        # zero is valid for every unit
+        ("0s", 0),
+        ("0m", 0),
+        ("0h", 0),
+        ("0H", 0),              # uppercase unit (see test_interval_uppercase_all_units for the rest)
+        ("0d", 0),
+        ("000000000000m", 0),   # leading zeros are allowed
+    ],
+)
+def test_interval(value: str, seconds: int):
+    assert interval(value) == seconds
 
-    with pytest.raises(IntervalError, match="invalid interval 'y'"):
-        interval("y")
 
-    with pytest.raises(IntervalError, match="invalid interval '10x'"):
-        interval("10x")
-
-    with pytest.raises(IntervalError, match="invalid interval 'abc'"):
-        interval("abc")
-
-    with pytest.raises(IntervalError, match="invalid interval ''"):
-        interval("")
-
-    with pytest.raises(IntervalError, match="invalid interval ''"):
-        interval("")
+# This is a parametrized test: pytest runs it once for each case listed in the decorator below,
+# passing that case's values in as the test function's arguments.
+# Checks that a malformed interval string raises IntervalError, and that the error message
+# quotes the bad value back to the user. This test runs once per value in the list.
+@pytest.mark.parametrize(
+    "value",
+    [
+        "y",      # unknown unit, no number
+        "10x",    # number with an unknown unit
+        "abc",    # not an interval at all
+        "",       # empty string
+    ],
+)
+def test_interval_invalid_raises_error_with_value_in_message(value: str):
+    with pytest.raises(IntervalError, match=re.escape(f"invalid interval '{value}'")):
+        interval(value)
 
 
 def test_interval_negative_raises_error():
@@ -252,6 +274,12 @@ def test_fetch_study_settings_returns_all_keys(keyring: dict[str, str], mock_stu
 
 
 @responses.activate
+def test_fetch_study_settings_empty_returns_nothing(keyring: dict[str, str]):
+    responses.post(keyring['URL'] + '/get-study-settings/v1', body='{}', status=200)
+    assert fetch_study_settings(keyring, 'STUDY_ID') == []
+
+
+@responses.activate
 def test_fetch_participant_table_data_returns_rows(keyring: dict[str, str], mock_participant_table_response: str):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body=mock_participant_table_response, status=200)
     result = list(fetch_participant_table_data(keyring, 'STUDY_ID'))
@@ -300,6 +328,14 @@ def test_fetch_participant_table_data_csv_creates_missing_directories(
     file_path = tmp_path / "subdir" / "nested" / "participants.csv"
     fetch_participant_table_data_csv(keyring, 'STUDY_ID', str(file_path))
     assert file_path.read_bytes() == mock_participant_table_csv_response.encode()
+
+
+@responses.activate
+def test_fetch_participant_table_data_csv_empty_response_writes_empty_file(keyring: dict[str, str], tmp_path: Path):
+    responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='', status=200)
+    file_path = tmp_path / "participants.csv"
+    fetch_participant_table_data_csv(keyring, 'STUDY_ID', str(file_path))
+    assert file_path.read_bytes() == b''
 
 
 @responses.activate

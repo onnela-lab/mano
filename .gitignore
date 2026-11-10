@@ -4,6 +4,7 @@ keyring.enc
 .coverage
 #*.lock
 #*.swp
+*.png
 *.DS_Store
 
 __pycache__/
