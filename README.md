@@ -70,7 +70,7 @@ under the open source BSD-3-Clause license.
 </div>
 
 - [Please Report Any Issues You Encounter](https://github.com/onnela-lab/mano/issues/39)
-- Mano is compatible with modern versions of Python [at time of writing this means 3.11+]
+- Mano is compatible with modern versions of Python [at time of writing this means 3.12 through 3.15]
 - Mano's CI runs on macOS (Unix), Ubuntu (Linux), and Windows.
 
 
@@ -122,7 +122,7 @@ For developers of Mano:
 - Clone the repository with `git clone git@github.com:onnela-lab/mano.git`
 - `cd` into the cloned repository folder in your terminal
 - Ensure you are on the `develop` branch
-- Set up your python virtual environment running under Python 3.11+
+- Set up your python virtual environment running under Python 3.12+
 
 In your virtual environment run these commands:
 

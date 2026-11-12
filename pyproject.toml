@@ -30,6 +30,11 @@ testpaths = [
     "tests",
 ]
 
+# we can't fix this warning and don't use that feature
+filterwarnings = [
+    "ignore:CFB8 has been moved:cryptography.utils.CryptographyDeprecationWarning",
+]
+
 
 #
 ## Linters Etc.
@@ -166,7 +171,7 @@ license = {file = "LICENSE"}
 version = "0.7.0-dev"
 
 # Python Version Requirement
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 
 # Authorship
 name = "mano"
@@ -188,9 +193,10 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 
 
