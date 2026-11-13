@@ -389,11 +389,11 @@ There are two other mechanisms to provide it:
     $env:NRG_KEYRING_PASS="my_credential_file_passphrase"
     ```
 
-- As a __keyword__ argument to the `load_keyring()` function provide a `password` parameter:
+- As a __keyword__ argument to the `load_keyring()` function provide a `passphrase` parameter:
     ```python
     from mano import load_keyring
     keyring = load_keyring(
-        "onnela-lab-server-example-credentials", password="my_credential_file_passphrase"
+        "onnela-lab-server-example-credentials", passphrase="my_credential_file_passphrase"
     )
     ```
 
