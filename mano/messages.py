@@ -201,6 +201,18 @@ def CANNOT_ENCRYPT_MSG(path: str):
            "but cannot do so because no passphrase was provided."
 
 
+def DECOMPRESS_NOT_ZST_WARNING(filename: str):
+    return f"Decompression was requested but `{filename}` is not a .zst file, " \
+           "it will be saved as-is without decompression."
+
+
+def UNKNOWN_COMMAND_ERROR(command: str):
+    return f"unknown command: `{command}`"
+
+
+NO_COMMAND_ERROR = "No command was provided, run `mano --help` to see the available commands."
+
+
 TOO_MANY_MULTITHREAD_ARGS = \
     "Multiple multithreading parameters (strting with `--mt`) were provided, please provide only one."
 

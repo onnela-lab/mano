@@ -1,4 +1,4 @@
-import importlib, os, runpy, sys
+import importlib, logging, os, runpy, sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -7,6 +7,7 @@ from pytest_mock import MockerFixture
 
 from mano import mano_cli
 from mano.constants import GlobalSettings, InternalError
+from mano.messages import NO_COMMAND_ERROR, UNKNOWN_COMMAND_ERROR
 from tests.conftest import generate_compressed_zst_files, generate_uncompressed_zst_files
 
 
@@ -31,6 +32,7 @@ def _setup_mock_decompress(mocker: MockerFixture, tmp_path: Path) -> MagicMock:
     return mocker.patch("mano.mano_cli.decompress_zst_files")
 
 
+# A flag that is parsed but not passed on could make a user delete or overwrite files unexpectedly.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that each `mano compress` command-line flag is passed through to compress_to_zst_files.
@@ -63,6 +65,7 @@ def test_mano_cli_compress_flags(
     )
 
 
+# A flag that is parsed but not passed on could make a user delete or overwrite files unexpectedly.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that each `mano decompress` command-line flag is passed through to decompress_zst_files.
@@ -88,6 +91,7 @@ def test_mano_cli_decompress_flags(
     )
 
 
+# Scripts that pass -y must never hang on a prompt, while interactive users must still be asked.
 def test_confirm_command_doesnt_block_when_it_shouldnt(mocker: MockerFixture):
     global_settings = mocker.patch("mano.mano_cli.GlobalSettings")
     global_settings.skip_user_interaction = False
@@ -102,12 +106,15 @@ def test_confirm_command_doesnt_block_when_it_shouldnt(mocker: MockerFixture):
     mock_input.assert_not_called()
 
 
+# Non-string arguments are a programming mistake, and should fail at once rather than print a
+# garbled prompt.
 def test_confirm_command_rejects_non_string_args(mocker: MockerFixture):
     mocker.patch("mano.mano_cli.GlobalSettings").skip_user_interaction = False
     with pytest.raises(InternalError, match="only accepts string arguments"):
         mano_cli.confirm_command("fine", 123)  # type: ignore
 
 
+# Saying no to the prompt must stop the command before it touches any files.
 def test_confirm_command_exits_when_user_declines(mocker: MockerFixture):
     mocker.patch("mano.mano_cli.GlobalSettings").skip_user_interaction = False
     mocker.patch("mano.mano_cli.input", return_value="n")
@@ -121,6 +128,7 @@ def test_confirm_command_exits_when_user_declines(mocker: MockerFixture):
 #
 
 
+# Commands without a threads flag must keep the default and leave their arguments alone.
 def test_extract_multithread_args_no_args_is_noop():
     original = GlobalSettings.multithreading_count
     try:
@@ -132,6 +140,7 @@ def test_extract_multithread_args_no_args_is_noop():
         GlobalSettings.multithreading_count = original
 
 
+# The flag must set the thread count and be removed so later argument checks do not reject it.
 def test_extract_multithread_args_sets_thread_count():
     original = GlobalSettings.multithreading_count
     try:
@@ -143,12 +152,14 @@ def test_extract_multithread_args_sets_thread_count():
         GlobalSettings.multithreading_count = original
 
 
+# Two thread flags are ambiguous, so the user should get an error instead of one silently winning.
 def test_extract_multithread_args_multiple_raises():
     with pytest.raises(SystemExit) as exc_info:
         mano_cli.extract_multithread_args(["compress", "--mt2", "--mt4"])
     assert exc_info.value.code == 1
 
 
+# A mistyped thread count must stop with a clear error rather than run with a wrong value.
 def test_extract_multithread_args_invalid_value_raises():
     with pytest.raises(SystemExit) as exc_info:
         mano_cli.extract_multithread_args(["compress", "--mtX"])
@@ -160,16 +171,19 @@ def test_extract_multithread_args_invalid_value_raises():
 #
 
 
+# Running plain `mano` is how new users find out what it does, so it must show help and not crash.
 def test_main_no_args_prints_help(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
     _run_main(monkeypatch, mocker, ["mano"])  # no return value, no SystemExit raised
 
 
+# Users expect --help to work and not to fail as an unknown command.
 def test_main_help_flag_prints_help(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
     _run_main(monkeypatch, mocker, ["mano", "--help"])
 
 
+# Scripts need a non-zero exit code when a command name is wrong.
 def test_main_unknown_command_exits_1(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
     with pytest.raises(SystemExit) as exc_info:
@@ -177,6 +191,39 @@ def test_main_unknown_command_exits_1(monkeypatch: pytest.MonkeyPatch, mocker: M
     assert exc_info.value.code == 1
 
 
+# The user needs to see which command name was rejected, so typos are easy to spot.
+def test_main_unknown_command_error_names_the_command(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture, caplog: pytest.LogCaptureFixture,
+):
+    mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, mocker, ["mano", "frobnicate", "some/path"])
+    assert UNKNOWN_COMMAND_ERROR("frobnicate") in caplog.text
+    # the debug line echoing argv also holds the path, so look only at error records
+    error_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_messages == [UNKNOWN_COMMAND_ERROR("frobnicate")]  # not the leftover args
+
+
+# Flags alone are not a command, and users should be told that instead of getting silence.
+# Checks that main exits 1 with a clear error when no command is given.
+# Column: argv = the full sys.argv list (program name first).
+@pytest.mark.parametrize("argv", [
+    ["mano", "-y"],  # only the global yes flag
+    ["mano", "--yes"],  # only the long yes flag
+    ["mano", "--mt4"],  # only a multithreading flag
+])
+def test_main_no_command_logs_error_and_exits_1(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture, caplog: pytest.LogCaptureFixture,
+    argv: list[str],
+):
+    mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(monkeypatch, mocker, argv)
+    assert exc_info.value.code == 1
+    assert NO_COMMAND_ERROR in caplog.text
+
+
+# The command name must reach the right handler with the remaining arguments, and exit 0 on success.
 def test_main_dispatches_to_decompress(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
     mock_decompress = mocker.patch.object(mano_cli, "decompress")
@@ -186,6 +233,7 @@ def test_main_dispatches_to_decompress(monkeypatch: pytest.MonkeyPatch, mocker: 
     mock_decompress.assert_called_once_with(["some/path"])
 
 
+# The command name must reach the right handler with the remaining arguments, and exit 0 on success.
 def test_main_dispatches_to_compress(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mocker.patch.object(mano_cli, "GlobalSettings", MagicMock())
     mock_compress = mocker.patch.object(mano_cli, "compress")
@@ -195,6 +243,8 @@ def test_main_dispatches_to_compress(monkeypatch: pytest.MonkeyPatch, mocker: Mo
     mock_compress.assert_called_once_with(["some/path"])
 
 
+# -y is what lets scripts run without prompts, and it must not leak into the command's own
+# arguments.
 def test_main_yes_flag_sets_skip_user_interaction(monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture):
     mock_decompress = mocker.patch.object(mano_cli, "decompress")
     original = GlobalSettings.skip_user_interaction
@@ -213,6 +263,7 @@ def test_main_yes_flag_sets_skip_user_interaction(monkeypatch: pytest.MonkeyPatc
 #
 
 
+# Users can pass one file instead of a folder, and that path must be handed on as given.
 def test_decompress_single_zst_file(tmp_path: Path, mocker: MockerFixture):
     zst_file = tmp_path / "data.csv.zst"
     zst_file.write_bytes(b"irrelevant")
@@ -222,6 +273,7 @@ def test_decompress_single_zst_file(tmp_path: Path, mocker: MockerFixture):
     mock_decompress.assert_called_once_with(str(zst_file), delete_zsts=False, overwrite=False)
 
 
+# A failure inside decompression should end with a clear error and exit code 2, not a raw traceback.
 def test_decompress_exception_logs_and_exits(tmp_path: Path, mocker: MockerFixture):
     _, _, _ = generate_compressed_zst_files(tmp_path)
     mocker.patch("mano.mano_cli.input", return_value="y")
@@ -231,6 +283,7 @@ def test_decompress_exception_logs_and_exits(tmp_path: Path, mocker: MockerFixtu
     assert exc_info.value.code == 2
 
 
+# Users can pass one file instead of a folder, and the default options must apply.
 def test_compress_single_valid_beiwe_file(tmp_path: Path, mocker: MockerFixture):
     data_file = tmp_path / "data.csv"
     data_file.write_bytes(b"irrelevant")
@@ -242,6 +295,7 @@ def test_compress_single_valid_beiwe_file(tmp_path: Path, mocker: MockerFixture)
     )
 
 
+# A failure inside compression should end with a clear error and exit code 2, not a raw traceback.
 def test_compress_exception_logs_and_exits(tmp_path: Path, mocker: MockerFixture):
     _, _, _ = generate_uncompressed_zst_files(tmp_path)
     mocker.patch("mano.mano_cli.input", return_value="y")
@@ -251,6 +305,8 @@ def test_compress_exception_logs_and_exits(tmp_path: Path, mocker: MockerFixture
     assert exc_info.value.code == 2
 
 
+# zstd only accepts a limited range of levels, so a bad level should stop with an error before any
+# work starts.
 def test_extract_compression_level_out_of_range_exits(tmp_path: Path):
     with pytest.raises(SystemExit) as exc_info:
         mano_cli.extract_compression_level(["-99"])
@@ -262,16 +318,20 @@ def test_extract_compression_level_out_of_range_exits(tmp_path: Path):
 #
 
 
+# A command run without its required path should stop with a usage error.
 def test_ensure_minimum_number_of_args_raises_when_too_few():
     with pytest.raises(SystemExit) as exc_info:
         mano_cli.ensure_minimum_number_of_args("decompress", [], 1)
     assert exc_info.value.code == 1
 
 
+# The check must not block correct usage.
 def test_ensure_minimum_number_of_args_passes_when_enough():
     mano_cli.ensure_minimum_number_of_args("decompress", ["some/path"], 1)  # no exception
 
 
+# A mistyped flag must be rejected, or the user may think a safety option like --delete-zst was
+# applied.
 def test_ensure_only_allowed_parameters_raises_on_unknown():
     with pytest.raises(SystemExit) as exc_info:
         mano_cli.ensure_only_allowed_parameters(
@@ -280,6 +340,7 @@ def test_ensure_only_allowed_parameters_raises_on_unknown():
     assert exc_info.value.code == 1
 
 
+# The check must not block correct usage.
 def test_ensure_only_allowed_parameters_passes_with_allowed_only():
     mano_cli.ensure_only_allowed_parameters(
         "decompress",
@@ -299,6 +360,7 @@ def test_ensure_only_allowed_parameters_passes_with_allowed_only():
 #
 
 
+# `python -m mano` must start the CLI, and this is the only test that runs __main__.py.
 def test_dunder_main_invokes_cli_main(mocker: MockerFixture):
     mock_main = mocker.patch("mano.mano_cli.main")
     runpy.run_module("mano.__main__", run_name="__main__")

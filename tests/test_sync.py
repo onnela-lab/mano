@@ -26,6 +26,7 @@ from tests.conftest import (DATA_STREAM_FILE, DATA_STREAM_FOLDER, FILE_CONTENT_C
 #
 
 
+# The main user-facing call must hand back a ZipFile that callers can read directly.
 def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """ Test that download function returns a ZipFile object. """
     # Call the download function
@@ -42,6 +43,7 @@ def test_download_returns_zipfile(mock_download_v1_api: RequestsMock, keyring: d
     assert isinstance(zf, ZipFile)
 
 
+# Old scripts still pass user_ids; the deprecated alias must keep working until it is removed.
 def test_download_user_ids_alias(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """ Ensure the deprecated user_ids alias works as expected. """
     # Just test that it doesn't crash, if we later have further infrastructure duplicate a separate test
@@ -55,6 +57,7 @@ def test_download_user_ids_alias(mock_download_v1_api: RequestsMock, keyring: di
     )
 
 
+# Catches a download that silently drops or duplicates files, overall and per data stream.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks how many files the mocked download (tests/data/download.v1.zip) contains.
@@ -94,6 +97,7 @@ def test_download_file_count(
     assert len(file_names) == expected_count
 
 
+# Verifies the uncompressed (v1) download delivers the exact file contents, not just the right names.
 def test_download_v1_contains_expected_files_with_correct_crcs(
     mock_download_v1_api: RequestsMock,
     keyring: dict[str, str],
@@ -124,6 +128,7 @@ def test_download_v1_contains_expected_files_with_correct_crcs(
     assert filtered_actual_files == expected_uncompressed_filenames
 
 
+# Verifies the compressed (v2) download delivers the exact file contents, not just the right names.
 def test_download_v2_contains_expected_files_with_correct_crcs(
     mock_download_v2_api: RequestsMock,
     keyring: dict[str, str],
@@ -155,6 +160,7 @@ def test_download_v2_contains_expected_files_with_correct_crcs(
     assert filtered_actual_files == expected_compressed_filenames
 
 
+# Users can pick either endpoint, so both must deliver identical data once decompressed.
 def test_download_v1_and_v2_have_same_underlying_data(
     mock_download_v1_and_v2_api: RequestsMock,
     keyring: dict[str, str],
@@ -200,6 +206,7 @@ def test_download_v1_and_v2_have_same_underlying_data(
     assert zf1.read("registry") == zf2.read("registry")
 
 
+# The requested time window is the user's main filter; the zip must contain data for those days.
 def test_download_gps_files_cover_requested_dates(mock_download_v1_api: RequestsMock, keyring: dict[str, str]):
     """Test that the downloaded GPS files cover the requested date range (June 15-16, 2018)."""
     zf = sync.download(
@@ -217,6 +224,7 @@ def test_download_gps_files_cover_requested_dates(mock_download_v1_api: Requests
     assert any('2018-06-16' in f for f in gps_files)
 
 
+# A request with wrong credentials or parameters fails on the server, so the body is checked on both endpoints.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that download() sends the right request body to both download endpoints.
@@ -261,6 +269,7 @@ def test_download_api_request(
     assert 'user_ids=USER_ID' in request_body
 
 
+# A flaky network must not lose a download; transient request errors are retried.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
@@ -306,6 +315,7 @@ def test_download_request_exception_retries_and_succeeds(
         assert len(rsps.calls) == 2
 
 
+# A connection that drops mid-download must be retried from scratch, not leave a truncated zip.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
@@ -365,6 +375,7 @@ def test_download_stream_exception_retries_and_succeeds(
         assert iterate_with_spinner.call_count == 2
 
 
+# Proxy and TLS errors need user action, so retrying only wastes time and hides the real problem.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 @pytest.mark.parametrize(
@@ -400,6 +411,7 @@ def test_download_configuration_connection_error_does_not_retry(
         assert len(rsps.calls) == 1
 
 
+# Server hiccups (5xx) are temporary, so they are retried before giving up.
 def test_download_500_error_retries_and_succeeds(
     keyring: dict[str, str], mock_zip_data_uncompressed: bytes
 ):
@@ -432,6 +444,7 @@ def test_download_500_error_retries_and_succeeds(
         assert len(rsps.calls) == 2
 
 
+# A 4xx means the request itself is wrong, so retrying cannot help and the error should surface at once.
 def test_download_400_error_does_not_retry(keyring: dict[str, str]):
     """Test that download does not retry 400-level HTTP responses."""
     with responses.RequestsMock() as rsps:
@@ -455,6 +468,7 @@ def test_download_400_error_does_not_retry(keyring: dict[str, str]):
         assert len(rsps.calls) == 1
 
 
+# Retries must be bounded; a server that stays down gives the user a clear API error.
 def test_download_repeated_500_error_raises_api_error(keyring: dict[str, str]):
     """Test that download raises after repeated 500-level HTTP responses."""
     with responses.RequestsMock() as rsps:
@@ -479,6 +493,7 @@ def test_download_repeated_500_error_raises_api_error(keyring: dict[str, str]):
         assert len(rsps.calls) == sync.GlobalSettings.download_retry_attempts
 
 
+# Retries must be bounded; a network that stays down gives the user the original connection error.
 def test_download_repeated_connection_error_reraises(keyring: dict[str, str]):
     """Test that download raises after repeated connection errors."""
     with responses.RequestsMock() as rsps:
@@ -502,6 +517,7 @@ def test_download_repeated_connection_error_reraises(keyring: dict[str, str]):
         assert len(rsps.calls) == sync.GlobalSettings.download_retry_attempts
 
 
+# The registry is how the server skips files we already have, so it must reach the server in the request.
 def test_download_sends_registry_param(keyring: dict[str, str], mock_zip_data_uncompressed: bytes):
     """ When a registry dict is provided it should be JSON-encoded and included in the payload. """
     with responses.RequestsMock() as rsps:
@@ -522,6 +538,7 @@ def test_download_sends_registry_param(keyring: dict[str, str], mock_zip_data_un
         assert 'some%2Ffile.csv' in body or 'some/file.csv' in body
 
 
+# Users rely on the download speed summary in the log; it must appear when time has passed.
 def test_download_logs_nonzero_elapsed_time(
     mock_download_v1_api: RequestsMock, keyring: dict[str, str], mocker: MockerFixture, caplog: pytest.LogCaptureFixture
 ):
@@ -532,6 +549,7 @@ def test_download_logs_nonzero_elapsed_time(
     assert any("average of" in record.message for record in caplog.records)
 
 
+# If the server returns something that is not a zip, the user needs an error and the bad file kept for debugging.
 def test_do_download_bad_zip_raises_download_error(
         keyring: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -569,6 +587,7 @@ def test_do_download_bad_zip_raises_download_error(
 # user_ids: list[str] | None = None
 
 
+# Wrong argument types must fail early with a clear message instead of an obscure error mid-download.
 def test_download_type_validation_raises_on_bad_types(
     keyring: dict[str, str], mocker: MockerFixture
 ):
@@ -634,6 +653,7 @@ def test_download_type_validation_raises_on_bad_types(
         )
 
 
+# Validation must not reject valid calls, including the deprecated user_ids spelling.
 def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], mocker: MockerFixture):
     mocker.patch('mano.sync._download')  # prevent actual download
     
@@ -665,6 +685,7 @@ def test_download_type_validation_passes_on_good_types(keyring: dict[str, str], 
     )
 
 
+# Callers (and the CLI) often pass IDs as a comma-separated string; it must be accepted and split.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that download() accepts participant_ids as a single string (not just a list) and splits it
@@ -708,6 +729,7 @@ def test_download_participant_ids_string_works(
     )
 
 
+# Bad values (not bad types) must fail early with a clear message, before any network call.
 def test_download_non_type_error_validation(keyring: dict[str, str]):
     
     # can't have both participant_ids and user_ids
@@ -786,7 +808,8 @@ def default_backfill_download_kwargs(start: datetime, end: datetime) -> dict:
     }
 
 
-def test_backfill_calls_download(
+# Backfill works in fixed windows; the first window must start at the requested date and stop once caught up.
+def test_backfill_calls_download_once_with_20_day_window_when_start_is_yesterday(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
@@ -811,6 +834,7 @@ def test_backfill_calls_download(
     )
 
 
+# A UTC start date must not shift the download window by timezone, or days could be skipped or repeated.
 def test_backfill_UTC_timezone_stripped_and_no_time_shifting(
     mocker: MockerFixture,
     keyring: dict[str, str],
@@ -835,7 +859,8 @@ def test_backfill_UTC_timezone_stripped_and_no_time_shifting(
     )
 
 
-def test_backfill_called_twice(
+# Backfill must keep requesting consecutive windows until it reaches the present, with no gaps.
+def test_backfill_requests_consecutive_20_day_windows_until_caught_up(
     mocker: MockerFixture,
     keyring: dict[str, str],
     tmp_path: Path,
@@ -866,6 +891,7 @@ def test_backfill_called_twice(
     )
 
 
+# Running backfill when there is nothing new must not hit the server.
 def test_backfill_makes_no_download_calls_when_up_to_date(
     mocker: MockerFixture,
     keyring: dict[str, str],
@@ -882,6 +908,7 @@ def test_backfill_makes_no_download_calls_when_up_to_date(
     mock_download.assert_not_called()
 
 
+# Leftover files from old versions must not change where backfill starts or linger on disk.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Old versions of backfill wrote a `<participant>/.backfill` file holding the timestamp to resume
@@ -930,6 +957,7 @@ def test_old_backfill_tracking_file_is_deleted_and_ignored(
     assert not backfill_file.exists()
 
 
+# Backfill must never rewrite files the user already has, or timestamps and downstream tools would be disturbed.
 def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
     mocker: MockerFixture,
     keyring: dict[str, str],
@@ -945,6 +973,7 @@ def test_backfill_does_not_overwrite_matching_files_compressed_compressed(
     )
 
 
+# Same protection as the compressed case, for users who store their data uncompressed.
 def test_backfill_does_not_overwrite_matching_files_uncompressed_uncompressed(
     mocker: MockerFixture,
     keyring: dict[str, str],
@@ -1025,6 +1054,7 @@ def _test_backfill_does_not_overwrite(
 
 
 
+# Re-running backfill is routine, and the second run must leave the first run's files untouched.
 def test_second_backfill_call_does_not_overwrite_files_from_first_call(
     mocker: MockerFixture,
     keyring: dict[str, str],
@@ -1124,6 +1154,7 @@ def test_second_backfill_call_does_not_overwrite_files_from_first_call(
 # user_id: str | None = None
 
 
+# Wrong argument types must fail early with a clear message instead of an obscure error mid-backfill.
 def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
     mocker.patch('mano.sync._download')  # prevent actual download
     start_date = datetime(2024, 7, 30)
@@ -1226,6 +1257,7 @@ def test_backfill_type_validation_raises_on_bad_types(mocker: MockerFixture):
         )
 
 
+# Every documented form of start_date must be accepted so users are not forced into one format.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that backfill() accepts every supported form of start_date without raising, and goes on
@@ -1259,6 +1291,7 @@ def test_backfill_type_validation_passes_on_good_types(
     mock_backfill_participant.assert_called_once()
 
 
+# Old scripts still pass user_id; the deprecated alias must keep working until it is removed.
 def test_backfill_type_validation_passes_on_deprecated_user_id(
     keyring: dict[str, str], mocker: MockerFixture, tmp_path: Path
 ):
@@ -1279,6 +1312,7 @@ def test_backfill_type_validation_passes_on_deprecated_user_id(
     mock_backfill_participant.assert_called_once()
 
 
+# Bad values and inconsistent options must fail early with a clear message, before anything is downloaded or written.
 def test_backfill_non_type_error_validation(keyring: dict[str, str], tmp_path: Path):
     start_date = datetime(2018, 6, 15)
     # cannot have both participant_id and user_id
@@ -1395,6 +1429,7 @@ def test_backfill_dead_start_date_parsererror_branch(mocker: MockerFixture, keyr
         )
 
 
+# Covers a defensive branch that normal input cannot reach, so end_date still fails with a clear message.
 def test_backfill_dead_end_date_parsererror_branch(mocker: MockerFixture, keyring: dict[str, str], tmp_path: Path):
     mocker.patch(
         "mano.sync.validate_required_datetime",
@@ -1411,6 +1446,7 @@ def test_backfill_dead_end_date_parsererror_branch(mocker: MockerFixture, keyrin
         )
 
 
+# An end date that is not after the start would produce an empty or endless backfill, so it is rejected.
 def test_backfill_end_date_before_start_date_raises(
     mocker: MockerFixture, tmp_path: Path, keyring: dict[str, str]
 ):
@@ -1463,6 +1499,7 @@ def setup_file_paths_components(tmp_path: Path) -> tuple[Path, ...]:
     return study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr
 
 
+# A new participant with no files must give an empty registry so everything gets downloaded.
 def test_generate_registry_hashes_no_files(tmp_path: Path):
     study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
         setup_file_paths_components(tmp_path)
@@ -1476,6 +1513,7 @@ def test_generate_registry_hashes_no_files(tmp_path: Path):
     assert local_hashes == {}
 
 
+# The server registry only knows the plain hash, so every on-disk form must match it or files get re-downloaded.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that generate_registry_info() gives the same hash no matter how a data file is stored on
@@ -1511,6 +1549,7 @@ def test_generate_registry_hashes_single_file(
     assert local_hashes == {LOCAL_PATH_REFERENCE: FILE_SHA1_HASH_BYTES}
 
 
+# If one file exists in several stored forms, the registry must still list it once and not crash.
 def test_generate_registry_hashes_mixed_files(tmp_path: Path):
     study_path, participant_path, stream_path, fp_uncompr, fp_compr, fp_encr, fp_encr_compr = \
         setup_file_paths_components(tmp_path)
@@ -1535,6 +1574,7 @@ def test_generate_registry_hashes_mixed_files(tmp_path: Path):
 #
 
 
+# Old scripts call save(); it must keep forwarding to save_archive with the same arguments.
 def test_save_deprecated_calls_save_archive(mocker: MockerFixture):
     mock_save_archive = mocker.patch("mano.sync.save_archive", return_value=3)
     archive = object()
@@ -1543,6 +1583,7 @@ def test_save_deprecated_calls_save_archive(mocker: MockerFixture):
     mock_save_archive.assert_called_once_with(archive, "USER_ID", "/tmp/out", ["gps"], "pw")
 
 
+# Old scripts pass user_id to save(); it must be treated as the participant id.
 def test_save_deprecated_user_id_alias(mocker: MockerFixture):
     mock_save_archive = mocker.patch("mano.sync.save_archive", return_value=1)
     archive = object()
@@ -1550,6 +1591,7 @@ def test_save_deprecated_user_id_alias(mocker: MockerFixture):
     mock_save_archive.assert_called_once_with(archive, "USER_ID", "/tmp/out", None, None)
 
 
+# Giving two different participant IDs is ambiguous and must be rejected.
 def test_save_deprecated_user_id_and_participant_id_raises(mocker: MockerFixture):
     mocker.patch("mano.sync.save_archive")
     with pytest.raises(ValueError, match="cannot provide both"):
@@ -1561,19 +1603,23 @@ def test_save_deprecated_user_id_and_participant_id_raises(mocker: MockerFixture
 #
 
 
+# An empty server URL would fail confusingly later, so it is rejected up front.
 def test_normalize_url_empty_raises():
     with pytest.raises(ValueError, match="An empty URL was provided"):
         sync.normalize_url("   ")
 
 
+# Credentials must never be sent over plain http, so http URLs are upgraded.
 def test_normalize_url_forces_https():
     assert sync.normalize_url("http://studies.beiwe.org") == "https://studies.beiwe.org"
 
 
+# Users commonly type a bare hostname, which must still work.
 def test_normalize_url_adds_https_scheme():
     assert sync.normalize_url("studies.beiwe.org") == "https://studies.beiwe.org"
 
 
+# A trailing slash would produce malformed endpoint URLs.
 def test_normalize_url_strips_trailing_slashes():
     assert sync.normalize_url("https://studies.beiwe.org///") == "https://studies.beiwe.org"
 
@@ -1583,12 +1629,14 @@ def test_normalize_url_strips_trailing_slashes():
 #
 
 
+# No data streams specified means all streams; that must not be treated as an error.
 def test_validate_data_streams_empty_list_is_a_noop():
     assert sync.validate_data_streams([], "prefix") is None
     assert sync.validate_data_streams(None, "prefix") is None
 
 
-def test_check_can_parse_to_datetime():
+# Time arguments are checked with this helper; it must say yes to real dates and no to junk.
+def test_check_can_parse_to_datetime_true_for_date_false_for_junk():
     assert sync.check_can_parse_to_datetime("2024-01-01T00:00:00Z") is True
     assert sync.check_can_parse_to_datetime("not a date at all !!!") is False
 
@@ -1598,6 +1646,7 @@ def test_check_can_parse_to_datetime():
 #
 
 
+# Without progress display the download must still be saved fully and print nothing to the terminal.
 def test_iterate_with_spinner_no_progress(monkeypatch: pytest.MonkeyPatch):
     # sync.py binds `stdout` at import time (`from sys import stdout`), so patch that reference
     # directly rather than relying on pytest's stdout-capturing fixtures.
@@ -1612,6 +1661,7 @@ def test_iterate_with_spinner_no_progress(monkeypatch: pytest.MonkeyPatch):
     assert fake_stdout.getvalue() == ""
 
 
+# Users watching a large download should see progress output with size info.
 def test_iterate_with_spinner_shows_progress(monkeypatch: pytest.MonkeyPatch):
     fake_stdout = StringIO()
     monkeypatch.setattr(sync, "stdout", fake_stdout)

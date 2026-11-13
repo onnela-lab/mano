@@ -10,6 +10,7 @@ from mano.file_management import (atomic_write, bytes_to_human_filesize, get_thr
     validate_is_a_folder_or_zst_file)
 
 
+# Existing user data must survive a write that was told not to overwrite.
 def test_atomic_write_raises_when_overwrite_false_and_file_exists(tmp_path: Path):
     target = tmp_path / "existing.txt"
     target.write_bytes(b"original")
@@ -18,16 +19,19 @@ def test_atomic_write_raises_when_overwrite_false_and_file_exists(tmp_path: Path
     assert target.read_bytes() == b"original"
 
 
+# File sizes shown to the user must be readable in B and KB units.
 def test_bytes_to_human_filesize_converts_larger_sizes():
     assert bytes_to_human_filesize(b"x" * 500) == "500B"
     assert bytes_to_human_filesize(b"x" * 2048) == "2.00KB"
 
 
+# A mistyped path must stop the program with a clear exit instead of a confusing traceback later.
 def test_validate_exists_at_all_raises_when_missing():
     with pytest.raises(SystemExit):
         validate_exists_at_all("this/path/does/not/exist")
 
 
+# A file that is not Beiwe data must be rejected up front so commands do not run on the wrong input.
 def test_validate_is_a_folder_or_valid_beiwe_data_file_raises_for_invalid_file(tmp_path: Path):
     bad_file = tmp_path / "notes.txt"
     bad_file.write_text("hi")
@@ -35,6 +39,7 @@ def test_validate_is_a_folder_or_valid_beiwe_data_file_raises_for_invalid_file(t
         validate_is_a_folder_or_valid_beiwe_data_file(str(bad_file))
 
 
+# A non-zst file must be rejected up front by commands that only handle .zst input.
 def test_validate_is_a_folder_or_zst_file_raises_for_non_zst_file(tmp_path: Path):
     bad_file = tmp_path / "notes.txt"
     bad_file.write_text("hi")
@@ -42,6 +47,7 @@ def test_validate_is_a_folder_or_zst_file_raises_for_non_zst_file(tmp_path: Path
         validate_is_a_folder_or_zst_file(str(bad_file))
 
 
+# Users who set the thread count must get exactly that, not the automatic default.
 def test_get_thread_count_uses_global_settings_override():
     original = GlobalSettings.multithreading_count
     GlobalSettings.multithreading_count = 4

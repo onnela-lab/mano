@@ -8,7 +8,8 @@ from mano.constants import BEIWE_EXTENSIONS_ANDED, GlobalSettings, InternalError
 from mano.file_management import (check_is_valid_beiwe_data_file, compress_to_zst_files,
     decompress_zst_files, validate_is_a_folder_or_valid_beiwe_data_file,
     validate_is_a_folder_or_zst_file)
-from mano.messages import BAD_MULTITHREADING_ERROR, TOO_MANY_MULTITHREAD_ARGS
+from mano.messages import (BAD_MULTITHREADING_ERROR, NO_COMMAND_ERROR, TOO_MANY_MULTITHREAD_ARGS,
+    UNKNOWN_COMMAND_ERROR)
 
 
 log.setLevel(logging.DEBUG)
@@ -100,6 +101,11 @@ def main():
         args.remove("-y") if "-y" in args else args.remove("--yes")
     
     extract_multithread_args(args)  # removes all --mt# args from args
+    
+    # no command left after removing the global flags (e.g. `mano -y`)
+    if not args:
+        log.error(NO_COMMAND_ERROR)
+        exit(1)
     the_command = args.pop(0)
     
     # dispatch to the appropriate command
@@ -108,7 +114,7 @@ def main():
     elif the_command == COMPRESS:
         compress(args)
     else:
-        log.error(f"unknown command: `{args}`")
+        log.error(UNKNOWN_COMMAND_ERROR(the_command))
         exit(1)
     
     exit(0)
