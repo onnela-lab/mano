@@ -11,20 +11,23 @@ from tests.conftest import (generate_compressed_zst_files, generate_uncompressed
     generate_valid_compress_test_files, generate_valid_decompress_test_files)
 
 
-def test_compress_as_backend():
+# The backend compression helper must round-trip data exactly and actually save space.
+def test_compress_as_backend_round_trips_and_shrinks():
     original_bytes = b'This is some test data to be compressed using the backend compression settings.' * 10
     compressed_bytes = compress_as_backend(original_bytes)
     assert zstd.decompress(compressed_bytes) == original_bytes
     assert len(compressed_bytes) < len(original_bytes)
 
 
-def test_compress_general():
+# The user-facing compression helper must round-trip data at a custom level and save space.
+def test_compress_general_round_trips_and_shrinks_at_level_19():
     original_bytes = b'This is some test data to be compressed using the general compression settings.' * 10
     compressed_bytes = compress_general(original_bytes, level=19)  # take it slow
     assert zstd.decompress(compressed_bytes) == original_bytes
     assert len(compressed_bytes) < len(original_bytes)
 
 
+# Default compression must produce a valid .zst and keep the original, so nothing is lost by default.
 def test_compress_one_zst_file_defaults(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_one_zst_file(str(uncompressed_path))
@@ -34,6 +37,7 @@ def test_compress_one_zst_file_defaults(tmp_path: Path):
     assert len(compressed_bytes) < len(original_bytes)
 
 
+# An existing .zst must be protected unless the user explicitly allows overwriting.
 def test_compress_one_zst_file_overwrite_fail(tmp_path: Path):
     uncompressed_path, compressed_path, _original_bytes = generate_uncompressed_zst_files(tmp_path)
     compressed_path.write_bytes(b"super secret data")
@@ -41,6 +45,7 @@ def test_compress_one_zst_file_overwrite_fail(tmp_path: Path):
     assert compressed_path.read_bytes() == b"super secret data"
 
 
+# Users who opt in to overwrite must get the stale .zst replaced with fresh data.
 def test_compress_one_zst_file_overwrite_success(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compressed_path.write_bytes(b"super secret data")
@@ -48,6 +53,7 @@ def test_compress_one_zst_file_overwrite_success(tmp_path: Path):
     assert original_bytes == zstd.decompress(compressed_path.read_bytes())
 
 
+# The delete-original option must remove the source only after the .zst exists.
 def test_compress_one_zst_file_delete_original(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_one_zst_file(str(uncompressed_path), delete_original=True)
@@ -56,6 +62,7 @@ def test_compress_one_zst_file_delete_original(tmp_path: Path):
     assert original_bytes == zstd.decompress(compressed_path.read_bytes())
 
 
+# The compression level option must be accepted and still produce a valid smaller file.
 def test_compress_one_zst_file_custom_level(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_one_zst_file(str(uncompressed_path), compression_level=19)  # take it slow
@@ -65,6 +72,7 @@ def test_compress_one_zst_file_custom_level(tmp_path: Path):
     assert len(compressed_bytes) < len(original_bytes)
 
 
+# Default decompression must restore the exact bytes and keep the .zst, so nothing is lost by default.
 def test_decompress_one_zst_file_defaults(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     decompress_one_zst_file(str(compressed_path))
@@ -73,6 +81,7 @@ def test_decompress_one_zst_file_defaults(tmp_path: Path):
     assert original_bytes == uncompressed_path.read_bytes()
 
 
+# An existing uncompressed file must be protected unless the user explicitly allows overwriting.
 def test_decompress_one_zst_file_overwrite_fail(tmp_path: Path):
     uncompressed_path, compressed_path, _original_bytes = generate_compressed_zst_files(tmp_path)
     uncompressed_path.write_bytes(b"super secret data")
@@ -80,6 +89,7 @@ def test_decompress_one_zst_file_overwrite_fail(tmp_path: Path):
     assert uncompressed_path.read_bytes() == b"super secret data"
 
 
+# Users who opt in to overwrite must get the stale file replaced with the decompressed data.
 def test_decompress_one_zst_file_overwrite_success(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     uncompressed_path.write_bytes(b"super secret data")
@@ -87,6 +97,7 @@ def test_decompress_one_zst_file_overwrite_success(tmp_path: Path):
     assert original_bytes == uncompressed_path.read_bytes()
 
 
+# The delete-zst option must remove the archive only after the decompressed file exists.
 def test_decompress_one_zst_file_delete_zst(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     decompress_one_zst_file(str(compressed_path), delete_zsts=True)
@@ -95,18 +106,21 @@ def test_decompress_one_zst_file_delete_zst(tmp_path: Path):
     assert original_bytes == uncompressed_path.read_bytes()
 
 
+# The folder-level function must also accept a single file path, as the CLI allows.
 def test_decompress_zst_files_single_file_mode(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_compressed_zst_files(tmp_path)
     decompress_zst_files(str(compressed_path))
     assert uncompressed_path.read_bytes() == original_bytes
 
 
+# The folder-level function must also accept a single file path, as the CLI allows.
 def test_compress_to_zst_files_single_file_mode(tmp_path: Path):
     uncompressed_path, compressed_path, original_bytes = generate_uncompressed_zst_files(tmp_path)
     compress_to_zst_files(str(uncompressed_path))
     assert zstd.decompress(compressed_path.read_bytes()) == original_bytes
 
 
+# End-to-end check that a whole folder tree is decompressed and non-zst files are left as they were.
 def test_full_decompress_decompresses(tmp_path: Path):
     zst_files, non_zst_files, uncompressed_bytes = generate_valid_decompress_test_files(tmp_path)
     decompress_zst_files(str(tmp_path), delete_zsts=False, overwrite=False)
@@ -133,7 +147,8 @@ def common_full_decompress(
     assert set(new_valid_file_paths) == correct_uncompressed_file_paths
 
 
-def test_full_compress_multithread_works(tmp_path: Path):
+# End-to-end check that a whole folder tree is compressed through the multithreaded path.
+def test_full_compress_compresses_all_compressable_files(tmp_path: Path):
     compressable_files, _uncompressable_files, original_bytes = generate_valid_compress_test_files(tmp_path)
     compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False)
     common_full_compress(tmp_path, original_bytes, compressable_files)
@@ -153,6 +168,7 @@ def common_full_compress(tmp_path: Path, original_bytes: bytes, compressable_fil
     assert new_valid_file_paths == correct_compressed_file_paths
 
 
+# Folder-wide delete-zst must remove only the .zst files and leave everything else.
 def test_full_decompress_delete_zst_deletes_zsts(tmp_path: Path):
     zst_files, non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
     decompress_zst_files(str(tmp_path), delete_zsts=True, overwrite=False)
@@ -162,6 +178,7 @@ def test_full_decompress_delete_zst_deletes_zsts(tmp_path: Path):
         assert path.exists()
 
 
+# Folder-wide delete-original must remove only the compressed sources and leave everything else.
 def test_full_compress_delete_original_deletes_originals(tmp_path: Path):
     compressable_files, uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
     compress_to_zst_files(str(tmp_path), delete_original=True, overwrite=False)
@@ -171,6 +188,7 @@ def test_full_compress_delete_original_deletes_originals(tmp_path: Path):
         assert path.exists()
 
 
+# Folder-wide overwrite must replace every stale .zst, not just the first one.
 def test_full_compress_overwrites(tmp_path: Path):
     compressable_files, _uncompressable_files, decompressed_data = generate_valid_compress_test_files(tmp_path)
     for path in compressable_files:
@@ -183,6 +201,7 @@ def test_full_compress_overwrites(tmp_path: Path):
         assert zstd.decompress(compressed_path.read_bytes()) == decompressed_data
 
 
+# Folder-wide overwrite must replace every stale uncompressed file, not just the first one.
 def test_full_decompress_overwrites(tmp_path: Path):
     zst_files, _non_zst_files, decompressed_data = generate_valid_decompress_test_files(tmp_path)
     for path in zst_files:
@@ -195,6 +214,7 @@ def test_full_decompress_overwrites(tmp_path: Path):
         assert uncompressed_path.read_bytes() == decompressed_data
 
 
+# A failure while compressing must reach the user instead of being swallowed by the worker.
 def test_full_compress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
     _compressable_files, _uncompressable_files, _ = generate_valid_compress_test_files(tmp_path)
     mocker.patch("mano.file_management.compress_one_zst_file", side_effect=Exception("Simulated compression error"))
@@ -202,6 +222,7 @@ def test_full_compress_raises_an_error_during_real_execution_1_thread(tmp_path: 
         compress_to_zst_files(str(tmp_path), delete_original=False, overwrite=False)
 
 
+# A failure while decompressing must reach the user instead of being swallowed by the worker.
 def test_full_decompress_raises_an_error_during_real_execution_1_thread(tmp_path: Path, mocker: MockerFixture):
     _zst_files, _non_zst_files, _ = generate_valid_decompress_test_files(tmp_path)
     mocker.patch("mano.file_management.decompress_one_zst_file", side_effect=Exception("Simulated decompression error"))

@@ -17,8 +17,8 @@ from cryptease import decrypt_to_stream, encrypt, kdf as key_derivation_function
 from mano.constants import (BACKEND_ZSTD_PARAMS, BEIWE_FILE_EXTENSIONS, EncryptionKeyUnavailable,
     GlobalSettings, InvalidPathFormat, log, ParseError, SaveError, WriteError, zstd)
 from mano.messages import (CANNOT_ENCRYPT_MSG, CANNOT_HASH_MSG, DATA_STREAM_FOLDER_MSG,
-    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, NO_VALID_FILES_MSG,
-    PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
+    DATA_STREAM_NOT_PARTICIPANT_MSG, DATA_STREAM_REGISTRY_MSG, DECOMPRESS_NOT_ZST_WARNING,
+    NO_VALID_FILES_MSG, PARSE_ERROR_NO_MATCH_MSG, PARSE_ERROR_TOO_MANY_MATCHES_MSG)
 
 
 def make_directories(path: str):
@@ -415,14 +415,14 @@ def process_one_archive_file(
     # tracking if we decompressed for hash checking (start false only if it is a zst file)
     
     binary_data: bytes = archive.read(filename_in_zip)
-    if decompress_zst:
-        if not filename_in_zip.endswith('.zst'):
-            f"decompress_zst set to True but file is not .zst: `{filename_in_zip}`"
+    was_decompressed = False
+    if decompress_zst and not filename_in_zip.endswith('.zst'):
+        # only .zst files can be decompressed, keep the bytes and the name exactly as they are
+        log.warning(DECOMPRESS_NOT_ZST_WARNING(filename_in_zip))
+    elif decompress_zst:
         binary_data = zstd.decompress(binary_data)
-        output_name = output_name.replace(".zst", "")  # works even on uncompressed ~mp4s
+        output_name = output_name.replace(".zst", "")
         was_decompressed = True
-    else:
-        was_decompressed = False
     
     # bare_path, zst_path, lock_path, lock_zst_path = get_possible_real_paths(filename_in_zip)
     

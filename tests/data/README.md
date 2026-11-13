@@ -1,18 +1,18 @@
 # Test Data Directory
 
-This directory contains static test data files used by the test suite.
+Static files used by the test suite. They are real Beiwe download responses, committed so that
+tests are reproducible.
 
-## Files:
+## Files
 
-- `download.v1.zip`: Original API response from the download cassette (443KB)
-  - Contains 31 files: 29 GPS data files, 1 identifiers file, 1 registry file
-  - Used by `mock_zip_data` fixture in `conftest.py`
-  - Extracted from `tests/cassettes/download.v1.yaml`
+- `download.v1.zip` (445,692 bytes, 34 entries): response of `/get-data/v1`, uncompressed.
+  - 29 gps files, 1 identifiers file, 1 `registry` file, plus 3 directory entries.
+  - Served by the `mock_zip_data_uncompressed` fixture in `conftest.py` (used by
+    `mock_download_v1_api` and `mock_download_v1_and_v2_api`).
+- `download.v2.zip` (98,248 bytes, 34 entries): response of `/get-data/v2`, the same data with
+  each file compressed with zstd (`.zst`).
+  - Same layout as v1, file names end in `.zst`.
+  - Served by the `mock_zip_data_compressed` fixture in `conftest.py` (used by
+    `mock_download_v2_api` and `mock_download_v1_and_v2_api`).
 
-## Usage:
-
-Test data files should be:
-- Small and focused (avoid large files when possible)
-- Versioned (e.g., v1, v2) when format changes
-- Documented with purpose and source
-- Committed to git for reproducible tests
+When the download format changes, add a new versioned file rather than editing these.

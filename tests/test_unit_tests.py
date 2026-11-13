@@ -11,9 +11,10 @@ from dateutil.tz import gettz
 from mano import APIError, interval, IntervalError
 from mano.beiwe_api import (_fetch_participant_device_status_history, fetch_interventions,
     fetch_participant_heartbeat_history, fetch_participant_notification_history,
-    fetch_participant_table_data, fetch_participant_table_data_csv, fetch_participant_upload_history,
-    fetch_participant_version_history, fetch_participants_in_study, fetch_study_device_settings,
-    fetch_study_settings, fetch_summary_statistics, fetch_survey_history, fetch_sycamore_analysis_output)
+    fetch_participant_table_data, fetch_participant_table_data_csv,
+    fetch_participant_upload_history, fetch_participant_version_history,
+    fetch_participants_in_study, fetch_study_device_settings, fetch_study_settings,
+    fetch_summary_statistics, fetch_survey_history, fetch_sycamore_analysis_output)
 from mano.constants import UTC
 from mano.mano import login, LoginError
 from mano.messages import (API_400_ERROR, API_403_ERROR, API_404_ERROR, BACKFILL_FILE_EXISTS_MSG,
@@ -27,6 +28,7 @@ from mano.sync import validate_datetime, validate_required_datetime
 #
 
 
+# This is the main path every participant download depends on.
 @responses.activate
 def test_fetch_participants_in_study_returns_users(keyring: dict[str, str], mock_users_response: str):
     responses.post(
@@ -39,6 +41,7 @@ def test_fetch_participants_in_study_returns_users(keyring: dict[str, str], mock
     assert set(users) == {"tgsidhm", "lholbc5", "yxzxtwr"}
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 @responses.activate
 def test_fetch_participants_in_study_http_error_raises_api_error(keyring: dict[str, str]):
     responses.post(
@@ -50,6 +53,8 @@ def test_fetch_participants_in_study_http_error_raises_api_error(keyring: dict[s
         list(fetch_participants_in_study(keyring, 'STUDY_ID'))
 
 
+# The server picks the study from the POST body, so a missing study_id would list the wrong
+# participants.
 @responses.activate
 def test_fetch_participants_in_study_sends_study_id(keyring: dict[str, str], mock_users_response: str):
     responses.post(
@@ -64,12 +69,15 @@ def test_fetch_participants_in_study_sends_study_id(keyring: dict[str, str], moc
     assert 'study_id=MY_STUDY_ID' in str(request_body)
 
 
+# Callers rely on getting a real list back, so they can loop over it more than once. An empty study
+# must not crash.
 @responses.activate
 def test_fetch_participants_in_study_empty_list_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-participant-ids/v1', body='[]', status=200)
     assert fetch_participants_in_study(keyring, 'STUDY_ID') == []
 
 
+# A malformed server reply should fail loudly instead of silently returning wrong data.
 @responses.activate
 def test_fetch_participants_in_study_server_returns_dict_raises_value_error(keyring: dict[str, str]):
     responses.post(
@@ -88,13 +96,15 @@ def test_fetch_participants_in_study_server_returns_dict_raises_value_error(keyr
 #
 
 
-def test_datetime_validation():
+# Users pass dates as strings in several formats, and all must become the same UTC datetime.
+def test_validate_datetime_parses_iso_strings_to_utc():
     assert validate_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_datetime("2023-01-01 00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_required_datetime("2023-01-01T00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_required_datetime("2023-01-01 00:00:00Z", "_") == datetime(2023, 1, 1, tzinfo=UTC)
 
 
+# Required dates must not silently pass as missing, or a download could run with no start time.
 def test_require_datetime_errors_on_none():
     with pytest.raises(ValueError, match=str(TIME_REQUIRED_ERROR("_"))):
         validate_required_datetime(None, "_")
@@ -102,17 +112,20 @@ def test_require_datetime_errors_on_none():
         validate_required_datetime("", "_")
 
 
+# Optional dates are allowed to be blank, and blank must mean no date.
 def test_validate_datetime_no_error_on_none():
     assert validate_datetime(None, "_") is None
     assert validate_datetime("", "_") is None
 
 
-def test_validate_datetime_timezone_UTC_required():
+# Beiwe stores UTC, so a datetime with no timezone must be treated as UTC rather than local time.
+def test_validate_datetime_naive_datetime_is_treated_as_utc():
     dt_wo_tz = datetime(2023, 1, 1, tzinfo=None)
     dt_w_utc = datetime(2023, 1, 1, tzinfo=UTC)
     assert validate_datetime(dt_wo_tz, "_") == dt_w_utc
 
 
+# A user in another timezone must get the same instant, not a shifted time range.
 def test_validate_datetime_with_timezone_timeshifts():
     dt_ny = datetime(2023, 1, 1, 0, 0, 0, tzinfo=gettz("America/New_York"))
     dt_expected = datetime(2023, 1, 1, 5, 0, 0, tzinfo=UTC)  # shifted to UTC
@@ -120,6 +133,7 @@ def test_validate_datetime_with_timezone_timeshifts():
     assert dt_should_be_utc_0_0_0 == dt_expected
 
 
+# Offsets written inside date strings must be converted to UTC the same way as datetime objects.
 def test_validate_datetime_string_with_timezone_timeshifts():
     dt_from_str = "2023-01-01T05:00:00+05:00"  # UTC-5
     dt_expected = datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC)  # shifted to UTC
@@ -127,7 +141,8 @@ def test_validate_datetime_string_with_timezone_timeshifts():
     assert dt_should_be_utc_0_0_0 == dt_expected
 
 
-def test_validate_datetime_too_something():
+# Typos like a wrong year should be caught before a huge or empty download starts.
+def test_validate_datetime_rejects_dates_before_beiwe_existed_or_far_in_future():
     with pytest.raises(ValueError, match=".*is before the earliest possible.*"):
         validate_datetime("2010-01-01T00:00:00Z", "_")
     with pytest.raises(ValueError, match=".*is too far in the future.*"):
@@ -139,6 +154,7 @@ def test_validate_datetime_too_something():
 #
 
 
+# Interval strings are a user-facing input format, so each unit must keep its exact meaning.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that interval() converts a "<number><unit>" string into seconds.
@@ -160,10 +176,11 @@ def test_validate_datetime_too_something():
         ("000000000000m", 0),   # leading zeros are allowed
     ],
 )
-def test_interval(value: str, seconds: int):
+def test_interval_converts_valid_strings_to_seconds(value: str, seconds: int):
     assert interval(value) == seconds
 
 
+# Bad input should produce an error that shows the user what they typed.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that a malformed interval string raises IntervalError, and that the error message
@@ -182,6 +199,7 @@ def test_interval_invalid_raises_error_with_value_in_message(value: str):
         interval(value)
 
 
+# A negative interval would make nonsense time ranges, so it must be refused.
 def test_interval_negative_raises_error():
     with pytest.raises(IntervalError):
         interval("-5m")
@@ -189,6 +207,7 @@ def test_interval_negative_raises_error():
         interval("-1h")
 
 
+# Strict parsing keeps the accepted format simple and predictable.
 def test_interval_with_spaces_raises_error():
     with pytest.raises(IntervalError):
         interval(" 5m")
@@ -198,6 +217,7 @@ def test_interval_with_spaces_raises_error():
         interval("5 m")
 
 
+# A unit with no number is a likely typo and must not default to zero.
 def test_interval_unit_only_raises_error():
     with pytest.raises(IntervalError):
         interval("m")
@@ -209,6 +229,7 @@ def test_interval_unit_only_raises_error():
         interval("d")
 
 
+# Fractions are not supported, and silently rounding them would give the wrong length of time.
 def test_interval_float_raises_error():
     with pytest.raises(IntervalError):
         interval("1.5h")
@@ -216,11 +237,13 @@ def test_interval_float_raises_error():
         interval("0.5m")
 
 
+# Blank-looking input must not be mistaken for a valid or empty interval.
 def test_interval_whitespace_only_raises_error():
     with pytest.raises(IntervalError):
         interval(" ")
 
 
+# Combined units are not supported, so they must fail rather than be partly parsed.
 def test_interval_multiple_units_raises_error():
     with pytest.raises(IntervalError):
         interval("1h30m")
@@ -228,6 +251,7 @@ def test_interval_multiple_units_raises_error():
         interval("1hh")
 
 
+# Users may type units in capitals, and that must work for every unit.
 def test_interval_uppercase_all_units():
     assert interval("10S") == 10
     assert interval("5M") == 300
@@ -235,6 +259,7 @@ def test_interval_uppercase_all_units():
     assert interval("1D") == 86400
 
 
+# Interventions are exported per participant, so the participant IDs must survive parsing.
 @responses.activate
 def test_fetch_interventions_returns_data(keyring: dict[str, str], mock_interventions_response: str):
     responses.post(keyring['URL'] + '/get-interventions/v1', body=mock_interventions_response, status=200)
@@ -243,6 +268,7 @@ def test_fetch_interventions_returns_data(keyring: dict[str, str], mock_interven
     assert "participant2" in result
 
 
+# A study with no data is normal, and must give an empty result rather than an error.
 @responses.activate
 def test_fetch_interventions_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-interventions/v1', body='{}', status=200)
@@ -250,6 +276,7 @@ def test_fetch_interventions_empty_returns_nothing(keyring: dict[str, str]):
     assert result == []
 
 
+# Survey history is exported per survey, so the survey IDs must survive parsing.
 @responses.activate
 def test_fetch_survey_history_returns_data(keyring: dict[str, str], mock_survey_history_response: str):
     responses.post(keyring['URL'] + '/get-survey-history/v1', body=mock_survey_history_response, status=200)
@@ -257,6 +284,7 @@ def test_fetch_survey_history_returns_data(keyring: dict[str, str], mock_survey_
     assert "abc123survey" in result
 
 
+# A study with no data is normal, and must give an empty result rather than an error.
 @responses.activate
 def test_fetch_survey_history_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-survey-history/v1', body='{}', status=200)
@@ -264,6 +292,7 @@ def test_fetch_survey_history_empty_returns_nothing(keyring: dict[str, str]):
     assert result == []
 
 
+# Users export settings as a whole, so no top-level section may be dropped.
 @responses.activate
 def test_fetch_study_settings_returns_all_keys(keyring: dict[str, str], mock_study_settings_response: str):
     responses.post(keyring['URL'] + '/get-study-settings/v1', body=mock_study_settings_response, status=200)
@@ -273,12 +302,15 @@ def test_fetch_study_settings_returns_all_keys(keyring: dict[str, str], mock_stu
     assert "interventions" in result
 
 
+# A study with no data is normal, and must give an empty result rather than an error. Callers rely
+# on getting a real list back, so they can loop over it more than once.
 @responses.activate
 def test_fetch_study_settings_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-study-settings/v1', body='{}', status=200)
     assert fetch_study_settings(keyring, 'STUDY_ID') == []
 
 
+# The participant table is read by column name, so the rows must keep the server's headings.
 @responses.activate
 def test_fetch_participant_table_data_returns_rows(keyring: dict[str, str], mock_participant_table_response: str):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body=mock_participant_table_response, status=200)
@@ -287,6 +319,7 @@ def test_fetch_participant_table_data_returns_rows(keyring: dict[str, str], mock
     assert result[0]['Patient ID'] == 'abc123'
 
 
+# A study with no data is normal, and must give an empty result rather than an error.
 @responses.activate
 def test_fetch_participant_table_data_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='[]', status=200)
@@ -294,6 +327,8 @@ def test_fetch_participant_table_data_empty_returns_nothing(keyring: dict[str, s
     assert result == []
 
 
+# A non-list reply breaks the endpoint contract, and should fail loudly instead of returning wrong
+# data.
 @responses.activate
 def test_fetch_participant_table_data_non_list_raises(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='{}', status=200)
@@ -306,6 +341,7 @@ def test_fetch_participant_table_data_non_list_raises(keyring: dict[str, str]):
 #
 
 
+# The CSV is saved as the server sent it, so users get the exact file and not a re-encoded copy.
 @responses.activate
 def test_fetch_participant_table_data_csv_writes_file(
     keyring: dict[str, str], tmp_path: Path, mock_participant_table_csv_response: str
@@ -318,6 +354,7 @@ def test_fetch_participant_table_data_csv_writes_file(
     assert file_path.read_bytes() == mock_participant_table_csv_response.encode()
 
 
+# Users should be able to name an output path whose folders do not exist yet.
 @responses.activate
 def test_fetch_participant_table_data_csv_creates_missing_directories(
     keyring: dict[str, str], tmp_path: Path, mock_participant_table_csv_response: str
@@ -330,6 +367,7 @@ def test_fetch_participant_table_data_csv_creates_missing_directories(
     assert file_path.read_bytes() == mock_participant_table_csv_response.encode()
 
 
+# An empty table should still produce a file, so scripts that expect the file do not break.
 @responses.activate
 def test_fetch_participant_table_data_csv_empty_response_writes_empty_file(keyring: dict[str, str], tmp_path: Path):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='', status=200)
@@ -338,6 +376,7 @@ def test_fetch_participant_table_data_csv_empty_response_writes_empty_file(keyri
     assert file_path.read_bytes() == b''
 
 
+# A failed download must not leave behind a file that looks like valid data.
 @responses.activate
 def test_fetch_participant_table_data_csv_raises_on_error(keyring: dict[str, str], tmp_path: Path):
     responses.post(keyring['URL'] + '/get-participant-table-data/v1', body='error', status=500)
@@ -347,6 +386,7 @@ def test_fetch_participant_table_data_csv_raises_on_error(keyring: dict[str, str
     assert not file_path.exists()
 
 
+# Device settings are a user-facing export, and each setting must keep its name and type.
 @responses.activate
 def test_fetch_study_device_settings_returns_settings(keyring: dict[str, str], mock_study_settings_response: str):
     responses.post(
@@ -368,6 +408,7 @@ def test_fetch_study_device_settings_returns_settings(keyring: dict[str, str], m
     assert result['heartbeat_timer_minutes'] == 60
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 @responses.activate
 def test_fetch_study_device_settings_500_raises_api_error(keyring: dict[str, str]):
     responses.post(
@@ -379,6 +420,7 @@ def test_fetch_study_device_settings_500_raises_api_error(keyring: dict[str, str
         list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 @responses.activate
 def test_fetch_study_device_settings_400_raises_api_error(keyring: dict[str, str]):
     responses.post(
@@ -390,6 +432,7 @@ def test_fetch_study_device_settings_400_raises_api_error(keyring: dict[str, str
         list(fetch_study_device_settings(keyring, 'STUDY_ID'))
 
 
+# A study with no device settings is normal and must not crash.
 @responses.activate
 def test_fetch_study_device_settings_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(
@@ -407,6 +450,7 @@ def test_fetch_study_device_settings_empty_returns_nothing(keyring: dict[str, st
 #
 
 
+# This is the main path for summary statistics downloads.
 @responses.activate
 def test_fetch_summary_statistics_returns_data(keyring: dict[str, str], mock_summary_statistics_response: str):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
@@ -415,6 +459,7 @@ def test_fetch_summary_statistics_returns_data(keyring: dict[str, str], mock_sum
     assert result[0]['participant_id'] == 'abc123'
 
 
+# A study with no data is normal, and must give an empty result rather than an error.
 @responses.activate
 def test_fetch_summary_statistics_empty_returns_nothing(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
@@ -422,6 +467,7 @@ def test_fetch_summary_statistics_empty_returns_nothing(keyring: dict[str, str])
     assert result == []
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 @responses.activate
 def test_fetch_summary_statistics_http_error_raises_api_error(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='Internal Server Error', status=500)
@@ -434,6 +480,8 @@ def test_fetch_summary_statistics_http_error_raises_api_error(keyring: dict[str,
 # Source: beiwe-backend libs/endpoint_helpers/summary_statistic_helpers.py (ApiQueryForm on request.GET).
 
 
+# The server reads study_id from the POST body only, so putting it in the URL would break the
+# request.
 @responses.activate
 def test_fetch_summary_statistics_sends_study_id_in_body(
     keyring: dict[str, str], mock_summary_statistics_response: str
@@ -444,6 +492,7 @@ def test_fetch_summary_statistics_sends_study_id_in_body(
     assert 'study_id' not in responses.calls[0].request.url
 
 
+# This guards a past bug where date and field filters were silently ignored by the server.
 @responses.activate
 def test_fetch_summary_statistics_sends_filters_in_query_string_not_body(
     keyring: dict[str, str], mock_summary_statistics_response: str
@@ -459,6 +508,7 @@ def test_fetch_summary_statistics_sends_filters_in_query_string_not_body(
     assert 'fields' not in body
 
 
+# Unused filters must not be sent at all, or the server may treat empty values as real filters.
 @responses.activate
 def test_fetch_summary_statistics_omits_none_params(keyring: dict[str, str], mock_summary_statistics_response: str):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body=mock_summary_statistics_response, status=200)
@@ -474,6 +524,7 @@ def test_fetch_summary_statistics_omits_none_params(keyring: dict[str, str], moc
 #
 
 
+# A list where a dict is expected breaks the endpoint contract, and must fail loudly.
 @responses.activate
 def test_fetch_survey_history_non_dict_raises(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-survey-history/v1', body='[]', status=200)
@@ -486,6 +537,7 @@ def test_fetch_survey_history_non_dict_raises(keyring: dict[str, str]):
 #
 
 
+# The session cookie is set on the redirect response, and later requests need it.
 @responses.activate
 def test_login_returns_cookies_after_redirect(keyring: dict[str, str]):
     responses.add(
@@ -500,6 +552,7 @@ def test_login_returns_cookies_after_redirect(keyring: dict[str, str]):
     assert cookies['sessionid'] == 'abc123'
 
 
+# The server cannot log in without the credentials from the keyring in the POST body.
 @responses.activate
 def test_login_sends_username_and_password(keyring: dict[str, str]):
     responses.add(
@@ -516,6 +569,7 @@ def test_login_sends_username_and_password(keyring: dict[str, str]):
     assert f"password={keyring['PASSWORD']}" in body
 
 
+# Users need a login-specific error when the server fails, not a generic one.
 @responses.activate
 def test_login_http_error_raises_login_error(keyring: dict[str, str]):
     responses.add(
@@ -533,6 +587,7 @@ def test_login_http_error_raises_login_error(keyring: dict[str, str]):
 #
 
 
+# The message and its ValueError type are shown to users, so a bad date must be named in it.
 def test_backfill_unparsable_date_error():
     err = BACKFILL_UNPARSABLE_DATE_ERROR("not-a-date")
     assert isinstance(err, ValueError)
@@ -540,36 +595,42 @@ def test_backfill_unparsable_date_error():
     assert "could not parse" in str(err)
 
 
+# Users need to see which path was ambiguous and how many matches were found.
 def test_parse_error_too_many_matches_msg():
     msg = PARSE_ERROR_TOO_MANY_MATCHES_MSG(r"^regex$", "some/path", 2)
     assert "expected 1 match, found 2" in msg
     assert "some/path" in msg
 
 
+# Users must be warned that an existing backfill file will be overwritten.
 def test_backfill_file_exists_msg():
     msg = BACKFILL_FILE_EXISTS_MSG("/tmp/backfill.json")
     assert "/tmp/backfill.json" in msg
     assert "overwritten" in msg
 
 
+# Users must be told which participant is being restarted and that the run will resume.
 def test_backfill_restarting_warning():
     msg = BACKFILL_RESTARTING_WARNING("USER_ID")
     assert "USER_ID" in msg
     assert "resume" in msg
 
 
+# Users who mistype the threads flag need to see the bad value and a working example.
 def test_bad_multithreading_error():
     msg = BAD_MULTITHREADING_ERROR("--mtX")
     assert "--mtX" in msg
     assert "--mt4" in msg
 
 
+# A 400 message must include the status and the URL so users can report it.
 def test_api_400_error():
     msg = API_400_ERROR(400, "https://studies.beiwe.org/get-studies/v1")
     assert "https://studies.beiwe.org/get-studies/v1" in msg
     assert "400" in msg
 
 
+# A 404 has three different causes, and the message must say which one so users know what to fix.
 def test_api_404_error_variants():
     no_study = API_404_ERROR(404, "https://x/get-users/v1")
     assert "the provided data stream was not valid" in no_study
@@ -581,6 +642,7 @@ def test_api_404_error_variants():
     assert "participant `PART_ID` does not exist" in with_participant
 
 
+# A 403 on a study usually means no access or a wrong ID, and the message must say so.
 def test_api_403_error_with_study_id():
     msg = API_403_ERROR(403, "https://x/get-users/v1", study_id="STUDY_ID")
     assert "study `STUDY_ID`" in msg
@@ -621,6 +683,8 @@ PARTICIPANT_HISTORY_FETCHERS = [
 PARTICIPANT_HISTORY_COLUMNS = ("fetch", "endpoint", "empty_body", "empty_result")
 
 
+# Each history fetcher must hand back the server's JSON unchanged, so no field or entry is lost or
+# reordered.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that each fetcher returns the server's JSON unchanged, including tricky values (nulls,
@@ -705,6 +769,7 @@ def test_fetch_participant_history_returns_data(keyring: dict[str, str], fetch, 
     assert fetch(keyring, 'PARTICIPANT_ID') == data
 
 
+# A study with no data is normal, and must give an empty result rather than an error.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that an empty response comes back as an empty list (or empty dict for notification
@@ -718,6 +783,7 @@ def test_fetch_participant_history_empty_returns_nothing(
     assert fetch(keyring, 'PARTICIPANT_ID') == empty_result
 
 
+# The server needs all three values in the POST body, or it rejects the request.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that the participant ID and both credentials are sent in the POST body.
@@ -735,6 +801,7 @@ def test_fetch_participant_history_sends_participant_id_and_credentials(
     assert f"secret_key={keyring['SECRET_KEY']}" in body
 
 
+# Keys and IDs with special characters would be corrupted in the request if they were not encoded.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that values containing URL-special characters (+, &, =) are encoded properly, so the
@@ -754,6 +821,7 @@ def test_fetch_participant_history_encodes_participant_id_and_credentials(
     assert body['secret_key'] == [keyring['SECRET_KEY']]
 
 
+# Users often copy URLs with a trailing slash, and that must not break the endpoint.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that a keyring URL ending in "/" doesn't produce a double slash in the endpoint URL.
@@ -769,6 +837,7 @@ def test_fetch_participant_history_handles_trailing_slash(
     assert fetch(keyring, 'PARTICIPANT_ID') == empty_result
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 # This is a parametrized test: pytest runs it once for each case listed in the decorators below,
 # passing that case's values in as the test function's arguments. With two decorators, it runs
 # once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each status code.
@@ -784,6 +853,7 @@ def test_fetch_participant_history_http_error_raises_api_error(
         fetch(keyring, 'PARTICIPANT_ID')
 
 
+# A broken reply should fail loudly instead of returning partial or empty data that looks valid.
 # This is a parametrized test: pytest runs it once for each case listed in the decorators below,
 # passing that case's values in as the test function's arguments. With two decorators, it runs
 # once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each bad body.
@@ -806,6 +876,7 @@ def test_fetch_participant_history_invalid_json_raises(
         fetch(keyring, 'PARTICIPANT_ID')
 
 
+# Network failures should reach the caller unchanged so they can decide whether to retry.
 # This is a parametrized test: pytest runs it once for each case listed in the decorators below,
 # passing that case's values in as the test function's arguments. With two decorators, it runs
 # once for every combination: each fetcher (PARTICIPANT_HISTORY_FETCHERS) x each network error.
@@ -842,6 +913,8 @@ def _mock_sycamore_zip_response(url: str, zip_bytes: bytes) -> None:
     )
 
 
+# This endpoint returns zip bytes, so they must reach the caller byte for byte or the file would be
+# corrupt.
 @responses.activate
 def test_fetch_sycamore_analysis_output_returns_zip(keyring: dict[str, str], mock_zip_data_uncompressed: bytes):
     # mock_zip_data_uncompressed is the real zip file tests/data/download.v1.zip
@@ -853,6 +926,7 @@ def test_fetch_sycamore_analysis_output_returns_zip(keyring: dict[str, str], moc
         assert returned.namelist() == original.namelist()
 
 
+# The server needs the study and credentials in the POST body to find the right report.
 @responses.activate
 def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(
     keyring: dict[str, str], mock_zip_data_uncompressed: bytes
@@ -865,6 +939,7 @@ def test_fetch_sycamore_analysis_output_sends_study_id_and_credentials(
     assert f"secret_key={keyring['SECRET_KEY']}" in body
 
 
+# Users often copy URLs with a trailing slash, and that must not break the endpoint.
 @responses.activate
 def test_fetch_sycamore_analysis_output_handles_trailing_slash(
     keyring: dict[str, str], mock_zip_data_uncompressed: bytes
@@ -875,6 +950,7 @@ def test_fetch_sycamore_analysis_output_handles_trailing_slash(
     assert fetch_sycamore_analysis_output(keyring, 'STUDY_ID') == mock_zip_data_uncompressed
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that any non-200 response raises APIError naming the status code. The two 404 rows use
@@ -899,6 +975,7 @@ def test_fetch_sycamore_analysis_output_http_error_raises_api_error(
         fetch_sycamore_analysis_output(keyring, 'STUDY_ID')
 
 
+# Network failures should reach the caller unchanged so they can decide whether to retry.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that network errors are not caught or retried: they reach the caller unchanged.
@@ -919,6 +996,8 @@ def test_fetch_sycamore_analysis_output_request_error_propagates(keyring: dict[s
 #
 
 
+# This guards a past bug: the server only reads `participant_ids` from the URL, so the old body
+# field was ignored.
 @responses.activate
 def test_fetch_summary_statistics_sends_participant_id(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
@@ -929,6 +1008,7 @@ def test_fetch_summary_statistics_sends_participant_id(keyring: dict[str, str]):
     assert 'participant_id' not in str(responses.calls[0].request.body)
 
 
+# Passing None must mean no filter, not an empty filter that hides all data.
 @responses.activate
 def test_fetch_summary_statistics_omits_none_participant_id(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
@@ -938,6 +1018,7 @@ def test_fetch_summary_statistics_omits_none_participant_id(keyring: dict[str, s
     assert 'participant_ids' not in str(responses.calls[0].request.body)
 
 
+# Combining the participant filter with other filters must not make either one get lost.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that the participant filter and the other filters are all sent together in the URL
@@ -961,6 +1042,7 @@ def test_fetch_summary_statistics_sends_participant_id_with_filters(keyring: dic
         assert query.get(name) == [value]
 
 
+# By default the whole study is requested, so no participant filter may be sent.
 @responses.activate
 def test_fetch_summary_statistics_default_omits_participant_id(keyring: dict[str, str]):
     responses.post(keyring['URL'] + '/get-summary-statistics/v1', body='[]', status=200)
@@ -969,6 +1051,7 @@ def test_fetch_summary_statistics_default_omits_participant_id(keyring: dict[str
     assert 'participant_id' not in responses.calls[0].request.url
 
 
+# Users need a clear APIError with the status code instead of a confusing downstream failure.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that a non-200 response raises APIError naming the status code when filtering by participant.
@@ -982,6 +1065,7 @@ def test_fetch_summary_statistics_participant_filter_http_error_raises_api_error
         fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
 
 
+# A broken reply should fail loudly instead of returning partial or empty data that looks valid.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that a 200 response whose body isn't valid JSON raises orjson.JSONDecodeError.
@@ -1000,6 +1084,7 @@ def test_fetch_summary_statistics_participant_filter_invalid_json_raises(keyring
         fetch_summary_statistics(keyring, 'STUDY_ID', participant_id='PARTICIPANT_ID')
 
 
+# Network failures should reach the caller unchanged so they can decide whether to retry.
 # This is a parametrized test: pytest runs it once for each case listed in the decorator below,
 # passing that case's values in as the test function's arguments.
 # Checks that network errors are not caught or retried: they reach the caller unchanged.

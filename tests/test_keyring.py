@@ -11,7 +11,9 @@ DIR = os.path.dirname(__file__)
 
 
 
-def test_keyring(keyring: dict[str, str]):
+# The encrypted keyring file is the main way users store their credentials, so a correct passphrase
+# must return them intact.
+def test_keyring_loads_from_encrypted_file(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
         os.environ["NRG_KEYRING_PASS"] = "foobar"
@@ -23,6 +25,7 @@ def test_keyring(keyring: dict[str, str]):
         os.environ.update(_environ)
 
 
+# Users who skip both keyring and env vars need an error that says which variables are missing.
 def test_keyring_empty_environment():
     _environ = dict(os.environ)
     try:
@@ -36,6 +39,7 @@ def test_keyring_empty_environment():
         os.environ.update(_environ)
 
 
+# Empty variables are a common setup mistake, and need a different message from missing ones.
 def test_keyring_empty_string_environment_all():
     _environ = dict(os.environ)
     try:
@@ -48,6 +52,8 @@ def test_keyring_empty_string_environment_all():
         os.environ.update(_environ)
 
 
+# One blank variable among good ones must still be refused, since the request would fail later with
+# a confusing error.
 def test_keyring_empty_string_environment_one_by_one():
     _environ = dict(os.environ)
     try:
@@ -63,6 +69,7 @@ def test_keyring_empty_string_environment_one_by_one():
         os.environ.update(_environ)
 
 
+# A wrong passphrase must raise KeyringError and not return garbage credentials.
 def test_keyring_wrong_password():
     _environ = dict(os.environ)
     try:
@@ -75,6 +82,7 @@ def test_keyring_wrong_password():
         os.environ.update(_environ)
 
 
+# A wrong file path must be reported as a file problem, not mistaken for a bad passphrase.
 def test_keyring_missing_file():
     _environ = dict(os.environ)
     try:
@@ -87,6 +95,7 @@ def test_keyring_missing_file():
         os.environ.update(_environ)
 
 
+# Environment variables are the way to supply credentials in CI and containers with no keyring file.
 def test_keyring_from_env(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
@@ -117,7 +126,8 @@ def test_keyring_prompts_for_passphrase_when_not_provided(mocker: MockerFixture,
         os.environ.update(_environ)
 
 
-def test_keyring_from_env_missing(keyring: dict[str, str]):
+# A partial set of variables must fail instead of producing a half-empty keyring.
+def test_keyring_from_env_missing_url_raises(keyring: dict[str, str]):
     _environ = dict(os.environ)
     try:
         os.environ["BEIWE_USERNAME"] = keyring["USERNAME"]
@@ -129,3 +139,4 @@ def test_keyring_from_env_missing(keyring: dict[str, str]):
     finally:
         os.environ.clear()
         os.environ.update(_environ)
+

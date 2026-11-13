@@ -54,9 +54,8 @@ under the open source BSD-3-Clause license.
 1. __[Requirements and Compatibility](#requirements-and-compatibility)__
 2. __[Installation](#installation)__
 3. __[Credential Setup](#credential-setup)__
-4. __[Setup Your Keyring Object and Access Your Data](#setup-your-keyring-object-and-access-your-data)__
-5. __[Access Study Information](#access-study-information)__
-6. __[Downloading Participant Data](#downloading-participant-data)__
+4. __[Access Study Information](#access-study-information)__
+5. __[Downloading Participant Data](#downloading-participant-data)__
 
 
 
@@ -255,10 +254,9 @@ You can use `crypt.py` to encrypt any file.
   look for encrypted credentials.
 
 > [!Note]
-
 > This task prompts you to enter a password in your terminal, __but no output__ will be shown as you
 > type it. This is normal behavior for password prompts in terminals. The backspace key still works
-> as normaly. You will be prompted to enter the password a second time in confirmation.
+> as normal. You will be prompted to enter the password a second time in confirmation.
 
 ```bash
 $ crypt.py --encrypt my_credentials_file.json --output-file ~/.nrg-keyring.enc
@@ -290,7 +288,7 @@ We __strongly recommend__ recording your __Credentials File Passphrase__ in a pa
 
 > [!Warning]
 > It is __Strongly Recommended__ that you use the encrypted credentials feature of Mano as described
-> in the previous collapsable section. If you do not, your __Encryption Passphrase__ will be stored
+> in the previous collapsible section. If you do not, your __Encryption Passphrase__ will be stored
 > in plain text, rendering it pointless.
 
 If you have encryption passphrases configured for your study data in the Beiwe Platform, you can
@@ -306,7 +304,7 @@ Your credentials should look like this when you have encryption passphrases conf
         "ACCESS_KEY": "...",
         "SECRET_KEY": "...",
         "SECRETS": {
-            "Study Name": "encryption_passphrase_for_this_study",
+            "Study Name": "encryption_passphrase_for_this_study"
         }
     }
 }
@@ -315,13 +313,15 @@ Your credentials should look like this when you have encryption passphrases conf
 The key in the `SECRETS` dictionary should identify the specific study from your Beiwe Platform
 server. (You may need to include this string in your code.)
 
-TODO: does this study name key need to be an exact match?
+Mano never reads the `SECRETS` section itself, it is for your own code to use (see the encryption
+example later on, `keyring["SECRETS"]["Study Name"]`). Any key name works as long as your code looks
+it up using the same one.
 
 > [!Note]
 > Do not confuse __Encryption Passphrase__ and __Credentials File Passphrase__.
 > - __Do Not__ use the same value for both passphrases.
 > - __We Strongly Recommend__ using a password manager to store a secure backup of these values, if
->   you lose them you will irretrievably lose access to your data and will have reconfigure and re-
+>   you lose them you will irretrievably lose access to your data and will have to reconfigure and re-
 >   download all your data.
 
 
@@ -342,6 +342,10 @@ because there may be generic environment variables using identical names on the 
 - for __`ACCESS_KEY`__ use __`BEIWE_ACCESS_KEY`__
 - for __`SECRET_KEY`__ use __`BEIWE_SECRET_KEY`__
 
+(Older keyrings may also contain `USERNAME` and `PASSWORD` entries, or `BEIWE_USERNAME` and
+`BEIWE_PASSWORD` environment variables. Mano no longer needs them and will log a warning if it finds
+them. You should remove them.)
+
 To load your Keyring from data in environment variables, just pass a Python `None` to
 `mano.load_keyring()`:
 
@@ -351,6 +355,7 @@ keyring = load_keyring(None)
 ```
 
 (There are notes on using an encrypted keyring with environment variables in the next section.)
+
 ---
 
 </details>
@@ -389,11 +394,11 @@ There are two other mechanisms to provide it:
     $env:NRG_KEYRING_PASS="my_credential_file_passphrase"
     ```
 
-- As a __keyword__ argument to the `load_keyring()` function provide a `password` parameter:
+- As a __keyword__ argument to the `load_keyring()` function provide a `passphrase` parameter:
     ```python
     from mano import load_keyring
     keyring = load_keyring(
-        "onnela-lab-server-example-credentials", password="my_credential_file_passphrase"
+        "onnela-lab-server-example-credentials", passphrase="my_credential_file_passphrase"
     )
     ```
 
@@ -403,10 +408,8 @@ There are two other mechanisms to provide it:
   If you are on your own computer we recommend using the full drive encryption capability of your
   operating system to secure it while at rest, and typing in the passphrase when you need it.
 
-TODO: test how this behaves inside Jupyter Notebooks
-
 > [!Important]
-> Calling `mano.keyring` in a context where there is no terminal to prompt for user input will
+> Calling `mano.load_keyring()` in a context where there is no terminal to prompt for user input will
 > usually cause your code to hang.
 
 </details>
@@ -427,15 +430,19 @@ TODO: test how this behaves inside Jupyter Notebooks
 With your Keyring loaded you can query the server for information about studies you have access to,
 participants in those studies, and the study's data stream configuration.
 
+All of the `fetch_*` functions in this document can be imported from `mano.beiwe_api`. (These
+functions used to be imported from `mano` directly.)
+
 ```python
 
-from mano import fetch_accessible_studies, fetch_study_device_settings, fetch_participants_in_study
+from mano.beiwe_api import (fetch_accessible_studies, fetch_study_device_settings,
+    fetch_participants_in_study)
 
 # print out a list of studies you have access to
 for study_name, study_id in fetch_accessible_studies(keyring):  
     print(f"{study_name}: {study_id}")
 
-# (for this example we will just use the the last study the loop found)
+# (for this example we will just use the last study the loop found)
 for participant_id in fetch_participants_in_study(keyring, study_id):
     print(participant_id)
 
@@ -452,7 +459,7 @@ from pprint import pprint
 from mano.constants import DataStreams, ALL_DATA_STREAMS
 
 print("All the underlying data stream strings:")
-pprint("-", ALL_DATA_STREAMS)
+pprint(ALL_DATA_STREAMS)
 
 print("An example specific data stream:")
 print("-", DataStreams.ACCELEROMETER)  # etc.
@@ -463,8 +470,8 @@ The full list of data stream options on the `DataStreams` class is `ACCELEROMETE
 `IDENTIFIERS`, `IOS_LOG_FILE`, `MAGNETOMETER`, `POWER_STATE`, `PROXIMITY`, `REACHABILITY`,
 `SURVEY_ANSWERS`, `SURVEY_TIMINGS`, `TEXTS_LOG`, and `WIFI`
 
-We have the studies/participants/device-settings lookups above, a handful of other read-only queries
-are available for pulling study metadata and stats:
+In addition to the lookups above, a handful of other read-only queries are available for pulling
+study metadata and stats:
 
 ```python
 from mano.beiwe_api import (fetch_interventions, fetch_survey_history, fetch_participant_table_data,
@@ -479,8 +486,9 @@ for participant_id, intervention_data in fetch_interventions(keyring, study_id):
 for survey_id, history in fetch_survey_history(keyring, study_id):
     print(survey_id, history)
 
-# Study settings are a file used by some analyses from the Forest codebase
-json_blob = fetch_study_settings(keyring, study_id)
+# Study settings are used by some analyses from the Forest codebase,
+# it includes information on surveys, device_settings, and interventions.
+settings = fetch_study_settings(keyring, study_id)
 
 # Get the content of the participant table (the data shown on the Beiwe Study Page) as JSON.
 # (This also includes numerous extra datapoints not visible on the page)
@@ -533,7 +541,10 @@ With a little bit of information about where your data is stored, `backfill` wil
 - Download that data in batches to avoid network issues.
   - Using the compressed data-download endpoints to run efficiently and quickly.
 - Extract (and optionally decompress) those files where they need to go.
-- And it accepts all the extra parameters you would normally provide to the `download` function.
+- It has the optional parameters: `end_date`, `data_streams`, `lock`, `passphrase`, and
+  `compressed`. (`compressed=True` means the final files are left compressed instead
+  of being decompressed. The requests to the server are always for compressed data, which may not
+  be available on sufficiently old servers.)
 <hr>
 
 </details>
@@ -546,7 +557,8 @@ A simple usage of `backfill` looks like this:
 
 ```python
 from datetime import date
-from mano import load_keyring, fetch_participants_in_study
+from mano import load_keyring
+from mano.beiwe_api import fetch_participants_in_study
 from mano.sync import backfill
 
 keyring = {...}  # load your keyring however you like
@@ -559,9 +571,9 @@ participants = list(fetch_participants_in_study(keyring, study_id))
 start_date = date(2020, 2, 20)
 
 for participant_id in participants:
-    # This folder may have the participant's data in it, in the structure Beiwe data downloads
-    # use. The full path should contain the study id and then the participant id(s) for that study.
-    participants_output_folder = f"/path/to/{study_id}/{participant_id}/"
+    # This folder may already have the study's data in it, in the normal structure of Beiwe data
+    # downloads. Backfill adds or uses the per-participant subfolders.
+    participants_output_folder = f"/path/to/{study_id}/"
     
     # Backfill will scan all relevant data files it finds
     # Note that this invocation will decompress the files, but it doesn't have to
@@ -572,7 +584,9 @@ for participant_id in participants:
 
 
 > [!Note]
-> Backfill supports the same `lock` and `passphrase` parameters for encrypting downloaded data files as the download function described below.
+> Backfill supports `lock` and `passphrase` parameters for encrypting downloaded data files. The
+> `download` function described below does not, but you can encrypt its output when you save it (see
+> the encryption section below).
 
 
 ## Download
@@ -627,10 +641,11 @@ zf.extractall(target_output_folder)  # It does exactly what it says
 ```
 
 
-By default `download` attempts to download *all* of the data for the specified participant,
-which could end up being prohibitively large. For this reason, the `download` function exposes
-parameters for `data_streams`, `time_start`, and `time_end`. By using these parameters you can
-limit your download operation to those constraints.
+By default `download` attempts to download *all* of the data for every participant in the study,
+which could end up being prohibitively large and is not recommended. For this reason, the `download`
+function exposes parameters for `participant_ids`, `data_streams`, `time_start`, and `time_end`. By
+using these parameters you can limit your download operation to those constraints. Use `backfill` to
+update data you have downloaded before.
 
 > [!Note]
 > The `download` function returns a [Python Standard Library `zipfile.ZipFile`](
@@ -665,13 +680,14 @@ feature.  On average the ZSTD-compressed files are one-fifth the size of uncompr
 
 However, _because the compressed Data Access API endpoint is not available on older versions of the
 server software the `compressed` parameter is set to `False`_ on the `download` function by default,
-and will use the uncompressed download endpoints when set to true.
+and will use the uncompressed download endpoints. Set it to `True` to use the compressed download
+endpoint.
 
 `Backfill` _always_ hits the compressed download endpoint - because we discovered some bugs, and
 only sufficiently up-to-date servers will work correctly with it. This causes 404 errors on outdated
 servers.
 
-These compressed source files each individually use a ~newer compression technology called ZSTD
+These compressed source files each individually use a newer compression technology called ZSTD
 ("Zstandard", `.zst`) but are still bundled together in an _uncompressed_ Zip archive.
 
 ZSTD is crazy fast, hundreds of megabytes per second on even decade-old hardware, both to compress
@@ -690,15 +706,20 @@ inconvenience and hope this gets resolved.
 
 
 ### Encrypting Data Files At Rest
-You can pass the `ZipFile` object to `save()` if you wish to encrypt data stream files.
+You can pass the `ZipFile` object to `save_archive()` if you wish to encrypt data stream files.
+(The older `mano.sync.save` function is deprecated, use `mano.file_management.save_archive`.)
 You can also pass these parameters to `backfill()` and it will use them internally.
 
 ```python
 from zipfile import ZipFile
 from mano.constants import DataStreams
-from mano.sync import backfill, download, save
+from mano.file_management import save_archive
+from mano.sync import backfill, download
 
 lock_and_download_streams = [DataStreams.GPS, DataStreams.AUDIO_RECORDING]
+
+# grab your encryption key out of the keyring
+data_encryption_key = keyring["SECRETS"]["Study Name"]
 
 
 # for backfill to handle automatically:
@@ -721,10 +742,7 @@ zf: ZipFile = download(
     data_streams=lock_and_download_streams,
 )
 
-# grab your encryption key out of the keyring
-data_encryption_key = keyring["SECRETS"]["Study Name"]
-
-save(
+save_archive(
     zf,
     participant_id,
     output_folder,
@@ -750,7 +768,7 @@ data that are produced if you run the corresponding Forest Tree from the Forest 
 By default this endpoint returns _Everything_ for all participants, so you will probably want to
 filter it down.
 
-The fields available are accessible through the `ForestStats` and `DataStreams` classes in the
+The fields available are accessible through the `QuantityStats` and `ForestStats` classes in the
 `mano.constants` module. 
 
 <details>
@@ -783,8 +801,6 @@ Data Quantity Fields
  - `texts_bytes`
  - `audio_recordings_bytes`
  - `wifi_bytes`
-
-_(Note that these analysis fields are technically subject to change as the Forest analysis methods evolve.)
 
 Forest Output Fields
  - `jasmine_distance_diameter`
@@ -833,13 +849,15 @@ Forest Output Fields
  - `oak_steps`
  - `oak_cadence`
 
+_(Note that these analysis fields are technically subject to change as the Forest analysis methods evolve.)_
+
 ---
 
 </details>
 
 
 ```python
-from mano import fetch_summary_statistics
+from mano.beiwe_api import fetch_summary_statistics
 
 # Get daily summary statistics, optionally filtered by date range and/or field list
 for day in fetch_summary_statistics(
@@ -881,7 +899,7 @@ $ mano decompress ./participant_folder/
 
 # delete the .zst files after decompressing:
 $ mano decompress ./folder/ --delete-zst
-# overwrite existing files instead of erroring with:
+# overwrite existing files instead of skipping them with:
 $ mano decompress ./folder/ --overwrite
 ```
 
@@ -903,7 +921,7 @@ $ mano compress ./folder/ -8
 # Compress and delete the original uncompressed files with --delete-original:
 $ mano compress ./folder/ --delete-original
 
-# and like for decomerpss you can overwrite existing files with:
+# and like for decompress you can overwrite existing files with:
 $ mano compress ./folder/ --overwrite
 
 ```
@@ -931,7 +949,7 @@ from mano.file_management import decompress_zst_files, compress_to_zst_files
 target_folder = "./study_folder/"
 
 # by default these are multithreaded across all available CPU cores
-decompress_zst_files(target_folder, delete_zst=True, overwrite=False)
+decompress_zst_files(target_folder, delete_zsts=True, overwrite=False)
 compress_to_zst_files(target_folder, compression_level=5, delete_original=False)
 
 # to set the number of concurrent files to operate on, set the multithreading_count attribute on the
